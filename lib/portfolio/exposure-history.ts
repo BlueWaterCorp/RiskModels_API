@@ -346,8 +346,19 @@ export const TICKER_RESOLUTION_NOTE =
 export async function historyTickerWindows(
   tickers: string[],
   asOf: string = new Date().toISOString().slice(0, 10),
-): Promise<{ windows: HeldTickerWindow[]; targets: string[] }> {
-  const windows = await heldTickerWindows(tickers, { asOf });
+): Promise<{ windows: HeldTickerWindow[]; targets: string[]; unavailable: boolean }> {
+  let windows: HeldTickerWindow[];
+  try {
+    windows = await heldTickerWindows(tickers, { asOf });
+  } catch (err) {
+    // Fail open: the reviewed events are an overlay. Without them the feed resolves through today's
+    // registry, as before ERM3-73, and says so. loadEvents caches only successful reads.
+    console.error("[exposure-history] point-in-time ticker windows unavailable:", err);
+    return { windows: [], targets: [], unavailable: true };
+  }
   const targets = [...new Set(windows.flatMap((w) => (w.priced_as && w.priced_as !== w.ticker ? [w.priced_as] : [])))];
-  return { windows, targets };
+  return { windows, targets, unavailable: false };
 }
+
+export const TICKER_WINDOWS_UNAVAILABLE_NOTE =
+  "Point-in-time ticker windows were unavailable for this call: every ticker resolved through today's registry and ticker_windows is empty.";

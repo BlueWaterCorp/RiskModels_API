@@ -44,6 +44,7 @@ import {
   historyTickerWindows,
   resolveHistoryNames,
   TICKER_RESOLUTION_NOTE,
+  TICKER_WINDOWS_UNAVAILABLE_NOTE,
 } from "@/lib/portfolio/exposure-history";
 import { clampStart } from "@/lib/dal/served-history";
 import { resolveAll } from "@/lib/portfolio/signed-exposure-data";
@@ -101,7 +102,7 @@ export const POST = withBilling(
       const fetchStart = performance.now();
       // Point in time (ERM3-73): tickers in reviewed events get dated windows; the SDK joins each
       // holding through the window covering its own date. Window targets are delivered too.
-      const { windows: tickerWindows, targets: windowTargets } = await historyTickerWindows(tickers);
+      const { windows: tickerWindows, targets: windowTargets, unavailable: windowsUnavailable } = await historyTickerWindows(tickers);
       const { names, directEtfs, dropped, targets } = await resolveHistoryNames(tickers, resolveAll, windowTargets);
       const bySymbol = new Map(names.map((n) => [n.symbol, n]));
 
@@ -150,6 +151,8 @@ export const POST = withBilling(
             e: [...directEtfs].sort(),
             start,
             end: end ?? null,
+            // A set built without the reviewed events is never served to a call that has them.
+            ...(windowsUnavailable ? { pit: "unavailable" } : {}),
             built: slice.attrs.built_utc ?? null,
             // Sets written before the served-history floors applied hold pre-floor rows.
             served: EXPOSURE_FIELD_START,
@@ -216,6 +219,7 @@ export const POST = withBilling(
           history_available_from: EXPOSURE_FIELD_START,
           warnings,
           notes: [
+            ...(windowsUnavailable ? [TICKER_WINDOWS_UNAVAILABLE_NOTE] : []),
             "Derived data only: no prices, market caps or return series.",
             "l1_mkt_beta equals -l1_mkt_hr exactly (L1 has one factor, SPY).",
             "Join locally with dated holdings via the SDK (client.exposure_history). A fixed book applied to past dates has look-back bias.",

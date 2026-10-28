@@ -42,6 +42,7 @@ import {
   historyTickerWindows,
   resolveHistoryNames,
   TICKER_RESOLUTION_NOTE,
+  TICKER_WINDOWS_UNAVAILABLE_NOTE,
   servedStartWarnings,
   toParquet,
 } from "@/lib/portfolio/exposure-history";
@@ -106,7 +107,7 @@ export const POST = withBilling(
     try {
       const fetchStart = performance.now();
       // Point in time (ERM3-73): see the month-end route.
-      const { windows: tickerWindows, targets: windowTargets } = await historyTickerWindows(tickers);
+      const { windows: tickerWindows, targets: windowTargets, unavailable: windowsUnavailable } = await historyTickerWindows(tickers);
       const { names, directEtfs, dropped, targets } = await resolveHistoryNames(tickers, resolveAll, windowTargets);
 
       const [daily, panel] = await Promise.all([
@@ -154,6 +155,8 @@ export const POST = withBilling(
             e: [...directEtfs].sort(),
             start,
             end: end ?? null,
+            // A set built without the reviewed events is never served to a call that has them.
+            ...(windowsUnavailable ? { pit: "unavailable" } : {}),
             last: daily.teos[daily.teos.length - 1] ?? null,
             built: panel.attrs.built_utc ?? null,
             // Sets written before the served-history floors applied hold pre-floor rows.
@@ -224,6 +227,7 @@ export const POST = withBilling(
           history_available_from: EXPOSURE_FIELD_START,
           warnings,
           notes: [
+            ...(windowsUnavailable ? [TICKER_WINDOWS_UNAVAILABLE_NOTE] : []),
             "Derived data only: no prices, market caps or return series.",
             "l1_mkt_beta equals -l1_mkt_hr exactly (L1 has one factor, SPY).",
             "Join locally with dated holdings via the SDK (client.exposure_history(..., frequency='daily')).",

@@ -25,13 +25,17 @@ const symbolRows = [
   { symbol: "BW-BBG0116Y22N3", ticker: "NEXN", name: "Nexxen International Ltd." },
 ];
 
-function query(rows: unknown[]) {
+// Set to make the reviewed-events read fail (the only failure injected; every other table is the fixture).
+const eventsDown = { on: false };
+
+function query(rows: unknown[], fail = false) {
   const q: Record<string, unknown> = {
     select: () => q,
     eq: () => q,
     in: (_col: string, vals: string[]) =>
-      query((rows as Array<Record<string, unknown>>).filter((r) => !("symbol" in r) || vals.includes(r.symbol as string))),
-    then: (res: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(res),
+      query((rows as Array<Record<string, unknown>>).filter((r) => !("symbol" in r) || vals.includes(r.symbol as string)), fail),
+    then: (res: (v: unknown) => unknown) =>
+      Promise.resolve(fail ? { data: null, error: { message: "connection refused" } } : { data: rows, error: null }).then(res),
   };
   return q;
 }
@@ -44,6 +48,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           : table === "security_event_legs" ? fx.legs
             : table === "symbols" ? symbolRows
               : [],
+        table === "security_events" && eventsDown.on,
       ),
   }),
 }));
@@ -191,6 +196,25 @@ describe("POST /portfolio/exposure/history: point-in-time tickers", () => {
     expect(body.names_delivered).toBe(1);
     expect(body.dropped).toEqual([{ ticker: "FB", reason: "symbol_not_found" }]);
     expect(covering(body.ticker_windows, "FB", "2021-12-31")[0]).toMatchObject({ priced_as: "META", bw_sym_id: META });
+  });
+
+  it("fails open when the reviewed events cannot be read, and does not keep the failure", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    eventsDown.on = true;
+    const down = await call({ tickers: ["SPCX"] });
+    eventsDown.on = false;
+    expect(down.status).toBe(200);
+    expect(down.body.ticker_windows).toEqual([]);
+    expect(down.body.window_targets).toEqual([]);
+    expect(resolved[0]).toEqual(["SPCX"]); // today's registry only, as before ERM3-73
+    expect(down.body.notes.some((n: string) => /windows were unavailable/.test(n))).toBe(true);
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+
+    const up = await call({ tickers: ["SPCX"] });
+    expect(up.body.window_targets).toEqual(["SPCK"]);
+    expect(up.body.notes.some((n: string) => /windows were unavailable/.test(n))).toBe(false);
+    expect(up.body.files.names.url).not.toBe(down.body.files.names.url);
   });
 
   it("META (the name FB became) prices as itself in every window: nothing extra delivered", async () => {
