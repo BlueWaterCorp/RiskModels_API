@@ -42,10 +42,16 @@ def test_other_outputs_are_allowed(out, monkeypatch):
     assert panel.publish_layout_violation(out) is None
 
 
-def test_zarr_gcs_prefix_moves_the_guard(monkeypatch):
+def test_zarr_gcs_prefix_adds_a_guard_and_never_removes_production(monkeypatch):
     monkeypatch.setenv("ZARR_GCS_PREFIX", "rm_api_data/staging_e75_inc5/eodhd")
     assert panel.publish_layout_violation("gs://rm_api_data/staging_e75_inc5/eodhd/slots/a/x.zarr")
-    assert panel.publish_layout_violation("gs://rm_api_data/eodhd/x.zarr") is None
+    # production stays guarded even when ZARR_GCS_PREFIX points elsewhere
+    assert panel.publish_layout_violation("gs://rm_api_data/eodhd/x.zarr")
+    assert panel.publish_layout_violation("gs://rm_api_data/eodhd/slots/b/x.zarr")
+    assert panel.publish_layout_violation("gs://rm_api_data/scratch/x.zarr") is None
+    # an explicit base adds to the default too
+    assert panel.publish_layout_violation("gs://rm_api_data/eodhd/x.zarr", publish_base="other/base")
+    assert panel.publish_layout_violation("gs://other/base/x.zarr", publish_base="gs://other/base/")
 
 
 def test_main_exits_before_reading_anything(monkeypatch, capsys):
