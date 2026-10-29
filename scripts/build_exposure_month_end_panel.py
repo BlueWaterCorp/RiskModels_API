@@ -8,9 +8,19 @@ plus the ETF covariance matrix (252 trading days) at each month-end.
 See docs/EXPOSURE_HISTORY_FEED.md. Everything written is derived data; no raw
 prices or return series are copied.
 
+Production producer is ERM3, not this script (ERM3-75 increment 5): the
+pipeline builds ds_exposure_month_end_* (erm3/io/exposure_panel.py, asset
+build_exposure_month_end_panel, exposure_panel.enable) before output_gate,
+and sync_to_gcs publishes it with the rest of the release (it is in
+published_zarr_names). A copy written here into the publish prefix was
+overwritten by the next publish, and under release slots it would never
+reach the slot the API reads. So this script refuses any output under the
+publish layout (the ZARR_GCS_PREFIX base, default rm_api_data/eodhd,
+including its slots/ and CURRENT) and is a local / scratch tool only.
+
 Usage:
     python scripts/build_exposure_month_end_panel.py --out ./ds_exposure_month_end_SPY_uni_mc_3000.zarr
-    python scripts/build_exposure_month_end_panel.py --out gs://rm_api_data/eodhd/ds_exposure_month_end_SPY_uni_mc_3000.zarr
+    python scripts/build_exposure_month_end_panel.py --src ./zarr/eodhd --out /tmp/panel.zarr
 
 Requires xarray, zarr<3, gcsfs, numpy, pandas.
 """
@@ -26,6 +36,7 @@ import pandas as pd
 import xarray as xr
 
 DEFAULT_SRC = "gs://rm_api_data/eodhd"
+DEFAULT_PUBLISH_BASE = "rm_api_data/eodhd"   # lib/zarr-config.ts parseZarrGcsPrefix default
 FACTOR_SET = "SPY_uni_mc_3000"
 
 # panel variable -> (store, source variable)
@@ -87,12 +98,40 @@ def etf_covariances(etf: xr.Dataset, months: pd.DatetimeIndex) -> tuple[np.ndarr
     return out, tickers, obs
 
 
+def publish_layout_violation(out: str, publish_base: str | None = None) -> str | None:
+    """Why ``out`` must not be written (it is inside the ERM3 publish layout), or None when it may be.
+
+    ``publish_base`` is ``<bucket>/<prefix>`` (env ZARR_GCS_PREFIX, else rm_api_data/eodhd). Anything under it
+    -- the fixed prefix, slots/a, slots/b -- is written only by ERM3's sync_to_gcs.
+    """
+    import os
+
+    base = (publish_base or os.environ.get("ZARR_GCS_PREFIX") or DEFAULT_PUBLISH_BASE).strip()
+    base = base.removeprefix("gs://").strip("/")
+    target = out.strip()
+    if not target.startswith("gs://") or not base:
+        return None
+    path = target[len("gs://"):].strip("/")
+    if path == base or path.startswith(base + "/"):
+        return (
+            f"refusing to write {out}: gs://{base}/ is the ERM3 publish layout. ds_exposure_month_end_* is "
+            "built by the ERM3 pipeline (build_exposure_month_end_panel) and published by sync_to_gcs; "
+            "a copy written here is overwritten by the next publish and, under release slots, never reaches "
+            "the slot the API reads. Write to a local path or a scratch prefix instead."
+        )
+    return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--src", default=DEFAULT_SRC, help="directory holding the ERM3 stores")
     ap.add_argument("--factor-set", default=FACTOR_SET)
     ap.add_argument("--out", required=True, help="output store path (local or gs://)")
     args = ap.parse_args()
+    why = publish_layout_violation(args.out)
+    if why:
+        print(why, file=sys.stderr)
+        return 2
 
     t0 = time.time()
     hedge = xr.open_zarr(f"{args.src}/ds_erm3_hedge_weights_{args.factor_set}.zarr")
