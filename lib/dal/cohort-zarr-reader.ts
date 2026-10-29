@@ -47,12 +47,12 @@ import type { Bucket } from "@google-cloud/storage";
 import { get, open, root, slice, tryWithConsolidated, UnicodeStringArray } from "zarrita";
 import type { Group } from "zarrita";
 import {
-  parseZarrGcsPrefix,
   zarrCohortsBasename,
   zarrEtfBasename,
   getZarrFactorSetId,
 } from "@/lib/zarr-config";
 import { scrubBwSymId } from "@/lib/dal/sym-id-scrub";
+import { resolveZarrGcsPrefix } from "./zarr-release-slots";
 import { SERVED_HISTORY_START, clampStart } from "./served-history";
 
 let _storage: Storage | null = null;
@@ -103,7 +103,7 @@ async function openGroup(basename: string): Promise<Group<Readable> | null> {
   const hit = groupCache.get(basename);
   if (hit && now - hit.at < GROUP_TTL_MS) return hit.grp;
 
-  const { bucket: bucketName, basePath } = parseZarrGcsPrefix();
+  const { bucket: bucketName, basePath } = await resolveZarrGcsPrefix();
   const fullPrefix = `${basePath}/${basename}`.replace(/\/+/g, "/").replace(/^\//, "");
   try {
     const bucket = getGcs().bucket(bucketName);

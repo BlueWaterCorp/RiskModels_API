@@ -4,10 +4,73 @@
  * Env:
  * - ZARR_GCS_PREFIX — default "rm_api_data/eodhd" → bucket "rm_api_data", object base "eodhd"
  * - ZARR_FACTOR_SET_ID — default "SPY_uni_mc_3000" (matches ds_*_{id}.zarr suffix)
+ * - ZARR_GCS_RELEASE_SLOTS — "1" resolves the stores through `{base}/CURRENT`
+ *   (ERM3-75 increment 5: `{base}/slots/{a,b}/<store>.zarr`, the publisher flips
+ *   CURRENT atomically). Default off: the fixed `{base}/<store>.zarr` as before.
+ *   See lib/dal/zarr-release-slots.ts.
+ * - ZARR_GCS_CURRENT_TTL_MS — how long a resolved CURRENT is reused (default 60000).
  */
 
 const DEFAULT_PREFIX = "rm_api_data/eodhd";
 const DEFAULT_FACTOR_SET = "SPY_uni_mc_3000";
+const DEFAULT_CURRENT_TTL_MS = 60_000;
+
+export const ZARR_RELEASE_SLOTS = ["a", "b"] as const;
+export type ZarrReleaseSlot = (typeof ZARR_RELEASE_SLOTS)[number];
+export const ZARR_CURRENT_OBJECT = "CURRENT";
+const ZARR_SLOTS_DIR = "slots";
+
+/** The release-slot switch (default off; production is unchanged until it is set). */
+export function zarrReleaseSlotsEnabled(): boolean {
+  const v = (process.env.ZARR_GCS_RELEASE_SLOTS ?? "").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+export function zarrCurrentTtlMs(): number {
+  const raw = Number.parseInt((process.env.ZARR_GCS_CURRENT_TTL_MS ?? "").trim(), 10);
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_CURRENT_TTL_MS;
+}
+
+function joinObjectPath(...parts: string[]): string {
+  return parts
+    .map((p) => p.replace(/^\/+|\/+$/g, ""))
+    .filter((p) => p.length > 0)
+    .join("/");
+}
+
+/** Object path of the CURRENT pointer under the configured base (no bucket). */
+export function zarrCurrentObjectPath(basePath: string): string {
+  return joinObjectPath(basePath, ZARR_CURRENT_OBJECT);
+}
+
+/** Object base of one slot, e.g. "eodhd/slots/a" (no bucket). */
+export function zarrSlotBasePath(basePath: string, slot: ZarrReleaseSlot): string {
+  return joinObjectPath(basePath, ZARR_SLOTS_DIR, slot);
+}
+
+export interface ZarrCurrentPointer {
+  slot: ZarrReleaseSlot;
+  release_id?: string;
+  parent_release_id?: string;
+}
+
+/** Parse the CURRENT object; null when it is not a pointer at a known slot. */
+export function parseZarrCurrentPointer(text: string): ZarrCurrentPointer | null {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!obj || typeof obj !== "object") return null;
+  const rec = obj as Record<string, unknown>;
+  const slot = rec.slot;
+  if (slot !== "a" && slot !== "b") return null;
+  const out: ZarrCurrentPointer = { slot };
+  if (typeof rec.release_id === "string") out.release_id = rec.release_id;
+  if (typeof rec.parent_release_id === "string") out.parent_release_id = rec.parent_release_id;
+  return out;
+}
 
 export function getZarrFactorSetId(): string {
   return (process.env.ZARR_FACTOR_SET_ID ?? DEFAULT_FACTOR_SET).trim();

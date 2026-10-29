@@ -62,7 +62,7 @@ import {
   applyScrubToHoldings,
   resolveSymIdsToTickers,
 } from "@/lib/dal/symbols-batch";
-import { parseZarrGcsPrefix } from "@/lib/zarr-config";
+import { resolveZarrGcsPrefix } from "@/lib/dal/zarr-release-slots";
 import { isBenchLive } from "@/lib/benchmark-registry";
 import {
   styleNameToSlug,
@@ -3474,11 +3474,11 @@ export interface MarketCapRow {
   caps: Map<string, number | null>;
 }
 
-/** Stocks-side (eodhd) tree — same bucket, ZARR_GCS_PREFIX basePath. */
+/** Stocks-side (eodhd) tree — same bucket, ZARR_GCS_PREFIX basePath (through CURRENT when release slots are on). */
 async function openStocksSideZarrGroup(
   basename: string,
 ): Promise<Group<Readable> | null> {
-  return openZarrGroupAtPrefix(basename, parseZarrGcsPrefix());
+  return openZarrGroupAtPrefix(basename, await resolveZarrGcsPrefix());
 }
 
 /** True when a group contains an array with this name. */

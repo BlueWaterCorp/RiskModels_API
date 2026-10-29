@@ -32,7 +32,8 @@ import { Storage } from "@google-cloud/storage";
 import type { Bucket } from "@google-cloud/storage";
 import { get, open, root, tryWithConsolidated, UnicodeStringArray } from "zarrita";
 import type { Group } from "zarrita";
-import { parseZarrGcsPrefix, zarrFundamentalsBasename } from "@/lib/zarr-config";
+import { zarrFundamentalsBasename } from "@/lib/zarr-config";
+import { resolveZarrGcsPrefix } from "./zarr-release-slots";
 import {
   CACHE_TTL,
   generateCacheKey,
@@ -779,7 +780,7 @@ class GcsZarrStore {
 }
 
 async function openFundamentalsGroup(): Promise<Group<Readable> | null> {
-  const { bucket: bucketName, basePath } = parseZarrGcsPrefix();
+  const { bucket: bucketName, basePath } = await resolveZarrGcsPrefix();
   const fullPrefix = `${basePath}/${zarrFundamentalsBasename()}`
     .replace(/\/+/g, "/")
     .replace(/^\//, "");

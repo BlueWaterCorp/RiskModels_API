@@ -21,7 +21,6 @@ import {
 } from "zarrita";
 import type { Array as ZarrArray, DataType, Group } from "zarrita";
 import {
-  parseZarrGcsPrefix,
   getZarrFactorSetId,
   zarrDailyBasename,
   zarrEtfBasename,
@@ -36,6 +35,7 @@ import {
   zarrIndustryBasename,
 } from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
+import { resolveZarrGcsPrefix } from "./zarr-release-slots";
 import { indexFromCoords, type DailyTickerHolderIndex } from "./daily-ticker-index";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
@@ -185,7 +185,7 @@ const rawStoreByGroup = new WeakMap<object, GcsZarrStore>();
 async function openZarrGroupUncached(
   objectPrefix: string,
 ): Promise<Group<Readable> | null> {
-  const { bucket: bucketName, basePath } = parseZarrGcsPrefix();
+  const { bucket: bucketName, basePath } = await resolveZarrGcsPrefix();
   const fullPrefix = `${basePath}/${objectPrefix}`.replace(/\/+/g, "/").replace(/^\//, "");
   try {
     const bucket = getGcs().bucket(bucketName);
