@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-29 — MCP `riskmodels_portfolio_exposure`: integer `top_contributors`
+
+- The tool's `top_contributors` input is an integer from 1 to 1000. `1000` lists every name. The string `"all"` is no longer accepted on the tool. `POST /portfolio/exposure` still accepts `"all"`.
+
 ## 2026-10-27 — Exposure history feeds resolve tickers by holding date (ERM3-73)
 
 - `POST /portfolio/exposure/history` and `/daily`: a ticker that appears in a reviewed corporate-action event now comes with `ticker_windows` (holding-date ranges, `held_from` inclusive and `held_to` exclusive, each naming the security a holding dated inside it is priced as: `priced_as`, `bw_sym_id`, `status`, `event_ids`). The windows come from the same step as `POST /portfolio/exposure` with `positions_as_of`. The securities they name are delivered too and listed in `window_targets`; billing stays at most the number of distinct tickers submitted. New drop reason `window_target_not_found`; `as_of.ticker_resolution` states the rule. Tickers in no reviewed event are unchanged.

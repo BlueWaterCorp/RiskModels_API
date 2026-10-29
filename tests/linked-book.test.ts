@@ -111,6 +111,12 @@ describe("riskmodels_portfolio_exposure", () => {
     const tooMany = Array.from({ length: 1001 }, (_, i) => ({ ticker: `T${i}`, value: i % 2 ? 1 : -1 }));
     expect(schema.safeParse({ positions: tooMany }).success).toBe(false);
     expect(schema.safeParse({ positions: [] }).success).toBe(false);
+    expect(schema.safeParse({ positions: [{ ticker: "AAPL", value: 1 }], top_contributors: 50 }).success).toBe(true);
+    expect(schema.safeParse({ positions: [{ ticker: "AAPL", value: 1 }], top_contributors: 1000 }).success).toBe(true);
+    expect(schema.safeParse({ positions: [{ ticker: "AAPL", value: 1 }], top_contributors: "all" }).success).toBe(false);
+    const json = z.toJSONSchema(schema);
+    expect(JSON.stringify(json)).not.toContain("anyOf");
+    expect(json.properties?.top_contributors).toMatchObject({ type: "integer", minimum: 1, maximum: 1000 });
   });
 
   it("posts the signed book to /portfolio/exposure", async () => {

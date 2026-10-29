@@ -793,9 +793,12 @@ export function registerRiskModelsTools(
           "2026-03-31",
         ),
         top_contributors: z
-          .union([z.literal("all"), z.number().int().min(1).max(1000)])
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
           .optional()
-          .describe('Names listed in risk.residual.top_contributors, integer 1-1000 or "all", e.g. 50 (default 15)'),
+          .describe("Names listed in risk.residual.top_contributors, integer 1-1000, e.g. 50 (default 15). 1000 lists every name."),
         include_positions: z
           .boolean()
           .optional()
