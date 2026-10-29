@@ -6,6 +6,7 @@ dev / staging / prod without code changes. Defaults match production.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -68,6 +69,47 @@ class Settings:
 
 _DEFAULT_BUCKET = "rm_api_data"
 _DEFAULT_ZARR_ROOT_URI = "gs://rm_api_data/eodhd"
+
+
+def resolve_zarr_root_uri(root_uri: str, *, read_text=None) -> str:
+    """Resolve the zarr root through the release-slot pointer (ERM3-75 increment 5).
+
+    With ``RENDER_SVC_ZARR_RELEASE_SLOTS=1`` the publisher's ``<root>/CURRENT`` names the live slot
+    (``<root>/slots/{a,b}``); this returns that slot's URI. Off (the default), or when CURRENT is absent or
+    unreadable, the root is returned unchanged (the publisher mirrors the fixed prefix). ``read_text`` is the
+    object reader (``uri -> str | None``); the default uses gcsfs. The service resolves at startup, so a flip
+    reaches render-svc on its next restart or scale event; ``/readyz``'s zarr probe reports which URI is live.
+    """
+    v = (os.environ.get("RENDER_SVC_ZARR_RELEASE_SLOTS") or "").strip().lower()
+    if v not in ("1", "true", "yes", "on") or not root_uri.startswith("gs://"):
+        return root_uri
+    root = root_uri.rstrip("/")
+    current = f"{root}/CURRENT"
+    if read_text is None:
+        def read_text(uri: str) -> str | None:  # noqa: E306
+            import gcsfs
+            fs = gcsfs.GCSFileSystem(token="google_default")
+            if not fs.exists(uri):
+                return None
+            return fs.cat(uri).decode("utf-8")
+    try:
+        text = read_text(current)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("release slots: CURRENT unreadable (%s); using zarr_root_uri=%r", exc, root_uri)
+        return root_uri
+    if text is None:
+        log.warning("release slots: CURRENT absent; using zarr_root_uri=%r", root_uri)
+        return root_uri
+    try:
+        slot = json.loads(text).get("slot")
+    except Exception:  # noqa: BLE001
+        slot = None
+    if slot not in ("a", "b"):
+        log.warning("release slots: CURRENT is not a slot pointer; using zarr_root_uri=%r", root_uri)
+        return root_uri
+    resolved = f"{root}/slots/{slot}"
+    log.info("release slots: zarr_root_uri resolved through CURRENT -> %r", resolved)
+    return resolved
 
 
 def _supabase_credentials_present() -> tuple[bool, str | None]:
@@ -137,6 +179,7 @@ def load_from_env() -> Settings:
             "confirm live_render compute targets the right zarr root.",
             zarr_root_uri,
         )
+    zarr_root_uri = resolve_zarr_root_uri(zarr_root_uri)
 
     enrichment, credential_warning = _supabase_credentials_present()
     if credential_warning:
