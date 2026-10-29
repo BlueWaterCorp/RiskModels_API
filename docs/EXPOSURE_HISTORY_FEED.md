@@ -64,7 +64,7 @@ run's hedge-weights, returns and ETF stores, before `output_gate`, and
 slot `CURRENT` names; the API reads it through `resolveZarrGcsPrefix`).
 `scripts/build_exposure_month_end_panel.py` is the same computation as a
 local / scratch tool: it refuses any output under the publish layout
-(`ZARR_GCS_PREFIX`, default `rm_api_data/eodhd`), because a copy written
+(always `rm_api_data/eodhd`, plus the `ZARR_GCS_PREFIX` base when set), because a copy written
 there was overwritten by the next publish and, under release slots, would
 never reach the slot the API reads. The store holds:
 

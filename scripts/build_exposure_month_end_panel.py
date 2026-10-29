@@ -15,8 +15,8 @@ and sync_to_gcs publishes it with the rest of the release (it is in
 published_zarr_names). A copy written here into the publish prefix was
 overwritten by the next publish, and under release slots it would never
 reach the slot the API reads. So this script refuses any output under the
-publish layout (the ZARR_GCS_PREFIX base, default rm_api_data/eodhd,
-including its slots/ and CURRENT) and is a local / scratch tool only.
+publish layout (always rm_api_data/eodhd, plus the ZARR_GCS_PREFIX base when
+set; including slots/ and CURRENT) and is a local / scratch tool only.
 
 Usage:
     python scripts/build_exposure_month_end_panel.py --out ./ds_exposure_month_end_SPY_uni_mc_3000.zarr
@@ -99,26 +99,31 @@ def etf_covariances(etf: xr.Dataset, months: pd.DatetimeIndex) -> tuple[np.ndarr
 
 
 def publish_layout_violation(out: str, publish_base: str | None = None) -> str | None:
-    """Why ``out`` must not be written (it is inside the ERM3 publish layout), or None when it may be.
+    """Why ``out`` must not be written (it is inside an ERM3 publish layout), or None when it may be.
 
-    ``publish_base`` is ``<bucket>/<prefix>`` (env ZARR_GCS_PREFIX, else rm_api_data/eodhd). Anything under it
-    -- the fixed prefix, slots/a, slots/b -- is written only by ERM3's sync_to_gcs.
+    Guarded bases: the production default rm_api_data/eodhd ALWAYS, plus ``publish_base`` or env
+    ZARR_GCS_PREFIX when set (a staging layout). Pointing ZARR_GCS_PREFIX elsewhere never unguards production.
+    Anything under a guarded base -- the fixed prefix, slots/a, slots/b -- is written only by ERM3's sync_to_gcs.
     """
     import os
 
-    base = (publish_base or os.environ.get("ZARR_GCS_PREFIX") or DEFAULT_PUBLISH_BASE).strip()
-    base = base.removeprefix("gs://").strip("/")
+    bases = {DEFAULT_PUBLISH_BASE}
+    extra = publish_base or os.environ.get("ZARR_GCS_PREFIX")
+    if extra:
+        bases.add(extra)
     target = out.strip()
-    if not target.startswith("gs://") or not base:
+    if not target.startswith("gs://"):
         return None
     path = target[len("gs://"):].strip("/")
-    if path == base or path.startswith(base + "/"):
-        return (
-            f"refusing to write {out}: gs://{base}/ is the ERM3 publish layout. ds_exposure_month_end_* is "
-            "built by the ERM3 pipeline (build_exposure_month_end_panel) and published by sync_to_gcs; "
-            "a copy written here is overwritten by the next publish and, under release slots, never reaches "
-            "the slot the API reads. Write to a local path or a scratch prefix instead."
-        )
+    for raw in sorted(bases):
+        base = raw.strip().removeprefix("gs://").strip("/")
+        if base and (path == base or path.startswith(base + "/")):
+            return (
+                f"refusing to write {out}: gs://{base}/ is an ERM3 publish layout. ds_exposure_month_end_* is "
+                "built by the ERM3 pipeline (build_exposure_month_end_panel) and published by sync_to_gcs; "
+                "a copy written here is overwritten by the next publish and, under release slots, never reaches "
+                "the slot the API reads. Write to a local path or a scratch prefix instead."
+            )
     return None
 
 
