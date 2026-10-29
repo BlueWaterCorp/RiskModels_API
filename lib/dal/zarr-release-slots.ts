@@ -15,10 +15,13 @@
  *     and the slot base is returned; if CURRENT is absent or unreadable the
  *     last good answer is kept, else the fixed base (the publisher mirrors it).
  *
- * The per-reader group caches (30 min) key on the store basename, so a flip
- * becomes visible to a reader when its group cache expires or the process
- * restarts; a slot is not overwritten for two publishes, so a group opened
- * on the previous slot stays consistent for that window.
+ * The per-reader in-process caches (groups, decoded planes, rosters; 30 min)
+ * key on `zarrPrefixCacheKey(prefix)` — bucket, resolved base and, when the
+ * base came from CURRENT, the slot and release id — so a flip (or a rollback)
+ * is a cache miss within one CURRENT TTL instead of up to 30 minutes of
+ * groups from the old slot mixed with groups from the new one. Readers that
+ * open several stores for one response resolve the prefix once and pass it
+ * down, so one response never straddles a flip.
  *
  * Never put bucket names or object paths in thrown errors or API JSON.
  */
@@ -36,6 +39,18 @@ import {
 export interface ZarrGcsPrefix {
   bucket: string;
   basePath: string;
+  /** `<slot>:<release_id>` when the base was resolved through CURRENT; absent for the fixed prefix. */
+  release?: string;
+}
+
+/**
+ * Cache key of everything read under one resolved prefix. With the switch off
+ * it is `bucket/basePath` (unchanged across publishes, as before); through
+ * CURRENT it adds the slot and release id, so a flip or a rollback changes it.
+ */
+export function zarrPrefixCacheKey(prefix: ZarrGcsPrefix): string {
+  const base = `${prefix.bucket}/${prefix.basePath}`;
+  return prefix.release ? `${base}@${prefix.release}` : base;
 }
 
 /** Reads one small text object; null when it does not exist. Injected in tests. */
@@ -103,7 +118,11 @@ async function resolveUncached(
     console.error("[zarr-slots] CURRENT is not a slot pointer; using the fixed prefix");
     return fixed;
   }
-  return { bucket: fixed.bucket, basePath: zarrSlotBasePath(fixed.basePath, ptr.slot) };
+  return {
+    bucket: fixed.bucket,
+    basePath: zarrSlotBasePath(fixed.basePath, ptr.slot),
+    release: `${ptr.slot}:${ptr.release_id ?? ""}`,
+  };
 }
 
 /**

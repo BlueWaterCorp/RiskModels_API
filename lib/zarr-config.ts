@@ -115,7 +115,8 @@ export function zarrHedgeBasename(factorSetId = getZarrFactorSetId()): string {
 }
 
 /**
- * Month-end exposure panel (scripts/build_exposure_month_end_panel.py):
+ * Month-end exposure panel (built and published by the ERM3 pipeline,
+ * erm3/io/exposure_panel.py; scripts/build_exposure_month_end_panel.py is a local tool):
  * per-name model values on the last trading day of each month plus the ETF
  * covariance at each month-end. Serves POST /api/portfolio/exposure/history.
  */

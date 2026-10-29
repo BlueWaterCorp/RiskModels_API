@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
+import time
 from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
@@ -42,7 +44,9 @@ class Settings:
     live_render: bool
 
     # Phase 2: zarr root URI for P1 cache-miss compute. Defaults to the
-    # ERM3 EODHD zarr path. Used only when live_render is True.
+    # ERM3 EODHD zarr path. Used only when live_render is True. This is the
+    # configured root; with RENDER_SVC_ZARR_RELEASE_SLOTS=1 each request opens
+    # ``live_zarr_root(zarr_root_uri).uri`` (the slot CURRENT names, 60 s TTL).
     zarr_root_uri: str
 
     # Whether Supabase credentials are present for holdings enrichment.
@@ -71,44 +75,115 @@ _DEFAULT_BUCKET = "rm_api_data"
 _DEFAULT_ZARR_ROOT_URI = "gs://rm_api_data/eodhd"
 
 
+_TRUE = ("1", "true", "yes", "on")
+_DEFAULT_CURRENT_TTL_SECONDS = 60.0
+
+
+def zarr_release_slots_enabled() -> bool:
+    return (os.environ.get("RENDER_SVC_ZARR_RELEASE_SLOTS") or "").strip().lower() in _TRUE
+
+
+def zarr_current_ttl_seconds() -> float:
+    """How long a resolved CURRENT is reused (``RENDER_SVC_ZARR_CURRENT_TTL_SECONDS``, default 60, as the API)."""
+    raw = (os.environ.get("RENDER_SVC_ZARR_CURRENT_TTL_SECONDS") or "").strip()
+    try:
+        v = float(raw)
+    except ValueError:
+        return _DEFAULT_CURRENT_TTL_SECONDS
+    return v if v >= 0 else _DEFAULT_CURRENT_TTL_SECONDS
+
+
+def _default_read_text(uri: str) -> str | None:
+    import gcsfs
+
+    fs = gcsfs.GCSFileSystem(token="google_default")
+    # gcsfs instances are cached per process and keep a listing cache: CURRENT must be read fresh each time
+    fs.invalidate_cache(uri)
+    try:
+        return fs.cat(uri).decode("utf-8")
+    except FileNotFoundError:
+        return None
+
+
+@dataclass(frozen=True)
+class LiveZarrRoot:
+    """The zarr root to open now: ``uri`` and, when it came from CURRENT, ``release`` (``"<slot>:<release_id>"``)."""
+
+    uri: str
+    release: str = ""
+
+
+def _resolve(root_uri: str, read_text) -> tuple[LiveZarrRoot, bool]:
+    """(root to use, CURRENT was readable). Unreadable -> the configured root and False."""
+    root = root_uri.rstrip("/")
+    current = f"{root}/CURRENT"
+    try:
+        text = (read_text or _default_read_text)(current)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("release slots: CURRENT unreadable (%s); using zarr_root_uri=%r", exc, root_uri)
+        return LiveZarrRoot(root_uri), False
+    if text is None:
+        log.warning("release slots: CURRENT absent; using zarr_root_uri=%r", root_uri)
+        return LiveZarrRoot(root_uri), True
+    try:
+        ptr = json.loads(text)
+        slot = ptr.get("slot")
+        release_id = ptr.get("release_id") or ""
+    except Exception:  # noqa: BLE001
+        slot, release_id = None, ""
+    if slot not in ("a", "b"):
+        log.warning("release slots: CURRENT is not a slot pointer; using zarr_root_uri=%r", root_uri)
+        return LiveZarrRoot(root_uri), True
+    return LiveZarrRoot(f"{root}/slots/{slot}", f"{slot}:{release_id}"), True
+
+
 def resolve_zarr_root_uri(root_uri: str, *, read_text=None) -> str:
-    """Resolve the zarr root through the release-slot pointer (ERM3-75 increment 5).
+    """Resolve the zarr root through the release-slot pointer once, uncached (ERM3-75 increment 5).
 
     With ``RENDER_SVC_ZARR_RELEASE_SLOTS=1`` the publisher's ``<root>/CURRENT`` names the live slot
     (``<root>/slots/{a,b}``); this returns that slot's URI. Off (the default), or when CURRENT is absent or
     unreadable, the root is returned unchanged (the publisher mirrors the fixed prefix). ``read_text`` is the
-    object reader (``uri -> str | None``); the default uses gcsfs. The service resolves at startup, so a flip
-    reaches render-svc on its next restart or scale event; ``/readyz``'s zarr probe reports which URI is live.
+    object reader (``uri -> str | None``); the default uses gcsfs. Request paths use ``live_zarr_root``.
     """
-    v = (os.environ.get("RENDER_SVC_ZARR_RELEASE_SLOTS") or "").strip().lower()
-    if v not in ("1", "true", "yes", "on") or not root_uri.startswith("gs://"):
+    if not zarr_release_slots_enabled() or not root_uri.startswith("gs://"):
         return root_uri
-    root = root_uri.rstrip("/")
-    current = f"{root}/CURRENT"
-    if read_text is None:
-        def read_text(uri: str) -> str | None:  # noqa: E306
-            import gcsfs
-            fs = gcsfs.GCSFileSystem(token="google_default")
-            if not fs.exists(uri):
-                return None
-            return fs.cat(uri).decode("utf-8")
-    try:
-        text = read_text(current)
-    except Exception as exc:  # noqa: BLE001
-        log.warning("release slots: CURRENT unreadable (%s); using zarr_root_uri=%r", exc, root_uri)
-        return root_uri
-    if text is None:
-        log.warning("release slots: CURRENT absent; using zarr_root_uri=%r", root_uri)
-        return root_uri
-    try:
-        slot = json.loads(text).get("slot")
-    except Exception:  # noqa: BLE001
-        slot = None
-    if slot not in ("a", "b"):
-        log.warning("release slots: CURRENT is not a slot pointer; using zarr_root_uri=%r", root_uri)
-        return root_uri
-    resolved = f"{root}/slots/{slot}"
-    log.info("release slots: zarr_root_uri resolved through CURRENT -> %r", resolved)
+    return _resolve(root_uri, read_text)[0].uri
+
+
+_live_lock = threading.Lock()
+_live_cache: dict[str, tuple[float, LiveZarrRoot]] = {}
+
+
+def reset_live_zarr_root_cache() -> None:
+    with _live_lock:
+        _live_cache.clear()
+
+
+def live_zarr_root(root_uri: str, *, read_text=None, now=time.monotonic) -> LiveZarrRoot:
+    """The zarr root a request opens: CURRENT re-resolved at most every ``zarr_current_ttl_seconds()`` (60 s).
+
+    Before (ERM3-75 increment 5 review): render-svc resolved CURRENT once at startup, so after two publishes
+    without a restart it read the slot the next publish was overwriting. Each request calls this once and uses
+    the one answer for every store it opens. CURRENT unreadable keeps the last good answer for another TTL
+    (as the API does); absent or not a pointer = the configured root (the publisher mirrors it). Switch off or
+    a local root: ``root_uri`` unchanged, nothing read.
+    """
+    if not zarr_release_slots_enabled() or not root_uri.startswith("gs://"):
+        return LiveZarrRoot(root_uri)
+    key = root_uri.rstrip("/")
+    t = now()
+    with _live_lock:
+        hit = _live_cache.get(key)
+    if hit is not None and t - hit[0] < zarr_current_ttl_seconds():
+        return hit[1]
+    resolved, ok = _resolve(root_uri, read_text)
+    if not ok and hit is not None:
+        log.warning("release slots: keeping the last resolved zarr root %r", hit[1].uri)
+        resolved = hit[1]
+    elif hit is None or hit[1] != resolved:
+        log.info("release slots: zarr root -> %r (release %s)", resolved.uri, resolved.release or "-")
+    with _live_lock:
+        _live_cache[key] = (t, resolved)
     return resolved
 
 
@@ -179,7 +254,9 @@ def load_from_env() -> Settings:
             "confirm live_render compute targets the right zarr root.",
             zarr_root_uri,
         )
-    zarr_root_uri = resolve_zarr_root_uri(zarr_root_uri)
+    # The configured root stays in Settings; requests resolve CURRENT through live_zarr_root (60 s TTL).
+    # Resolving once here only logs which slot is live at startup.
+    live_zarr_root(zarr_root_uri)
 
     enrichment, credential_warning = _supabase_credentials_present()
     if credential_warning:

@@ -90,6 +90,7 @@ describe("resolveZarrGcsPrefix", () => {
     expect(await resolveZarrGcsPrefix({ fetcher })).toEqual({
       bucket: "rm_api_data",
       basePath: "eodhd/slots/b",
+      release: "b:run-2",
     });
     expect(calls).toEqual(["rm_api_data/eodhd/CURRENT"]);
   });
@@ -101,6 +102,7 @@ describe("resolveZarrGcsPrefix", () => {
     expect(await resolveZarrGcsPrefix({ fetcher })).toEqual({
       bucket: "rm_api_data",
       basePath: "staging_e75/eodhd/slots/a",
+      release: "a:",
     });
     expect(calls).toEqual(["rm_api_data/staging_e75/eodhd/CURRENT"]);
   });

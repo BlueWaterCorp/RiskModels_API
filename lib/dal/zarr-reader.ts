@@ -35,7 +35,7 @@ import {
   zarrIndustryBasename,
 } from "@/lib/zarr-config";
 import { getCache, setCache, CACHE_TTL, generateCacheKey } from "@/lib/cache/redis";
-import { resolveZarrGcsPrefix } from "./zarr-release-slots";
+import { resolveZarrGcsPrefix, zarrPrefixCacheKey, type ZarrGcsPrefix } from "./zarr-release-slots";
 import { indexFromCoords, type DailyTickerHolderIndex } from "./daily-ticker-index";
 import type { SecurityHistoryRow, V3MetricKey, V3Periodicity } from "./risk-engine-v3";
 import { getZarrSpec, ZARR_UNSUPPORTED_DAILY_KEYS } from "./zarr-metric-registry";
@@ -125,15 +125,26 @@ function zarrChunkCacheSet(
 }
 
 class GcsZarrStore {
+  /**
+   * `cacheScope` prefixes the chunk-cache keys: the release key of the resolved
+   * prefix, so a slot re-used by a later publish never serves the previous
+   * release's bytes from this cache ("" = the fixed prefix, keys as before).
+   */
   constructor(
     private readonly bucket: Bucket,
     private readonly zarrObjectPrefix: string,
+    private readonly cacheScope: string = "",
   ) {}
+
+  private cacheKey(objectName: string): string {
+    return this.cacheScope ? `${this.cacheScope}|${objectName}` : objectName;
+  }
 
   async get(key: AbsolutePath): Promise<Uint8Array | undefined> {
     const rel = key.startsWith("/") ? key.slice(1) : key;
     const objectName = `${this.zarrObjectPrefix}/${rel}`.replace(/\/+/g, "/");
-    const cached = zarrChunkCacheGet(objectName);
+    const chunkKey = this.cacheKey(objectName);
+    const cached = zarrChunkCacheGet(chunkKey);
     if (cached) return cached;
     const promise = (async () => {
       try {
@@ -147,9 +158,9 @@ class GcsZarrStore {
       }
     })();
     // In-flight dedup: concurrent same-chunk reads share this promise.
-    zarrChunkCacheSet(objectName, promise);
+    zarrChunkCacheSet(chunkKey, promise);
     // Don't let a transient failure poison the cache for the full TTL.
-    promise.catch(() => zarrChunkCache.delete(objectName));
+    promise.catch(() => zarrChunkCache.delete(chunkKey));
     return promise;
   }
 
@@ -157,7 +168,7 @@ class GcsZarrStore {
   async getByteRange(key: AbsolutePath, start: number, end: number): Promise<Uint8Array | undefined> {
     const rel = key.startsWith("/") ? key.slice(1) : key;
     const objectName = `${this.zarrObjectPrefix}/${rel}`.replace(/\/+/g, "/");
-    const cacheKey = `${objectName}#${start}-${end}`;
+    const cacheKey = `${this.cacheKey(objectName)}#${start}-${end}`;
     const cached = zarrChunkCacheGet(cacheKey);
     if (cached) return cached;
     const promise = (async () => {
@@ -184,12 +195,13 @@ const rawStoreByGroup = new WeakMap<object, GcsZarrStore>();
 
 async function openZarrGroupUncached(
   objectPrefix: string,
+  prefix: ZarrGcsPrefix,
 ): Promise<Group<Readable> | null> {
-  const { bucket: bucketName, basePath } = await resolveZarrGcsPrefix();
+  const { bucket: bucketName, basePath } = prefix;
   const fullPrefix = `${basePath}/${objectPrefix}`.replace(/\/+/g, "/").replace(/^\//, "");
   try {
     const bucket = getGcs().bucket(bucketName);
-    const raw = new GcsZarrStore(bucket, fullPrefix);
+    const raw = new GcsZarrStore(bucket, fullPrefix, prefix.release ? zarrPrefixCacheKey(prefix) : "");
     const consolidated = await tryWithConsolidated(raw);
     const store = consolidated as unknown as Readable;
     const grp = (await open.v2(root(store), { kind: "group" })) as Group<Readable>;
@@ -216,19 +228,49 @@ async function openZarrGroupUncached(
  * slices per request). Groups are opened once per warm instance and reused
  * for `GROUP_CACHE_TTL_MS` — zarrs update nightly, so a 30-minute staleness
  * ceiling stays well inside the publish cadence.
+ *
+ * Keyed on the resolved prefix (`zarrPrefixCacheKey`: with release slots on,
+ * the slot and release id CURRENT names) plus the store, so after a flip the
+ * next open goes to the new slot instead of reusing an old-slot group for up
+ * to 30 minutes. A reader that opens several stores for one response passes
+ * one resolved `prefix` to every open so the response never straddles a flip.
  */
 const GROUP_CACHE_TTL_MS = 30 * 60 * 1000;
+// Bounded: with release slots, every flip adds one key per store (the old ones age out).
+const GROUP_CACHE_MAX = 256;
 const zarrGroupCache = new Map<
   string,
   { at: number; promise: Promise<Group<Readable> | null> }
 >();
 
-async function openZarrGroup(objectPrefix: string): Promise<Group<Readable> | null> {
-  const hit = zarrGroupCache.get(objectPrefix);
+async function openZarrGroup(
+  objectPrefix: string,
+  prefix?: ZarrGcsPrefix,
+): Promise<Group<Readable> | null> {
+  const p = prefix ?? (await resolveZarrGcsPrefix());
+  const key = `${zarrPrefixCacheKey(p)}|${objectPrefix}`;
+  const hit = zarrGroupCache.get(key);
   if (hit && Date.now() - hit.at < GROUP_CACHE_TTL_MS) return hit.promise;
-  const promise = openZarrGroupUncached(objectPrefix);
-  zarrGroupCache.set(objectPrefix, { at: Date.now(), promise });
+  const promise = openZarrGroupUncached(objectPrefix, p);
+  zarrGroupCache.set(key, { at: Date.now(), promise });
+  if (zarrGroupCache.size > GROUP_CACHE_MAX) {
+    const oldest = zarrGroupCache.keys().next().value;
+    if (oldest !== undefined) zarrGroupCache.delete(oldest);
+  }
   return promise;
+}
+
+/** Test hook: the keys of the in-process group cache. */
+export function _zarrGroupCacheKeysForTest(): string[] {
+  return [...zarrGroupCache.keys()];
+}
+
+/** Test hook: open a group through the cache with an injected prefix (no GCS call when cached). */
+export async function _openZarrGroupForTest(
+  objectPrefix: string,
+  prefix?: ZarrGcsPrefix,
+): Promise<Group<Readable> | null> {
+  return openZarrGroup(objectPrefix, prefix);
 }
 
 function nsToIsoDate(ns: bigint): string {
@@ -764,9 +806,11 @@ function shouldUseSupabaseForKeys(keys: V3MetricKey[]): boolean {
   return false;
 }
 
-function cacheKeyForZarr(p: ReadHistorySliceParams): string {
+function cacheKeyForZarr(p: ReadHistorySliceParams, prefix: ZarrGcsPrefix): string {
   const factorSet = getZarrFactorSetId();
   const payload = JSON.stringify({
+    // the release CURRENT named (release slots on): a flip is a new key; absent = unchanged key
+    ...(prefix.release ? { rel: zarrPrefixCacheKey(prefix) } : {}),
     s: [...p.symbols].sort(),
     k: [...p.keys].sort(),
     start: p.startDate ?? "",
@@ -849,7 +893,9 @@ export async function readHistorySlice(
     return { rows: [], range: ["", ""] };
   }
 
-  const ck = cacheKeyForZarr(params);
+  // One prefix for the whole slice: every store below is opened from the same release.
+  const prefix = await resolveZarrGcsPrefix();
+  const ck = cacheKeyForZarr(params, prefix);
   // A request this large was never cached (see the write below); skip the lookup.
   const hit = estimateSliceRows(params) > MAX_CACHED_SLICE_ROWS ? null : await getCache<ReadHistorySliceResult>(ck);
   // `[]` is truthy in JS — only treat cache as a hit when we stored real rows.
@@ -861,7 +907,7 @@ export async function readHistorySlice(
   // Daily store is always opened. Hedge/returns are opened lazily only if
   // the requested key set actually touches them — avoids a pointless GCS
   // round-trip on vanilla returns/price queries.
-  const dailyGrp = await openZarrGroup(zarrDailyBasename());
+  const dailyGrp = await openZarrGroup(zarrDailyBasename(), prefix);
   if (!dailyGrp) {
     logSliceTelemetry(params, "open_failed", 0, Date.now() - _tStart);
     return { rows: [], range: ["", ""] };
@@ -879,11 +925,11 @@ export async function readHistorySlice(
     return r === "returns" || r === "returnsFlat";
   });
 
-  const hedgeGrp = needHedge ? await openZarrGroup(zarrHedgeBasename()) : null;
+  const hedgeGrp = needHedge ? await openZarrGroup(zarrHedgeBasename(), prefix) : null;
   const hedgeTeo = hedgeGrp ? await readTeoStrings(hedgeGrp) : null;
   const hedgeSymMap = hedgeGrp ? await readSymbolIndexMap(hedgeGrp) : null;
 
-  const returnsGrp = needReturns ? await openZarrGroup(zarrReturnsBasename()) : null;
+  const returnsGrp = needReturns ? await openZarrGroup(zarrReturnsBasename(), prefix) : null;
   const returnsTeo = returnsGrp ? await readTeoStrings(returnsGrp) : null;
   const returnsSymMap = returnsGrp ? await readSymbolIndexMap(returnsGrp) : null;
   const levelMaps = returnsGrp ? await readLevelIndexMap(returnsGrp) : null;
@@ -899,7 +945,7 @@ export async function readHistorySlice(
   // ETFs don't decompose into factor exposures, so hedge/returns roles are
   // skipped for ETF symbols — the existing per-store symMap guards enforce
   // that automatically.
-  const etfGrp = await openZarrGroup(zarrEtfBasename());
+  const etfGrp = await openZarrGroup(zarrEtfBasename(), prefix);
   const etfTeo = etfGrp ? await readTeoStrings(etfGrp) : null;
   const etfSymMap = etfGrp ? await readSymbolIndexMap(etfGrp) : null;
 
@@ -2801,8 +2847,9 @@ export async function readDailyExposureHistory(params: {
   start?: string;
   end?: string;
 }): Promise<DailyExposureHistory | null> {
-  const hedge = await openZarrGroup(zarrHedgeBasename());
-  const rets = await openZarrGroup(zarrReturnsBasename());
+  const prefix = await resolveZarrGcsPrefix(); // both stores from one release
+  const hedge = await openZarrGroup(zarrHedgeBasename(), prefix);
+  const rets = await openZarrGroup(zarrReturnsBasename(), prefix);
   if (!hedge || !rets) return null;
   const teosAll = await readTeoStrings(hedge);
   const retTeos = await readTeoStrings(rets);

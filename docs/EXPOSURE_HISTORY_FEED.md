@@ -56,9 +56,17 @@ Counted on names actually delivered. Single-date calls on
 
 ### Producer: month-end panel
 
-`scripts/build_exposure_month_end_panel.py` reads the ERM3 hedge-weights and
-ETF Zarr stores and writes
-`gs://rm_api_data/eodhd/ds_exposure_month_end_<factor set>.zarr`:
+The ERM3 pipeline builds the panel (`erm3/io/exposure_panel.py`, asset
+`build_exposure_month_end_panel`, switch `exposure_panel.enable`) from the
+run's hedge-weights, returns and ETF stores, before `output_gate`, and
+`sync_to_gcs` publishes it with the rest of the release as
+`ds_exposure_month_end_<factor set>.zarr` (with release slots on, into the
+slot `CURRENT` names; the API reads it through `resolveZarrGcsPrefix`).
+`scripts/build_exposure_month_end_panel.py` is the same computation as a
+local / scratch tool: it refuses any output under the publish layout
+(`ZARR_GCS_PREFIX`, default `rm_api_data/eodhd`), because a copy written
+there was overwritten by the next publish and, under release slots, would
+never reach the slot the API reads. The store holds:
 
 | Variable | Dims | Source |
 |---|---|---|

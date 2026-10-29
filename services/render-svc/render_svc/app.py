@@ -31,7 +31,7 @@ from .render import (
     RenderError,
     render_from_gcs,
 )
-from .settings import Settings, load_from_env
+from .settings import Settings, live_zarr_root, load_from_env
 
 
 class RenderRequest(BaseModel):
@@ -73,6 +73,26 @@ def _load_erm3_resources(zarr_root_uri: str) -> tuple[xr.Dataset, dict[str, str]
             continue
         bridge[ts] = str(s)
     return em, bridge
+
+
+_erm3_release_loaded: dict[str, str] = {}
+
+
+def _erm3_resources(settings: Settings) -> tuple[xr.Dataset, dict[str, str], str]:
+    """ERM3 monthly + bridge from the live zarr root (release slots: the slot CURRENT names now).
+
+    ``_load_erm3_resources`` caches by URI; a slot URI is re-used by the publish after next, so the cache is
+    also dropped when the release behind the same URI changes.
+    """
+    live = live_zarr_root(settings.zarr_root_uri)
+    if _erm3_release_loaded.get(live.uri) != live.release:
+        clear = getattr(_load_erm3_resources, "cache_clear", None)
+        if clear is not None and live.uri in _erm3_release_loaded:
+            clear()
+        _erm3_release_loaded.clear()
+        _erm3_release_loaded[live.uri] = live.release
+    em, bridge = _load_erm3_resources(live.uri)
+    return em, bridge, live.uri
 
 
 def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
@@ -136,7 +156,7 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
                 persist=settings.persist_renders,
                 live_render=settings.live_render,
                 generated_utc=settings.generated_utc_anchor,
-                zarr_root_uri=settings.zarr_root_uri,
+                zarr_root_uri=live_zarr_root(settings.zarr_root_uri).uri,
             )
         except CanonicalNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc))
@@ -277,9 +297,9 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
 
         Closes MASTER_BACKLOG P.9.
         """
-        zarr_uri = settings.zarr_root_uri
+        zarr_uri = live_zarr_root(settings.zarr_root_uri).uri
         try:
-            _, bridge = _load_erm3_resources(zarr_uri)
+            _, bridge, zarr_uri = _erm3_resources(settings)
             return {
                 "status": "ok",
                 "zarr_root_uri": zarr_uri,
@@ -307,7 +327,7 @@ def _make_app(settings: Settings, store: ObjectStore) -> FastAPI:
         design-§5 response shape.
         """
         try:
-            erm3, bridge = _load_erm3_resources(settings.zarr_root_uri)
+            erm3, bridge, _uri = _erm3_resources(settings)
         except Exception as exc:  # noqa: BLE001
             log.exception("failed to load ERM3 resources")
             raise HTTPException(status_code=503, detail=f"ERM3 monthly unavailable: {exc}")

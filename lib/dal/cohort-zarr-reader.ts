@@ -52,7 +52,7 @@ import {
   getZarrFactorSetId,
 } from "@/lib/zarr-config";
 import { scrubBwSymId } from "@/lib/dal/sym-id-scrub";
-import { resolveZarrGcsPrefix } from "./zarr-release-slots";
+import { resolveZarrGcsPrefix, zarrPrefixCacheKey, type ZarrGcsPrefix } from "./zarr-release-slots";
 import { SERVED_HISTORY_START, clampStart } from "./served-history";
 
 let _storage: Storage | null = null;
@@ -95,15 +95,25 @@ class GcsZarrStore {
   }
 }
 
+// Every in-process cache below (groups, roster, planes, ETF tickers) is keyed on the resolved prefix
+// (`zarrPrefixCacheKey`: with release slots on, the slot and release id CURRENT names), so a flip is a miss
+// within one CURRENT TTL rather than up to 30 minutes of old-slot data mixed with new. Each public reader
+// resolves the prefix once and passes it down, so one response reads one release.
 const GROUP_TTL_MS = 30 * 60 * 1000;
+const GROUP_CACHE_MAX = 32;
 const groupCache = new Map<string, { grp: Group<Readable>; at: number }>();
+/** Group → the release key it was opened under (plane cache keys). */
+const groupReleaseKey = new WeakMap<object, string>();
 
-async function openGroup(basename: string): Promise<Group<Readable> | null> {
+async function openGroup(basename: string, prefix?: ZarrGcsPrefix): Promise<Group<Readable> | null> {
   const now = Date.now();
-  const hit = groupCache.get(basename);
+  const p = prefix ?? (await resolveZarrGcsPrefix());
+  const relKey = zarrPrefixCacheKey(p);
+  const key = `${relKey}|${basename}`;
+  const hit = groupCache.get(key);
   if (hit && now - hit.at < GROUP_TTL_MS) return hit.grp;
 
-  const { bucket: bucketName, basePath } = await resolveZarrGcsPrefix();
+  const { bucket: bucketName, basePath } = p;
   const fullPrefix = `${basePath}/${basename}`.replace(/\/+/g, "/").replace(/^\//, "");
   try {
     const bucket = getGcs().bucket(bucketName);
@@ -111,7 +121,13 @@ async function openGroup(basename: string): Promise<Group<Readable> | null> {
     const grp = (await open.v2(root(consolidated as unknown as Readable), {
       kind: "group",
     })) as Group<Readable>;
-    groupCache.set(basename, { grp, at: now });
+    groupReleaseKey.set(grp, relKey);
+    groupCache.set(key, { grp, at: now });
+    while (groupCache.size > GROUP_CACHE_MAX) {
+      const oldest = groupCache.keys().next().value;
+      if (oldest === undefined) break;
+      groupCache.delete(oldest);
+    }
     return grp;
   } catch {
     console.error("[cohort-zarr] open group failed");
@@ -119,8 +135,31 @@ async function openGroup(basename: string): Promise<Group<Readable> | null> {
   }
 }
 
-async function openCohortGroup(): Promise<Group<Readable> | null> {
-  return openGroup(zarrCohortsBasename());
+async function openCohortGroup(prefix?: ZarrGcsPrefix): Promise<Group<Readable> | null> {
+  return openGroup(zarrCohortsBasename(), prefix);
+}
+
+/** Test hook: forget every in-process cache of this reader. */
+export function resetCohortZarrCaches(): void {
+  groupCache.clear();
+  planeCache.clear();
+  _roster = null;
+  _etfTickerById = null;
+}
+
+/** Test hook: open the cohort group through the cache. */
+export async function _openCohortGroupForTest(prefix?: ZarrGcsPrefix): Promise<Group<Readable> | null> {
+  return openCohortGroup(prefix);
+}
+
+/** Test hook: read one numeric plane through the plane cache. */
+export async function _readCohortPlaneForTest(
+  grp: Group<Readable>,
+  varName: string,
+  nTeo: number,
+  nCohort: number,
+): Promise<Float64Array | null> {
+  return readNumericPlane(grp, varName, nTeo, nCohort);
 }
 
 // ── Variables ────────────────────────────────────────────────────────────────
@@ -293,17 +332,19 @@ async function readIntCoord(grp: Group<Readable>, name: string): Promise<number[
 }
 
 const ROSTER_TTL_MS = 30 * 60 * 1000;
-let _roster: { value: CohortRoster; at: number } | null = null;
+let _roster: { value: CohortRoster; at: number; key: string } | null = null;
 
 /**
  * Cohort roster + teo axis. Cached in-process — the coords are ~54 entries
  * written once nightly, and every query needs them.
  */
-export async function readCohortRoster(): Promise<CohortRoster | null> {
+export async function readCohortRoster(prefix?: ZarrGcsPrefix): Promise<CohortRoster | null> {
   const now = Date.now();
-  if (_roster && now - _roster.at < ROSTER_TTL_MS) return _roster.value;
+  const p = prefix ?? (await resolveZarrGcsPrefix());
+  const key = zarrPrefixCacheKey(p);
+  if (_roster && _roster.key === key && now - _roster.at < ROSTER_TTL_MS) return _roster.value;
 
-  const grp = await openCohortGroup();
+  const grp = await openCohortGroup(p);
   if (!grp) return null;
 
   const [ids, tickers, parents, levels, validFrom, validTo, teos] = await Promise.all([
@@ -349,7 +390,7 @@ export async function readCohortRoster(): Promise<CohortRoster | null> {
 
   const teoStrings = teos.map((t) => t ?? "");
   const value: CohortRoster = { entries, byTicker, teos: teoStrings };
-  _roster = { value, at: now };
+  _roster = { value, at: now, key };
   return value;
 }
 
@@ -404,7 +445,8 @@ async function readNumericPlane(
   nTeo: number,
   nCohort: number,
 ): Promise<Float64Array | null> {
-  const cached = planeCacheGet(varName);
+  const cacheKey = `${groupReleaseKey.get(grp) ?? ""}|${varName}`;
+  const cached = planeCacheGet(cacheKey);
   if (cached) return cached;
 
   const promise = (async (): Promise<Float64Array | null> => {
@@ -426,7 +468,7 @@ async function readNumericPlane(
     }
   })();
 
-  planeCacheSet(varName, promise);
+  planeCacheSet(cacheKey, promise);
   return promise;
 }
 
@@ -455,15 +497,17 @@ async function readPublicPlane(
  * same reason and duration as the cohort roster: ~100 entries, rewritten nightly.
  */
 const ETF_TICKER_TTL_MS = 30 * 60 * 1000;
-let _etfTickerById: { value: Map<string, string>; at: number } | null = null;
+let _etfTickerById: { value: Map<string, string>; at: number; key: string } | null = null;
 
-async function readEtfTickerById(): Promise<Map<string, string>> {
+async function readEtfTickerById(prefix?: ZarrGcsPrefix): Promise<Map<string, string>> {
   const now = Date.now();
-  if (_etfTickerById && now - _etfTickerById.at < ETF_TICKER_TTL_MS) {
+  const p = prefix ?? (await resolveZarrGcsPrefix());
+  const key = zarrPrefixCacheKey(p);
+  if (_etfTickerById && _etfTickerById.key === key && now - _etfTickerById.at < ETF_TICKER_TTL_MS) {
     return _etfTickerById.value;
   }
   const map = new Map<string, string>();
-  const grp = await openGroup(zarrEtfBasename());
+  const grp = await openGroup(zarrEtfBasename(), p);
   if (grp) {
     const [symbols, tickers] = await Promise.all([
       readStringCoord(grp, "symbol"),
@@ -477,7 +521,7 @@ async function readEtfTickerById(): Promise<Map<string, string>> {
       }
     }
   }
-  _etfTickerById = { value: map, at: now };
+  _etfTickerById = { value: map, at: now, key };
   return map;
 }
 
@@ -594,8 +638,9 @@ export async function readCohortSeries(params: {
   minNames?: number;
   includeProxySource?: boolean;
 }): Promise<CohortSeries[] | null> {
-  const grp = await openCohortGroup();
-  const roster = await readCohortRoster();
+  const prefix = await resolveZarrGcsPrefix(); // group, roster and planes from one release
+  const grp = await openCohortGroup(prefix);
+  const roster = await readCohortRoster(prefix);
   if (!grp || !roster) return null;
 
   const { teos } = roster;
@@ -621,7 +666,7 @@ export async function readCohortSeries(params: {
   const minNames = params.minNames ?? 0;
   const out: CohortSeries[] = [];
   const etfTickerById = params.includeProxySource
-    ? await readEtfTickerById()
+    ? await readEtfTickerById(prefix)
     : new Map<string, string>();
 
   for (const ticker of params.tickers) {
@@ -681,8 +726,9 @@ export async function readCohortCrossSection(params: {
   teo?: string;
   minNames?: number;
 }): Promise<{ teo: string; rows: CohortCrossSectionRow[] } | null> {
-  const grp = await openCohortGroup();
-  const roster = await readCohortRoster();
+  const prefix = await resolveZarrGcsPrefix(); // group, roster and planes from one release
+  const grp = await openCohortGroup(prefix);
+  const roster = await readCohortRoster(prefix);
   if (!grp || !roster) return null;
 
   const { teos } = roster;
@@ -764,8 +810,9 @@ function attrNumber(attrs: Record<string, unknown>, key: string): number | null 
 }
 
 export async function readCohortStoreMeta(): Promise<CohortStoreMeta | null> {
-  const grp = await openCohortGroup();
-  const roster = await readCohortRoster();
+  const prefix = await resolveZarrGcsPrefix(); // group, roster and planes from one release
+  const grp = await openCohortGroup(prefix);
+  const roster = await readCohortRoster(prefix);
   if (!grp || !roster) return null;
 
   const attrs = (grp.attrs ?? {}) as Record<string, unknown>;

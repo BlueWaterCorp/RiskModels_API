@@ -59,6 +59,8 @@ All from environment variables:
 | `RENDER_SVC_PERSIST_RENDERS` | `1` | Whether to write rendered formats back to GCS (`0` for tests) |
 | `RENDER_SVC_LIVE_RENDER` | `0` | Phase 2: enable cache-miss live render. `1` triggers compute-from-zarr on miss |
 | `RENDER_SVC_ZARR_ROOT_URI` | `gs://rm_api_data/eodhd` | Zarr root for the P1 cache-miss compute path |
+| `RENDER_SVC_ZARR_RELEASE_SLOTS` | unset (off) | `1`: open the slot `<root>/CURRENT` names (ERM3-75 release slots), re-resolved per request |
+| `RENDER_SVC_ZARR_CURRENT_TTL_SECONDS` | `60` | How long a resolved `CURRENT` is reused (same 60 s as the API) |
 
 ---
 
