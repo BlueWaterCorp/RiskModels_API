@@ -4,15 +4,16 @@
  * Flow:
  *  1. Validate the client_id + redirect_uri against the registered client
  *     BEFORE redirecting anywhere (never bounce errors to an unvalidated URI).
- *  2. If the user has no `.app` Supabase session, send them to `.app`'s own
- *     sign-in (`/get-key`) with this authorize URL as `?next=` so they return
- *     here after login. `.net` is never involved.
+ *  2. If the user has no `.app` Supabase session, render a server-side email +
+ *     password form on this page (no client JS, no magic link). Directory
+ *     reviewers sign in with the account supplied in the submission. Google,
+ *     GitHub, and email-link sign-in stay one link away at `/get-key`.
  *  3. Render a minimal consent screen that names the signed-in account;
  *     "Allow" POSTs to /api/oauth/authorize/decision, which mints the
  *     single-use auth code and redirects back to the client's redirect_uri.
  *     "Use a different account" POSTs to /api/oauth/authorize/switch-account,
- *     which signs this browser out and returns to step 2 with every original
- *     authorize parameter, so the flow comes back here for the new account.
+ *     which signs this browser out and returns here, so the password form
+ *     is what the next account sees.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -80,13 +81,78 @@ export default async function AuthorizePage({
     await redirectClientError(redirectUri, state, "invalid_request", "PKCE S256 code_challenge is required");
   }
 
-  // 2. Require a signed-in .app user; otherwise bounce to .app's own sign-in.
+  // 2. No session: email + password in the first HTML response. Reviewers
+  //    (and anyone with a password) can submit without JavaScript, a magic
+  //    link, or a hidden toggle. Google / email-link stays on /get-key.
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    redirect(signInPathFor(sp));
+    const loginError = str(sp.login_error);
+    return (
+      <main className="min-h-[70vh] flex items-center justify-center px-4 py-10">
+        <div className="max-w-md w-full rounded-xl border border-zinc-800 bg-zinc-950 p-6">
+          <div className="text-xs uppercase tracking-widest text-zinc-500">RiskModels — sign in</div>
+          <h1 className="mt-2 text-xl font-semibold text-zinc-100">Sign in to connect</h1>
+          <p className="mt-3 text-sm text-zinc-400">
+            Use the email and password for this RiskModels account. No email link, code, or extra verification.
+          </p>
+          {loginError === "rate" ? (
+            <p className="mt-4 text-sm text-amber-200/90" data-testid="oauth-login-error">
+              Too many sign-in attempts. Wait a few minutes and try again.
+            </p>
+          ) : loginError ? (
+            <p className="mt-4 text-sm text-red-300" data-testid="oauth-login-error">
+              That email or password did not match.
+            </p>
+          ) : null}
+          <form method="POST" action="/api/oauth/authorize/password" className="mt-5 space-y-3">
+            {AUTHORIZE_PARAMS.map((k) => {
+              const v = str(sp[k]);
+              return v ? <input key={k} type="hidden" name={k} value={v} /> : null;
+            })}
+            <div>
+              <label htmlFor="oauth-email" className="block text-sm font-medium text-zinc-300 mb-1.5">
+                Email
+              </label>
+              <input
+                id="oauth-email"
+                name="email"
+                type="email"
+                required
+                autoComplete="username"
+                className="w-full px-3 py-2.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
+              />
+            </div>
+            <div>
+              <label htmlFor="oauth-password" className="block text-sm font-medium text-zinc-300 mb-1.5">
+                Password
+              </label>
+              <input
+                id="oauth-password"
+                name="password"
+                type="password"
+                required
+                autoComplete="current-password"
+                className="w-full px-3 py-2.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"
+            >
+              Sign in
+            </button>
+          </form>
+          <p className="mt-4 text-xs text-zinc-500">
+            <Link href={signInPathFor(sp)} className="text-zinc-400 hover:underline">
+              Use Google, GitHub, or an email link instead
+            </Link>
+          </p>
+        </div>
+      </main>
+    );
   }
 
   // 3. Consent screen — plain server-rendered form, no client JS needed.

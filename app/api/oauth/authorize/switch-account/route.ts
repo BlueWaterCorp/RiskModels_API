@@ -3,15 +3,15 @@
  * OAuth consent screen.
  *
  * Signs out the current Supabase session in this browser only (scope "local";
- * other devices keep their sessions) and 303-redirects to the sign-in step
- * (`/get-key?next=/oauth/authorize?...`) with every original authorize
- * parameter, so after signing in as the intended account the user lands back
- * on the consent screen for the same client, redirect_uri, state and PKCE
- * challenge. Nothing here mints codes or tokens.
+ * other devices keep their sessions) and 303-redirects to `/oauth/authorize`
+ * with every original authorize parameter. That page then shows the email
+ * and password form, so the
+ * next account can sign in and return to the same consent screen. Nothing
+ * here mints codes or tokens.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { signInPathFor } from "@/lib/oauth/authorize-return";
+import { authorizeReturnPath } from "@/lib/oauth/authorize-return";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     if (typeof v === "string" && !params.has(k)) params.set(k, v);
   }
 
-  const response = NextResponse.redirect(new URL(signInPathFor(params), req.url), { status: 303 });
+  const response = NextResponse.redirect(new URL(authorizeReturnPath(params), req.url), { status: 303 });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

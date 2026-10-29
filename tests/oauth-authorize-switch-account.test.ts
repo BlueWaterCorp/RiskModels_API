@@ -108,7 +108,9 @@ describe("POST /api/oauth/authorize/switch-account", () => {
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
     const location = res.headers.get("location")!;
     expect(new URL(location).origin).toBe(ORIGIN);
-    expect(paramsOf(nextOf(location))).toEqual(AUTHORIZE);
+    expect(new URL(location).pathname).toBe("/oauth/authorize");
+    expect(paramsOf(location)).toEqual(AUTHORIZE);
+    expect(location).not.toMatch(/password|email=/);
     const cleared = res.cookies.get("sb-proj-auth-token");
     expect(cleared?.value).toBe("");
     expect(res.cookies.get("other")).toBeUndefined();
