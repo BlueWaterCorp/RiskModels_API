@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-29`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-30`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -168,3 +168,8 @@ Review: Fable, 2026-10-14 (ETF strategy review).
 ## RMAPI-27 · Filer search lists retired filers beside their live twins (2026-10-20)
 
 **Impact:** MATERIAL · Funds_DAG filer rebuild 4 (2026-10-20) kept 720 retired rows in `filers` with status `no_13f_book`, among them hand-typed duplicates of pension plans (CalPERS BW-FILER-CIK0000776606 beside live 0000919079; SWIB 0000706669 beside 0000854157). `searchFilers` (`lib/dal/filers-engine.ts:213`) queries `filers` with no status filter, so those names show twice and the retired row has no book. **Needs:** engineering: exclude `status = 'no_13f_book'` from search (keep direct id lookup working), with a test on a real retired row.
+
+## RMAPI-29 · Fund holdings have no historical as_of (Contrafund, 5 Nov) (2026-10-29)
+
+**Impact:** IMPROVEMENT · `GET /funds/{id}/holdings` is latest-only, so a 30 June 2020 Contrafund book cannot be served without opening the zarr by hand. Report date is the default; `available_date` is explicit. Existing filer `as_of` stays knowledge mode. **Needs:** engineering.
+Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 on this item: `as_of` and `time_basis` on `readFundHoldingsBook` and the holdings route; echo `filing_date`, `has_new_data`, `weight_basis`, `unmatched_mv`; `ticker_as_of=current_registry`. Tests: report date 2020-06-30 filed 2020-08-20, available_date returns 2020-03-31 filed 2020-05-26, Amazon weight over net assets (~11.28/121.37), 404 before history. Top-15 exposure stays labeled a sleeve. Fundamentals coverage is the ERM3 audit, not this item. No vintage parameter and no batch route before 5 November (batch remains RMAPI-26).
