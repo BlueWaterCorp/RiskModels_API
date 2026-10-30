@@ -7,6 +7,7 @@ import {
   pivotHistory,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { historyStartForPredatingWindow } from "@/lib/risk/history-window";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import {
   addMetadataHeaders,
@@ -197,7 +198,9 @@ export const GET = withBilling(
       base.l3_res_er = row.l3_res_er ?? null;
       return base;
     });
-    const historyStart = historyStarts[symbolRecord.symbol];
+    const historyStart = historyStartForPredatingWindow(
+      historyStarts[symbolRecord.symbol],
+    );
 
     // No billing for empty responses (RMAPI-14): zero rows cost nothing, and
     // the warning names the reason instead of asking the caller to retry.

@@ -796,20 +796,87 @@ export function filterRowsByHistoryStarts(
 ): SecurityHistoryRow[] {
   return rows.filter((row) => {
     const historyStart = historyStarts[row.symbol];
-    return historyStart !== undefined && row.teo >= historyStart;
+    return historyStart === undefined || row.teo >= historyStart;
   });
+}
+
+export function earliestFirstValidDate(
+  teo: ReadonlyArray<string>,
+  closeValues: ReadonlyArray<number | null>,
+  returnValues: ReadonlyArray<number | null>,
+): string | null {
+  const closeIndex = firstValidIndex(closeValues);
+  const returnIndex = firstValidIndex(returnValues);
+  const closeDate = closeIndex === null ? null : teo[closeIndex] ?? null;
+  const returnDate = returnIndex === null ? null : teo[returnIndex] ?? null;
+  if (closeDate === null) return returnDate;
+  if (returnDate === null) return closeDate;
+  return closeDate < returnDate ? closeDate : returnDate;
+}
+
+const HISTORY_START_CACHE_TTL_MS = 30 * 60 * 1000;
+const HISTORY_START_CACHE_MAX = 10_000;
+const historyStartCache = new Map<
+  string,
+  { at: number; date: string | null }
+>();
+
+function historyStartCacheGet(key: string): string | null | undefined {
+  const hit = historyStartCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at >= HISTORY_START_CACHE_TTL_MS) {
+    historyStartCache.delete(key);
+    return undefined;
+  }
+  historyStartCache.delete(key);
+  historyStartCache.set(key, hit);
+  return hit.date;
+}
+
+function historyStartCacheSet(key: string, date: string | null): void {
+  historyStartCache.set(key, { at: Date.now(), date });
+  if (historyStartCache.size > HISTORY_START_CACHE_MAX) {
+    const oldest = historyStartCache.keys().next().value;
+    if (oldest !== undefined) historyStartCache.delete(oldest);
+  }
+}
+
+/** Test hook: clears release-scoped per-symbol history anchors. */
+export function _resetHistoryStartCacheForTest(): void {
+  historyStartCache.clear();
 }
 
 async function readFirstValidDates(
   grp: Group<Readable>,
   teo: string[],
   members: Array<{ symbol: string; idx: number }>,
-): Promise<Map<string, string>> {
+  storeKey: string,
+): Promise<{ starts: Map<string, string>; withoutAnchor: string[] }> {
   const starts = new Map<string, string>();
+  const withoutAnchor: string[] = [];
+  const pending: Array<{ symbol: string; idx: number; cacheKey: string }> = [];
+
+  for (const member of members) {
+    const cacheKey = `${storeKey}|${member.symbol}`;
+    const cached = historyStartCacheGet(cacheKey);
+    if (cached === undefined) {
+      pending.push({ ...member, cacheKey });
+    } else if (cached === null) {
+      withoutAnchor.push(member.symbol);
+    } else {
+      starts.set(member.symbol, cached);
+    }
+  }
+
+  const candidates = new Map(
+    pending.map((member) => [
+      member.symbol,
+      { close: null as (number | null)[] | null, returns: null as (number | null)[] | null },
+    ]),
+  );
 
   for (const varName of ["close", "return"] as const) {
-    const unresolved = members.filter((member) => !starts.has(member.symbol));
-    if (unresolved.length === 0) break;
+    if (pending.length === 0) break;
 
     let arr: ZarrArray<DataType, Readable>;
     try {
@@ -820,7 +887,7 @@ async function readFirstValidDates(
 
     const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1);
     const byChunk = new Map<number, Array<{ symbol: string; idx: number }>>();
-    for (const member of unresolved) {
+    for (const member of pending) {
       const chunk = Math.floor(member.idx / chunkW);
       const list = byChunk.get(chunk) ?? [];
       list.push(member);
@@ -838,15 +905,28 @@ async function readFirstValidDates(
         );
         if (!columns) return;
         list.forEach((member, index) => {
-          const first = firstValidIndex(columns[index]!);
-          const date = first === null ? null : teo[first];
-          if (date) starts.set(member.symbol, date);
+          const candidate = candidates.get(member.symbol);
+          if (!candidate) return;
+          if (varName === "close") candidate.close = columns[index]!;
+          else candidate.returns = columns[index]!;
         });
       }),
     );
   }
 
-  return starts;
+  for (const member of pending) {
+    const candidate = candidates.get(member.symbol)!;
+    if (candidate.close === null || candidate.returns === null) {
+      withoutAnchor.push(member.symbol);
+      continue;
+    }
+    const date = earliestFirstValidDate(teo, candidate.close, candidate.returns);
+    historyStartCacheSet(member.cacheKey, date);
+    if (date === null) withoutAnchor.push(member.symbol);
+    else starts.set(member.symbol, date);
+  }
+
+  return { starts, withoutAnchor };
 }
 
 export interface ReadHistorySliceParams {
@@ -883,7 +963,7 @@ function cacheKeyForZarr(p: ReadHistorySliceParams, prefix: ZarrGcsPrefix): stri
     per: p.periodicity,
     ord: p.orderBy ?? "asc",
     fs: factorSet,
-    historyFloor: 1,
+    historyFloor: 2,
   });
   const h = createHash("sha256").update(payload).digest("hex");
   return generateCacheKey("zarr_hist", h);
@@ -962,10 +1042,11 @@ export async function readHistorySlice(
   // One prefix for the whole slice: every store below is opened from the same release.
   const prefix = await resolveZarrGcsPrefix();
   const ck = cacheKeyForZarr(params, prefix);
-  // A request this large was never cached (see the write below); skip the lookup.
-  const hit = estimateSliceRows(params) > MAX_CACHED_SLICE_ROWS ? null : await getCache<ReadHistorySliceResult>(ck);
-  // `[]` is truthy in JS — only treat cache as a hit when we stored real rows.
-  if (hit?.rows?.length) {
+  // Large populated slices are not written below, but an empty pre-history
+  // result is small and cacheable even when the request's upper-bound estimate
+  // is large, so every request checks for a stored result.
+  const hit = await getCache<ReadHistorySliceResult>(ck);
+  if (hit) {
     logSliceTelemetry(params, "cache_hit", hit.rows.length, Date.now() - _tStart);
     return hit;
   }
@@ -1024,16 +1105,41 @@ export async function readHistorySlice(
     const idx = etfSymMap?.get(symbol);
     return idx === undefined ? [] : [{ symbol, idx }];
   });
-  const [stockHistoryStarts, etfHistoryStarts] = await Promise.all([
-    readFirstValidDates(dailyGrp, dailyTeo, stockCoreMembers),
+  const [stockHistory, etfHistory] = await Promise.all([
+    readFirstValidDates(
+      dailyGrp,
+      dailyTeo,
+      stockCoreMembers,
+      `${zarrPrefixCacheKey(prefix)}|${zarrDailyBasename()}`,
+    ),
     etfGrp && etfTeo?.length
-      ? readFirstValidDates(etfGrp, etfTeo, etfCoreMembers)
-      : Promise.resolve(new Map<string, string>()),
+      ? readFirstValidDates(
+          etfGrp,
+          etfTeo,
+          etfCoreMembers,
+          `${zarrPrefixCacheKey(prefix)}|${zarrEtfBasename()}`,
+        )
+      : Promise.resolve({ starts: new Map<string, string>(), withoutAnchor: [] }),
   ]);
   const historyStarts = Object.fromEntries([
-    ...stockHistoryStarts.entries(),
-    ...etfHistoryStarts.entries(),
+    ...stockHistory.starts.entries(),
+    ...etfHistory.starts.entries(),
   ]);
+  const symbolsOutsideAnchorStores = symbols.filter(
+    (symbol) => !dailySymMap.has(symbol) && !etfSymMap?.has(symbol),
+  );
+  const symbolsWithoutAnchor = [
+    ...new Set([
+      ...stockHistory.withoutAnchor,
+      ...etfHistory.withoutAnchor,
+      ...symbolsOutsideAnchorStores,
+    ]),
+  ];
+  if (symbolsWithoutAnchor.length > 0) {
+    console.warn("[zarr-internal] history anchor unavailable; preserving rows", {
+      symbols: symbolsWithoutAnchor,
+    });
+  }
 
   // Shortest common range across every stock-side store involved in this
   // request, clipped to the caller's [startDate, endDate] window. Guarantees
@@ -1319,7 +1425,7 @@ export async function readHistorySlice(
   // Large slices (multi-year history for many names) are not cached: they would
   // exceed the cache's value limit, and serializing them just to be refused
   // costs seconds and gigabytes per request.
-  if (rows.length > 0 && rows.length <= MAX_CACHED_SLICE_ROWS) {
+  if (rows.length <= MAX_CACHED_SLICE_ROWS) {
     await setCache(ck, result, CACHE_TTL.FREQUENT).catch(() => {});
   }
 

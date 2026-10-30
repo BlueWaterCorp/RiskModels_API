@@ -24,6 +24,7 @@ export interface BatchLstarTickerResult {
   market_factor_etf?: string;
   universe?: string;
   data_source?: string;
+  history_starts?: string;
 }
 
 export interface BatchLstarSummary {
@@ -68,6 +69,9 @@ function successPayload(result: LstarResult): BatchLstarTickerResult {
     market_factor_etf: result.market_factor_etf,
     universe: result.universe,
     data_source: result.data_source,
+    ...(result.history_starts
+      ? { history_starts: result.history_starts }
+      : {}),
   };
 }
 

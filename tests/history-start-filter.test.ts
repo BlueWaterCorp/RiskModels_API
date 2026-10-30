@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SecurityHistoryRow } from "@/lib/dal/risk-engine-v3";
 import {
+  earliestFirstValidDate,
   filterRowsByHistoryStarts,
   firstValidIndex,
 } from "@/lib/dal/zarr-reader";
@@ -76,6 +77,14 @@ describe("security-specific history floor", () => {
     expect(firstValidIndex(crwvCalendarRows.map((row) => row.metric_value))).toBe(2);
   });
 
+  it("uses the earlier return date when returns begin before close", () => {
+    const teo = crwvCalendarRows.map((row) => row.teo);
+    const closes = [null, null, null, null, 52.56999969482422];
+    const returns = [null, null, null, -0.07299995422363281, 0.4177453370780737];
+
+    expect(earliestFirstValidDate(teo, closes, returns)).toBe("2025-03-31");
+  });
+
   it("starts a mid-window series at the first real observation", () => {
     const rows = filterRowsByHistoryStarts(crwvCalendarRows, {
       [CRWV_SYMBOL]: CRWV_HISTORY_START,
@@ -100,5 +109,9 @@ describe("security-specific history floor", () => {
     expect(
       filterRowsByHistoryStarts(aaplRows, { AAPL: "1980-12-12" }),
     ).toEqual(aaplRows);
+  });
+
+  it("preserves rows when the history anchor is unavailable", () => {
+    expect(filterRowsByHistoryStarts(crwvCalendarRows, {})).toEqual(crwvCalendarRows);
   });
 });

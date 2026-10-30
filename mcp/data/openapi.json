@@ -1734,7 +1734,7 @@
           "history_starts": {
             "type": "string",
             "format": "date",
-            "description": "Present on an empty response when the requested window is before this security's first non-null daily price observation. Rows before this date are omitted.\n"
+            "description": "Present only on an empty response when the requested window ends before this security's earliest non-null daily close or return observation. Rows before this date are omitted.\n"
           },
           "_metadata": {
             "type": "object",
@@ -2245,7 +2245,7 @@
           "history_starts": {
             "type": "string",
             "format": "date",
-            "description": "Present when the returned arrays are empty because the requested window is before this security's first non-null daily price observation.\n"
+            "description": "Present only when the returned arrays are empty because the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -2382,7 +2382,7 @@
           "history_starts": {
             "type": "string",
             "format": "date",
-            "description": "Present when the returned arrays are empty because the requested window is before this security's first non-null daily price observation.\n"
+            "description": "Present only when the returned arrays are empty because the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -3574,7 +3574,7 @@
           "history_starts": {
             "type": "string",
             "format": "date",
-            "description": "Present when the returned arrays are empty because the requested window is before this security's first non-null daily price observation.\n"
+            "description": "Present only when the returned arrays are empty because the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -3680,6 +3680,11 @@
           },
           "data_source": {
             "type": "string"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present only on a successful empty result when the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -4273,7 +4278,7 @@
           "history_starts": {
             "type": "string",
             "format": "date",
-            "description": "First non-null daily price date for the resolved security. Present when a historical request ends before the security's own history begins.\n"
+            "description": "Earliest non-null daily close or return date for the resolved security. Present only when a historical request ends before the security's own history begins.\n"
           },
           "details": {
             "type": "object",

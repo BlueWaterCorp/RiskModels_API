@@ -9,6 +9,7 @@
  */
 
 import { resolveSymbolByTicker, fetchHistoryWithSource, pivotHistory } from '@/lib/dal/risk-engine-v3';
+import { historyStartForPredatingWindow } from '@/lib/risk/history-window';
 
 /** Internal row series from `fetchHistory` / `pivotHistory` (V3 abbreviated wire keys). */
 export interface L3DecompositionResult {
@@ -141,7 +142,7 @@ export class L3DecompositionService {
         return this.emptyDecomposition(
           ticker,
           marketFactorEtf,
-          historyStarts[symbolRecord.symbol],
+          historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
         );
       }
 
@@ -150,7 +151,7 @@ export class L3DecompositionService {
         return this.emptyDecomposition(
           ticker,
           marketFactorEtf,
-          historyStarts[symbolRecord.symbol],
+          historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
         );
       }
 

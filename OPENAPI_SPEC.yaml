@@ -1558,8 +1558,9 @@ components:
           type: string
           format: date
           description: >
-            Present on an empty response when the requested window is before this security's
-            first non-null daily price observation. Rows before this date are omitted.
+            Present only on an empty response when the requested window ends before this
+            security's earliest non-null daily close or return observation. Rows before this
+            date are omitted.
         _metadata:
           type: object
           additionalProperties: true
@@ -1986,8 +1987,8 @@ components:
           type: string
           format: date
           description: >
-            Present when the returned arrays are empty because the requested window is before
-            this security's first non-null daily price observation.
+            Present only when the returned arrays are empty because the requested window ends
+            before this security's earliest non-null daily close or return observation.
 
     ReturnsDecompositionResponse:
       type: object
@@ -2091,8 +2092,8 @@ components:
           type: string
           format: date
           description: >
-            Present when the returned arrays are empty because the requested window is before
-            this security's first non-null daily price observation.
+            Present only when the returned arrays are empty because the requested window ends
+            before this security's earliest non-null daily close or return observation.
 
     IndustryPanelRow:
       type: object
@@ -3000,8 +3001,8 @@ components:
           type: string
           format: date
           description: >
-            Present when the returned arrays are empty because the requested window is before
-            this security's first non-null daily price observation.
+            Present only when the returned arrays are empty because the requested window ends
+            before this security's earliest non-null daily close or return observation.
 
     BatchLstarTickerResult:
       type: object
@@ -3072,6 +3073,12 @@ components:
           type: string
         data_source:
           type: string
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Present only on a successful empty result when the requested window ends before
+            this security's earliest non-null daily close or return observation.
 
     BatchLstarResponse:
       type: object
@@ -3422,8 +3429,8 @@ components:
           type: string
           format: date
           description: >
-            First non-null daily price date for the resolved security. Present when a historical
-            request ends before the security's own history begins.
+            Earliest non-null daily close or return date for the resolved security. Present only
+            when a historical request ends before the security's own history begins.
         details:
           type: object
           properties:

@@ -16,6 +16,7 @@ import {
   type PivotedHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { historyStartForPredatingWindow } from "@/lib/risk/history-window";
 import {
   dispatchLstarResidualReturn,
   pickLstar,
@@ -221,7 +222,7 @@ export class ReturnsDecompositionService {
         marketFactorEtf,
         includeLstar,
         threshold,
-        historyStarts[symbolRecord.symbol],
+        historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
       );
     }
 
@@ -232,7 +233,7 @@ export class ReturnsDecompositionService {
         marketFactorEtf,
         includeLstar,
         threshold,
-        historyStarts[symbolRecord.symbol],
+        historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
       );
     }
 

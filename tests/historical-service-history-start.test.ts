@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const history = vi.hoisted(() => vi.fn());
 
@@ -18,13 +18,20 @@ import {
   toReturnsDecompositionPublicBody,
 } from "@/lib/risk/returns-decomposition-service";
 import { LstarService } from "@/lib/risk/lstar-service";
+import { fetchBatchLstar } from "@/lib/risk/batch-lstar-service";
 
 beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2025-03-27T12:00:00Z"));
   history.mockReset().mockResolvedValue({
     rows: [],
     dataSource: "zarr",
     historyStarts: { CRWV: "2025-03-28" },
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("empty historical service responses", () => {
@@ -50,5 +57,24 @@ describe("empty historical service responses", () => {
     const result = await new LstarService().getLstar("CRWV");
 
     expect(result).toMatchObject({ dates: [], history_starts: "2025-03-28" });
+  });
+
+  it("carries the first available date through batch Lstar", async () => {
+    const result = await fetchBatchLstar({ tickers: ["CRWV"] });
+
+    expect(result.results.CRWV).toMatchObject({
+      status: "success",
+      dates: [],
+      history_starts: "2025-03-28",
+    });
+  });
+
+  it("omits the date when an empty result is not a predating window", async () => {
+    vi.setSystemTime(new Date("2026-10-30T12:00:00Z"));
+
+    const result = await new LstarService().getLstar("CRWV");
+
+    expect(result).toMatchObject({ dates: [] });
+    expect(result).not.toHaveProperty("history_starts");
   });
 });

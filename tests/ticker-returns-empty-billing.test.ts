@@ -3,7 +3,7 @@
  * warning names the reason instead of "retry / contact support".
  * (Review case: HYG returned 0 rows and billed, request req_mv8frd0k_vut3r8.)
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const billing = vi.hoisted(() => ({
   count: null as number | null,
@@ -41,6 +41,7 @@ const { symbolRows, history } = vi.hoisted(() => ({
   HYG: { symbol: "BW-HYG", ticker: "HYG", name: null, asset_type: "etf", sector_etf: null, subsector_etf: null, is_modelled_class: true },
   SPY: { symbol: "BW-BBG000BDTBL9", ticker: "SPY", name: null, asset_type: "etf", sector_etf: null, subsector_etf: null, is_modelled_class: true },
   AAPL: { symbol: "BW-AAPL", ticker: "AAPL", name: null, asset_type: "stock", sector_etf: "XLK", subsector_etf: null, is_modelled_class: true },
+  CRWV: { symbol: "CRWV", ticker: "CRWV", name: null, asset_type: "stock", sector_etf: "XLK", subsector_etf: null, is_modelled_class: true },
   } as Record<string, Record<string, unknown>>,
 }));
 
@@ -93,6 +94,10 @@ beforeEach(() => {
   history.historyStarts = {};
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("GET /api/ticker-returns — empty responses", () => {
   it("registers itemCount so the handler can lower the charge", () => {
     expect(billing.options).toMatchObject({ capabilityId: "ticker-returns", itemCount: 1 });
@@ -122,8 +127,18 @@ describe("GET /api/ticker-returns — empty responses", () => {
     const body = await (await call("AAPL")).json();
     expect(billing.count).toBe(0);
     expect(body._metadata.data_warning_code).toBe("no_return_history_in_window");
-    expect(body.history_starts).toBe("1980-12-12");
+    expect(body.history_starts).toBeUndefined();
     expect(body._metadata.data_warning).not.toMatch(/retry|contact support/i);
+  });
+
+  it("includes the date only when the requested window predates history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-03-27T12:00:00Z"));
+    history.historyStarts = { CRWV: "2025-03-28" };
+
+    const body = await (await call("CRWV")).json();
+
+    expect(body.history_starts).toBe("2025-03-28");
   });
 
   it("bills normally when rows return", async () => {

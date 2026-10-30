@@ -31,6 +31,7 @@ import {
   type PivotedHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { historyStartForPredatingWindow } from "@/lib/risk/history-window";
 import { LSTAR_STYLE_AXIS_REMOVED_MESSAGE } from "@/lib/api/schemas";
 
 export const LSTAR_DEFAULT_THRESHOLD = 0.01;
@@ -299,7 +300,7 @@ export class LstarService {
         marketFactorEtf,
         threshold,
         axis,
-        historyStarts[symbolRecord.symbol],
+        historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
       );
     }
 
@@ -310,7 +311,7 @@ export class LstarService {
         marketFactorEtf,
         threshold,
         axis,
-        historyStarts[symbolRecord.symbol],
+        historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
       );
     }
 
