@@ -116,12 +116,31 @@ export const POST = withBilling(
       as_of,
       servedHistoryStartForKeys(DECOMPOSE_METRIC_KEYS),
     );
-    if (floorErr) {
-      return NextResponse.json(floorErr, { status: 404, headers: corsHeaders });
-    }
 
     try {
       const symbolRecord = await resolveSymbolByTicker(ticker);
+      if (floorErr) {
+        if (!symbolRecord) {
+          return NextResponse.json(floorErr, {
+            status: 404,
+            headers: corsHeaders,
+          });
+        }
+        const { historyStart } = await fetchLatestMetricsWithHistoryStart(
+          symbolRecord.symbol,
+          DECOMPOSE_METRIC_KEYS,
+          "daily",
+          as_of,
+        );
+        return NextResponse.json(
+          {
+            ...floorErr,
+            ...(historyStart ? { history_starts: historyStart } : {}),
+          },
+          { status: 404, headers: corsHeaders },
+        );
+      }
+
       if (!symbolRecord) {
         const metadata = await getRiskMetadata();
         const response = NextResponse.json(

@@ -144,6 +144,33 @@ describe("POST /api/decompose — no as_of stays on the fast path (Verify c)", (
 });
 
 describe("POST /api/decompose — as_of threads to the zarr read (Verify a shape)", () => {
+  it("includes both the served floor and security start before the global floor", async () => {
+    mockResolve.mockResolvedValueOnce({
+      ...SYMBOL,
+      symbol: "CRWV",
+      ticker: "CRWV",
+    });
+    mockAsOfFetch.mockResolvedValue({
+      latest: null,
+      historyStart: "2025-03-28",
+    });
+    const res = await decomposePOST(
+      post({ ticker: "CRWV", as_of: "2012-12-31" }),
+      fakeContext,
+    );
+    expect(res.status).toBe(404);
+    expect(mockResolve).toHaveBeenCalledWith("CRWV");
+    expect(mockAsOfFetch).toHaveBeenCalledWith(
+      "CRWV",
+      expect.arrayContaining(["lstar_level", "l3_res_er"]),
+      "daily",
+      "2012-12-31",
+    );
+    const body = await res.json();
+    expect(body.history_available_from).toBe("2013-01-01");
+    expect(body.history_starts).toBe("2025-03-28");
+  });
+
   it("skips the fast path, serves the row ≤ as_of, echoes the basis", async () => {
     mockAsOfFetch.mockResolvedValue({ latest: HIST_ROW, historyStart: "1999-01-22" });
     const res = await decomposePOST(

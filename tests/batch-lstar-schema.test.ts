@@ -73,8 +73,14 @@ describe("batchLstarToLongRows", () => {
           ticker: "BAD",
           status: "not_found",
         },
+        CRWV: {
+          ticker: "CRWV",
+          status: "success",
+          dates: [],
+          history_starts: "2025-03-28",
+        },
       },
-      summary: { total: 2, success: 1, errors: 0, not_found: 1 },
+      summary: { total: 3, success: 2, errors: 0, not_found: 1 },
       years: 1,
       threshold_used: 0.01,
       market_factor_etf: "SPY",
@@ -82,12 +88,22 @@ describe("batchLstarToLongRows", () => {
     };
 
     const rows = batchLstarToLongRows(body);
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows[0]).toMatchObject({
       ticker: "NVDA",
+      status: "success",
+      history_starts: null,
       date: "2026-05-01",
       lstar: "L3",
       residual_return: 0.01,
+    });
+    expect(rows[2]).toMatchObject({
+      ticker: "CRWV",
+      status: "success",
+      history_starts: "2025-03-28",
+      date: null,
+      lstar: null,
+      residual_return: null,
     });
   });
 });
