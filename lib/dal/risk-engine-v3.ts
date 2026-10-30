@@ -1223,7 +1223,11 @@ export async function fetchHistoryWithSource(
   symbol: string,
   keys: V3MetricKey[],
   options: FetchHistoryOptions = {},
-): Promise<{ rows: SecurityHistoryRow[]; dataSource: HistoryDataSource }> {
+): Promise<{
+  rows: SecurityHistoryRow[];
+  dataSource: HistoryDataSource;
+  historyStarts: Record<string, string>;
+}> {
   const {
     periodicity = "daily",
     startDate,
@@ -1237,10 +1241,10 @@ export async function fetchHistoryWithSource(
       periodicity,
       keyCount: keys.length,
     });
-    return { rows: [], dataSource: "zarr" };
+    return { rows: [], dataSource: "zarr", historyStarts: {} };
   }
 
-  const { rows } = await readHistorySlice({
+  const { rows, historyStarts } = await readHistorySlice({
     symbols: [symbol],
     keys,
     periodicity,
@@ -1251,7 +1255,7 @@ export async function fetchHistoryWithSource(
   if (rows.length === 0) {
     console.warn("[V3 DAL] Zarr history returned empty rows", { symbol, keyCount: keys.length });
   }
-  return { rows, dataSource: "zarr" };
+  return { rows, dataSource: "zarr", historyStarts };
 }
 
 /** Daily factor history: consolidated Zarr on GCS (see docs/API_HISTORY_SUPABASE_AND_ZARR.md). */
@@ -1449,6 +1453,24 @@ export async function fetchLatestMetrics(
   periodicity: V3Periodicity = "daily",
   asOf?: string,
 ): Promise<{ teo: string; metrics: Record<string, number | null> } | null> {
+  const { latest } = await fetchLatestMetricsWithHistoryStart(
+    symbol,
+    keys,
+    periodicity,
+    asOf,
+  );
+  return latest;
+}
+
+export async function fetchLatestMetricsWithHistoryStart(
+  symbol: string,
+  keys: V3MetricKey[],
+  periodicity: V3Periodicity = "daily",
+  asOf?: string,
+): Promise<{
+  latest: { teo: string; metrics: Record<string, number | null> } | null;
+  historyStart: string | null;
+}> {
   try {
     const options: FetchHistoryOptions = {
       periodicity,
@@ -1471,9 +1493,14 @@ export async function fetchLatestMetrics(
       options.endDate = end;
     }
 
-    const data = await fetchHistory(symbol, keys, options);
+    const { rows: data, historyStarts } = await fetchHistoryWithSource(
+      symbol,
+      keys,
+      options,
+    );
+    const historyStart = historyStarts[symbol] ?? null;
 
-    if (!data || data.length === 0) return null;
+    if (!data || data.length === 0) return { latest: null, historyStart };
 
     const byDate = new Map<string, Map<string, number | null>>();
     for (const row of data) {
@@ -1486,16 +1513,22 @@ export async function fetchLatestMetrics(
     for (const date of sortedDates) {
       const metricsMap = byDate.get(date)!;
       if (keys.every(k => metricsMap.has(k))) {
-        return { teo: date, metrics: Object.fromEntries(metricsMap.entries()) };
+        return {
+          latest: { teo: date, metrics: Object.fromEntries(metricsMap.entries()) },
+          historyStart,
+        };
       }
     }
 
     const mostRecentDate = sortedDates[0];
     const metricsMap = byDate.get(mostRecentDate)!;
-    return { teo: mostRecentDate, metrics: Object.fromEntries(metricsMap.entries()) };
+    return {
+      latest: { teo: mostRecentDate, metrics: Object.fromEntries(metricsMap.entries()) },
+      historyStart,
+    };
   } catch (error) {
     console.error(`[V3 DAL] Error fetching latest metrics for ${symbol}:`, error);
-    return null;
+    return { latest: null, historyStart: null };
   }
 }
 

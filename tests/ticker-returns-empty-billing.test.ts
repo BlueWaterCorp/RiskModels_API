@@ -33,7 +33,10 @@ vi.mock("@/lib/agent/billing-middleware", () => ({
 }));
 
 const { symbolRows, history } = vi.hoisted(() => ({
-  history: { rows: [] as Array<Record<string, unknown>> },
+  history: {
+    rows: [] as Array<Record<string, unknown>>,
+    historyStarts: {} as Record<string, string>,
+  },
   symbolRows: {
   HYG: { symbol: "BW-HYG", ticker: "HYG", name: null, asset_type: "etf", sector_etf: null, subsector_etf: null, is_modelled_class: true },
   SPY: { symbol: "BW-BBG000BDTBL9", ticker: "SPY", name: null, asset_type: "etf", sector_etf: null, subsector_etf: null, is_modelled_class: true },
@@ -43,7 +46,11 @@ const { symbolRows, history } = vi.hoisted(() => ({
 
 vi.mock("@/lib/dal/risk-engine-v3", () => ({
   resolveSymbolByTicker: vi.fn(async (t: string) => symbolRows[t.toUpperCase()] ?? null),
-  fetchHistoryWithSource: vi.fn(async () => ({ rows: history.rows, dataSource: "zarr" })),
+  fetchHistoryWithSource: vi.fn(async () => ({
+    rows: history.rows,
+    dataSource: "zarr",
+    historyStarts: history.historyStarts,
+  })),
   pivotHistory: vi.fn((rows: Array<Record<string, unknown>>) => rows),
 }));
 
@@ -83,6 +90,7 @@ const call = (ticker: string) => GET(new NextRequest(`http://x/api/ticker-return
 beforeEach(() => {
   billing.count = null;
   history.rows = [];
+  history.historyStarts = {};
 });
 
 describe("GET /api/ticker-returns — empty responses", () => {
@@ -110,9 +118,11 @@ describe("GET /api/ticker-returns — empty responses", () => {
   });
 
   it("does not bill an empty stock series either", async () => {
+    history.historyStarts = { "BW-AAPL": "1980-12-12" };
     const body = await (await call("AAPL")).json();
     expect(billing.count).toBe(0);
     expect(body._metadata.data_warning_code).toBe("no_return_history_in_window");
+    expect(body.history_starts).toBe("1980-12-12");
     expect(body._metadata.data_warning).not.toMatch(/retry|contact support/i);
   });
 

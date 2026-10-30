@@ -18,7 +18,7 @@ vi.mock("@/lib/agent/billing-middleware", () => ({
 
 vi.mock("@/lib/dal/risk-engine-v3", () => ({
   resolveSymbolByTicker: vi.fn(),
-  fetchLatestMetrics: vi.fn(),
+  fetchLatestMetricsWithHistoryStart: vi.fn(),
   fetchLatestMetricsWithFallback: vi.fn(),
 }));
 
@@ -28,7 +28,7 @@ vi.mock("@/lib/dal/risk-metadata", () => ({
 
 import { NextRequest, type NextResponse } from "next/server";
 import {
-  fetchLatestMetrics,
+  fetchLatestMetricsWithHistoryStart,
   fetchLatestMetricsWithFallback,
   resolveSymbolByTicker,
 } from "@/lib/dal/risk-engine-v3";
@@ -42,7 +42,7 @@ const decomposePOST = wrappedPOST as unknown as (
 ) => Promise<NextResponse>;
 
 const mockResolve = resolveSymbolByTicker as unknown as ReturnType<typeof vi.fn>;
-const mockAsOfFetch = fetchLatestMetrics as unknown as ReturnType<typeof vi.fn>;
+const mockAsOfFetch = fetchLatestMetricsWithHistoryStart as unknown as ReturnType<typeof vi.fn>;
 const mockFastPath = fetchLatestMetricsWithFallback as unknown as ReturnType<
   typeof vi.fn
 >;
@@ -145,7 +145,7 @@ describe("POST /api/decompose — no as_of stays on the fast path (Verify c)", (
 
 describe("POST /api/decompose — as_of threads to the zarr read (Verify a shape)", () => {
   it("skips the fast path, serves the row ≤ as_of, echoes the basis", async () => {
-    mockAsOfFetch.mockResolvedValue(HIST_ROW);
+    mockAsOfFetch.mockResolvedValue({ latest: HIST_ROW, historyStart: "1999-01-22" });
     const res = await decomposePOST(
       post({ ticker: "NVDA", as_of: "2025-06-30" }),
       fakeContext,
@@ -176,20 +176,24 @@ describe("POST /api/decompose — as_of threads to the zarr read (Verify a shape
   });
 
   it("404s with an as_of-specific error when nothing is known ≤ as_of (Verify b shape)", async () => {
-    mockAsOfFetch.mockResolvedValue(null);
+    mockAsOfFetch.mockResolvedValue({ latest: null, historyStart: "2025-03-28" });
     const res = await decomposePOST(
-      post({ ticker: "NVDA", as_of: "1999-01-04" }),
+      post({ ticker: "CRWV", as_of: "2025-03-27" }),
       fakeContext,
     );
     expect(res.status).toBe(404);
     const body = await res.json();
-    expect(body.error).toContain("as_of=1999-01-04");
+    expect(body.error).toContain("as_of=2025-03-27");
     expect(body.as_of_basis).toBe("report_date");
+    expect(body.history_starts).toBe("2025-03-28");
     expect(mockFastPath).not.toHaveBeenCalled();
   });
 
   it("500s if the DAL ever returns a row after as_of (PIT invariant)", async () => {
-    mockAsOfFetch.mockResolvedValue({ ...HIST_ROW, teo: "2025-07-02" });
+    mockAsOfFetch.mockResolvedValue({
+      latest: { ...HIST_ROW, teo: "2025-07-02" },
+      historyStart: "1999-01-22",
+    });
     const res = await decomposePOST(
       post({ ticker: "NVDA", as_of: "2025-06-30" }),
       fakeContext,

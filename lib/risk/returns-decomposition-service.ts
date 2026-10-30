@@ -10,7 +10,7 @@
 
 import {
   resolveSymbolByTicker,
-  fetchHistory,
+  fetchHistoryWithSource,
   pivotHistory,
   extractMetric,
   type PivotedHistoryRow,
@@ -62,6 +62,7 @@ export interface ReturnsDecompositionResult {
   market_factor_etf: string;
   universe: string;
   data_source: string;
+  history_starts?: string;
 }
 
 /** Wire shape with semantic suffixes for REST / OpenAPI. */
@@ -84,6 +85,7 @@ export type ReturnsDecompositionPublicBody = {
   market_factor_etf: string;
   universe: string;
   data_source: string;
+  history_starts?: string;
 };
 
 function levelFromZarrEncoding(raw: number | null | undefined): LstarLevel | null {
@@ -138,6 +140,7 @@ export function toReturnsDecompositionPublicBody(
     market_factor_etf: r.market_factor_etf,
     universe: r.universe,
     data_source: r.data_source,
+    ...(r.history_starts ? { history_starts: r.history_starts } : {}),
   };
   if (r.lstar !== undefined) {
     body.lstar = r.lstar;
@@ -153,6 +156,7 @@ export class ReturnsDecompositionService {
     marketFactorEtf: string,
     includeLstar: boolean,
     threshold: number,
+    historyStart?: string,
   ): ReturnsDecompositionResult {
     const base: ReturnsDecompositionResult = {
       ticker,
@@ -170,6 +174,7 @@ export class ReturnsDecompositionService {
       market_factor_etf: marketFactorEtf,
       universe: "US_EQUITY",
       data_source: "zarr",
+      ...(historyStart ? { history_starts: historyStart } : {}),
     };
     if (includeLstar) {
       base.lstar = [];
@@ -200,19 +205,35 @@ export class ReturnsDecompositionService {
       ? [...BASE_KEYS, ...LSTAR_KEYS]
       : BASE_KEYS;
 
-    const rows = await fetchHistory(symbolRecord.symbol, keys, {
-      periodicity: "daily",
-      startDate: startDateStr,
-      orderBy: "asc",
-    });
+    const { rows, historyStarts } = await fetchHistoryWithSource(
+      symbolRecord.symbol,
+      keys,
+      {
+        periodicity: "daily",
+        startDate: startDateStr,
+        orderBy: "asc",
+      },
+    );
 
     if (rows.length === 0) {
-      return this.emptyResult(upperTicker, marketFactorEtf, includeLstar, threshold);
+      return this.emptyResult(
+        upperTicker,
+        marketFactorEtf,
+        includeLstar,
+        threshold,
+        historyStarts[symbolRecord.symbol],
+      );
     }
 
     const pivoted = pivotHistory(rows);
     if (pivoted.length === 0) {
-      return this.emptyResult(upperTicker, marketFactorEtf, includeLstar, threshold);
+      return this.emptyResult(
+        upperTicker,
+        marketFactorEtf,
+        includeLstar,
+        threshold,
+        historyStarts[symbolRecord.symbol],
+      );
     }
 
     const dates = pivoted.map((p) => p.teo);

@@ -785,6 +785,70 @@ async function readColumnBlock(
   }
 }
 
+export function firstValidIndex(values: ReadonlyArray<number | null>): number | null {
+  const index = values.findIndex((value) => value !== null && Number.isFinite(value));
+  return index >= 0 ? index : null;
+}
+
+export function filterRowsByHistoryStarts(
+  rows: ReadonlyArray<SecurityHistoryRow>,
+  historyStarts: Readonly<Record<string, string>>,
+): SecurityHistoryRow[] {
+  return rows.filter((row) => {
+    const historyStart = historyStarts[row.symbol];
+    return historyStart !== undefined && row.teo >= historyStart;
+  });
+}
+
+async function readFirstValidDates(
+  grp: Group<Readable>,
+  teo: string[],
+  members: Array<{ symbol: string; idx: number }>,
+): Promise<Map<string, string>> {
+  const starts = new Map<string, string>();
+
+  for (const varName of ["close", "return"] as const) {
+    const unresolved = members.filter((member) => !starts.has(member.symbol));
+    if (unresolved.length === 0) break;
+
+    let arr: ZarrArray<DataType, Readable>;
+    try {
+      arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    } catch {
+      continue;
+    }
+
+    const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1);
+    const byChunk = new Map<number, Array<{ symbol: string; idx: number }>>();
+    for (const member of unresolved) {
+      const chunk = Math.floor(member.idx / chunkW);
+      const list = byChunk.get(chunk) ?? [];
+      list.push(member);
+      byChunk.set(chunk, list);
+    }
+
+    await Promise.all(
+      [...byChunk.values()].map(async (list) => {
+        const columns = await readColumnBlock(
+          grp,
+          varName,
+          arr,
+          { t0: 0, t1: teo.length, mode: "float" },
+          list.map((member) => member.idx),
+        );
+        if (!columns) return;
+        list.forEach((member, index) => {
+          const first = firstValidIndex(columns[index]!);
+          const date = first === null ? null : teo[first];
+          if (date) starts.set(member.symbol, date);
+        });
+      }),
+    );
+  }
+
+  return starts;
+}
+
 export interface ReadHistorySliceParams {
   symbols: string[];
   keys: V3MetricKey[];
@@ -797,6 +861,7 @@ export interface ReadHistorySliceParams {
 export interface ReadHistorySliceResult {
   rows: SecurityHistoryRow[];
   range: [string, string];
+  historyStarts: Record<string, string>;
 }
 
 function shouldUseSupabaseForKeys(keys: V3MetricKey[]): boolean {
@@ -818,6 +883,7 @@ function cacheKeyForZarr(p: ReadHistorySliceParams, prefix: ZarrGcsPrefix): stri
     per: p.periodicity,
     ord: p.orderBy ?? "asc",
     fs: factorSet,
+    historyFloor: 1,
   });
   const h = createHash("sha256").update(payload).digest("hex");
   return generateCacheKey("zarr_hist", h);
@@ -886,11 +952,11 @@ export async function readHistorySlice(
 
   if (periodicity !== "daily") {
     logSliceTelemetry(params, "non_daily_skip", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
   if (shouldUseSupabaseForKeys(keys)) {
     logSliceTelemetry(params, "unsupported_keys_skip", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
 
   // One prefix for the whole slice: every store below is opened from the same release.
@@ -910,13 +976,13 @@ export async function readHistorySlice(
   const dailyGrp = await openZarrGroup(zarrDailyBasename(), prefix);
   if (!dailyGrp) {
     logSliceTelemetry(params, "open_failed", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
   const dailyTeo = await readTeoStrings(dailyGrp);
   const dailySymMap = await readSymbolIndexMap(dailyGrp);
   if (!dailyTeo?.length || !dailySymMap?.size) {
     logSliceTelemetry(params, "empty_axes", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
 
   const needHedge = keys.some((k) => getZarrSpec(k)?.role === "hedge");
@@ -948,6 +1014,26 @@ export async function readHistorySlice(
   const etfGrp = await openZarrGroup(zarrEtfBasename(), prefix);
   const etfTeo = etfGrp ? await readTeoStrings(etfGrp) : null;
   const etfSymMap = etfGrp ? await readSymbolIndexMap(etfGrp) : null;
+
+  const stockCoreMembers = symbols.flatMap((symbol) => {
+    const idx = dailySymMap.get(symbol);
+    return idx === undefined ? [] : [{ symbol, idx }];
+  });
+  const etfCoreMembers = symbols.flatMap((symbol) => {
+    if (dailySymMap.has(symbol)) return [];
+    const idx = etfSymMap?.get(symbol);
+    return idx === undefined ? [] : [{ symbol, idx }];
+  });
+  const [stockHistoryStarts, etfHistoryStarts] = await Promise.all([
+    readFirstValidDates(dailyGrp, dailyTeo, stockCoreMembers),
+    etfGrp && etfTeo?.length
+      ? readFirstValidDates(etfGrp, etfTeo, etfCoreMembers)
+      : Promise.resolve(new Map<string, string>()),
+  ]);
+  const historyStarts = Object.fromEntries([
+    ...stockHistoryStarts.entries(),
+    ...etfHistoryStarts.entries(),
+  ]);
 
   // Shortest common range across every stock-side store involved in this
   // request, clipped to the caller's [startDate, endDate] window. Guarantees
@@ -1004,9 +1090,6 @@ export async function readHistorySlice(
       if (etfT1 < etfT0) etfT1 = etfT0;
     }
   }
-
-  const rangeStart = validWindow ? (dailyTeo[dt0] ?? effStart) : "";
-  const rangeEnd = validWindow ? (dailyTeo[Math.max(0, dt1 - 1)] ?? effEnd) : "";
 
   // Reads are grouped by (store variable, symbol chunk). Every store here is
   // chunked [whole teo axis, 64 symbols], and zarrita decodes the whole chunk
@@ -1198,7 +1281,7 @@ export async function readHistorySlice(
     windowRows <= SHORT_WINDOW_ROWS
       ? Math.max(1, Number(process.env.ZARR_SHORT_READ_CONCURRENCY ?? 48) || 48)
       : Math.max(1, Number(process.env.ZARR_READ_CONCURRENCY ?? 8) || 8);
-  const rows: SecurityHistoryRow[] = [];
+  const rawRows: SecurityHistoryRow[] = [];
   let cursor = 0;
   await Promise.all(
     Array.from(
@@ -1206,7 +1289,7 @@ export async function readHistorySlice(
       async () => {
         while (cursor < tasks.length) {
           const part = await tasks[cursor++]();
-          rows.push(...part);
+          rawRows.push(...part);
         }
       },
     ),
@@ -1214,6 +1297,7 @@ export async function readHistorySlice(
 
   // Ties (same teo and key) keep the caller's symbol order.
   const symbolPos = new Map(symbols.map((s, i) => [s, i] as const));
+  const rows = filterRowsByHistoryStarts(rawRows, historyStarts);
   rows.sort((a, b) => {
     const c = a.teo.localeCompare(b.teo);
     if (c !== 0) return orderBy === "asc" ? c : -c;
@@ -1222,9 +1306,14 @@ export async function readHistorySlice(
     return (symbolPos.get(a.symbol) ?? 0) - (symbolPos.get(b.symbol) ?? 0);
   });
 
+  const servedDates = rows.map((row) => row.teo);
+  const rangeStart = servedDates.length > 0 ? servedDates.reduce((a, b) => (a < b ? a : b)) : "";
+  const rangeEnd = servedDates.length > 0 ? servedDates.reduce((a, b) => (a > b ? a : b)) : "";
+
   const result: ReadHistorySliceResult = {
     rows,
     range: [rangeStart, rangeEnd],
+    historyStarts,
   };
 
   // Large slices (multi-year history for many names) are not cached: they would

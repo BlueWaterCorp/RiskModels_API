@@ -1731,6 +1731,11 @@
             "type": "boolean",
             "description": "`true` when the most-recent-holder check could not read its evidence (security master, registry or daily index outage) and the previous answer was returned unchecked; a later request may answer a different security. Absent otherwise.\n"
           },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present on an empty response when the requested window is before this security's first non-null daily price observation. Rows before this date are omitted.\n"
+          },
           "_metadata": {
             "type": "object",
             "additionalProperties": true,
@@ -2236,6 +2241,11 @@
           "data_source": {
             "type": "string",
             "example": "security_history"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present when the returned arrays are empty because the requested window is before this security's first non-null daily price observation.\n"
           }
         }
       },
@@ -2368,6 +2378,11 @@
           "data_source": {
             "type": "string",
             "example": "zarr"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present when the returned arrays are empty because the requested window is before this security's first non-null daily price observation.\n"
           }
         }
       },
@@ -3555,6 +3570,11 @@
           "data_source": {
             "type": "string",
             "example": "zarr"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present when the returned arrays are empty because the requested window is before this security's first non-null daily price observation.\n"
           }
         }
       },
@@ -4249,6 +4269,11 @@
             "type": "integer",
             "description": "HTTP status code.",
             "example": 404
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "First non-null daily price date for the resolved security. Present when a historical request ends before the security's own history begins.\n"
           },
           "details": {
             "type": "object",

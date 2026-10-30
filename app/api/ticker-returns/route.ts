@@ -127,12 +127,17 @@ export const GET = withBilling(
     const fetchStart = performance.now();
     let rows: Awaited<ReturnType<typeof fetchHistoryWithSource>>["rows"];
     let dataSource: Awaited<ReturnType<typeof fetchHistoryWithSource>>["dataSource"];
+    let historyStarts: Awaited<ReturnType<typeof fetchHistoryWithSource>>["historyStarts"] = {};
     try {
-      ({ rows, dataSource } = await fetchHistoryWithSource(symbolRecord.symbol, keys, {
-        periodicity: "daily",
-        startDate: startDateStr,
-        orderBy: "asc",
-      }));
+      ({ rows, dataSource, historyStarts } = await fetchHistoryWithSource(
+        symbolRecord.symbol,
+        keys,
+        {
+          periodicity: "daily",
+          startDate: startDateStr,
+          orderBy: "asc",
+        },
+      ));
     } catch (error) {
       console.error("[ticker-returns] history fetch failed", {
         ticker,
@@ -192,6 +197,7 @@ export const GET = withBilling(
       base.l3_res_er = row.l3_res_er ?? null;
       return base;
     });
+    const historyStart = historyStarts[symbolRecord.symbol];
 
     // No billing for empty responses (RMAPI-14): zero rows cost nothing, and
     // the warning names the reason instead of asking the caller to retry.
@@ -229,6 +235,9 @@ export const GET = withBilling(
         ...getCorsHeaders(origin),
         ETag: etag,
         "X-Data-Fetch-Latency-Ms": String(fetchLatency),
+        ...(data.length === 0 && historyStart
+          ? { "X-History-Starts": historyStart }
+          : {}),
         // csv / parquet carry no JSON envelope, so the most-recent-holder
         // disclosure also rides on headers.
         ...resolutionDisclosureHeaders(symbolRecord),
@@ -243,6 +252,9 @@ export const GET = withBilling(
         ...resolutionDisclosure(symbolRecord),
         periodicity: "daily",
         data,
+        ...(data.length === 0 && historyStart
+          ? { history_starts: historyStart }
+          : {}),
         meta: isEtf
           ? {
               market_etf: "SPY",

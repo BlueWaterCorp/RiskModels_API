@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({ history: vi.fn() }));
 vi.mock("@/lib/dal/risk-engine-v3", () => ({
   resolveSymbolByTicker: vi.fn(async () => ({ symbol: "test-symbol" })),
   fetchHistory: mocks.history,
+  fetchHistoryWithSource: vi.fn(async (...args: unknown[]) => ({
+    rows: await mocks.history(...args),
+    dataSource: "zarr",
+    historyStarts: { "test-symbol": "1999-01-22" },
+  })),
   pivotHistory: (rows: unknown) => rows,
   extractMetric: (row: Record<string, number>, key: string) => row[key] ?? null,
 }));

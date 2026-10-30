@@ -35,6 +35,7 @@ function rows(entries: Array<[string, string, number]>) {
       metric_key,
       metric_value,
     })),
+    historyStarts: { SYM_NVDA: "1999-01-22" },
   };
 }
 
@@ -95,7 +96,10 @@ describe("fetchLatestMetrics with asOf", () => {
   });
 
   it("returns null when the window ≤ asOf holds no rows (predates history)", async () => {
-    mockSlice.mockResolvedValue({ rows: [] });
+    mockSlice.mockResolvedValue({
+      rows: [],
+      historyStarts: { SYM_NVDA: "1999-01-22" },
+    });
     const out = await fetchLatestMetrics(
       "SYM_NVDA",
       ["l3_mkt_er"],
