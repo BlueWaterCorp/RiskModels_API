@@ -13055,7 +13055,7 @@ paths:
           headers:
             X-Data-As-Of:
               schema: { type: string, format: date }
-              description: Latest teo in the per-fund holdings panel.
+              description: Selected book's teo; latest panel teo when the request is undated.
             X-Data-Filing-Date:
               schema: { type: string, format: date }
               description: Selected book's filing date; omitted when unavailable or later than `as_of`.

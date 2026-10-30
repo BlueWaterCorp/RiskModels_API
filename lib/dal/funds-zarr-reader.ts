@@ -798,6 +798,39 @@ async function readScalarAtTeo(
   }
 }
 
+/** Read one numeric scalar from an optional 1-D (teo,) variable. */
+async function readOptionalNumericScalarAtTeo(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+): Promise<number | null | undefined> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(teoIdx, teoIdx + 1)]);
+    return decodeNumericCells(ch?.data)?.[0] ?? null;
+  } catch (err) {
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) return undefined;
+    throw err;
+  }
+}
+
+export function resolveFundBookRowsAtTeo(
+  variableValue: number | null | undefined,
+  rawAttr: unknown,
+  teoIdx: number,
+  teo: string,
+): number | null {
+  if (variableValue !== undefined) return variableValue;
+  const attrValue = Array.isArray(rawAttr)
+    ? rawAttr[teoIdx]
+    : rawAttr && typeof rawAttr === "object"
+      ? (rawAttr as Record<string, unknown>)[teo]
+      : rawAttr;
+  const numericValue = attrValue == null ? null : Number(attrValue);
+  return numericValue != null && Number.isFinite(numericValue) ? numericValue : null;
+}
+
 export interface FundHolding {
   bw_sym_id: string;
   adj_mv: number;
@@ -991,7 +1024,7 @@ export interface FundHoldingsBook extends FundHoldingsSnapshot {
   filing_date_source?: "exact" | "approx" | null;
   /** True when at least one position was newly reported at the selected teo. */
   has_new_data?: boolean;
-  /** Number of source filing rows, when published as a zarr attribute. */
+  /** Number of source filing rows published for the selected teo. */
   book_rows?: number | null;
   /** Market value dropped by the model universe gate. */
   universe_dropped_mv?: number | null;
@@ -1144,15 +1177,13 @@ export async function readFundHoldingsBook(
       let bookRows: number | null = null;
       if (asOf) {
         const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
-        const rawBookRows = attrs.book_rows;
-        const datedBookRows =
-          Array.isArray(rawBookRows)
-            ? rawBookRows[teoIdx]
-            : rawBookRows && typeof rawBookRows === "object"
-              ? (rawBookRows as Record<string, unknown>)[teos[teoIdx]!]
-              : rawBookRows;
-        const bookRowsNumber = datedBookRows == null ? null : Number(datedBookRows);
-        bookRows = bookRowsNumber != null && Number.isFinite(bookRowsNumber) ? bookRowsNumber : null;
+        const variableBookRows = await readOptionalNumericScalarAtTeo(grp, "book_rows", teoIdx);
+        bookRows = resolveFundBookRowsAtTeo(
+          variableBookRows,
+          attrs.book_rows,
+          teoIdx,
+          teos[teoIdx]!,
+        );
       }
       return {
         teo: teos[teoIdx]!,
