@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-30 — Point-in-time fund holdings (RMAPI-29)
+
+- `GET /funds/{bw_fund_id}/holdings` accepts `as_of` with a required `time_basis=report_date|available_date`; `as_of` alone is a 400 (`time_basis_required`) whose body explains both choices, and `time_basis` alone is a 400 (`as_of_required`). Requests without either parameter are unchanged. Report-date mode skips forward-filled months; availability mode selects only filings public by the cutoff. Dated requests return 404 instead of falling forward.
+- Full-book responses now echo the selection basis and filing provenance, source-row count when available, model-universe exclusions, and the current-registry ticker basis.
+- Python SDK `get_fund_holdings` accepts the same optional parameters.
+
 ## 2026-10-29 — MCP `riskmodels_portfolio_exposure`: integer `top_contributors`
 
 - The tool's `top_contributors` input is an integer from 1 to 1000. `1000` lists every name. The string `"all"` is no longer accepted on the tool. `POST /portfolio/exposure` still accepts `"all"`.

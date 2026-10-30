@@ -2773,12 +2773,15 @@ export const CAPABILITIES: Capability[] = [
     id: "fund-holdings",
     name: "Fund Holdings (full book)",
     description:
-      "A mutual fund's full book at its latest filed report (SEC N-PORT), shorts included as " +
+      "A mutual fund's full book at its latest filed report, or a dated book selected with " +
+      "as_of and time_basis. Shorts are included as " +
       "negative adj_mv, ranked by |adj_mv|. Each holding has ticker, bw_sym_id, adj_mv and a " +
       "signed weight against filed net assets (gross if none); book gives long/short/net/gross " +
       "totals in dollars and % of net assets, and " +
       "coverage gives the share of the book with a ticker plus the value of unmatched filings. " +
-      "Use ?limit=5000 for the whole book; positions feed POST /portfolio/exposure directly.",
+      "Use ?limit=5000 for the whole book; positions feed POST /portfolio/exposure directly. " +
+      "A dated miss returns 404 without falling forward. Invalid paired parameters return 400: " +
+      "as_of requires time_basis, and time_basis requires as_of.",
     endpoint: "/api/funds/{bw_fund_id}/holdings",
     method: "GET",
     parameters: {
@@ -2795,6 +2798,21 @@ export const CAPABILITIES: Capability[] = [
         default: 25,
         min: 1,
         max: 5000,
+      },
+      as_of: {
+        type: "string",
+        required: false,
+        description:
+          "Inclusive YYYY-MM-DD cutoff. Requires time_basis; no eligible dated book returns 404.",
+      },
+      time_basis: {
+        type: "string",
+        required: false,
+        enum: ["report_date", "available_date"],
+        description:
+          "Required with as_of. report_date selects the latest reported period at the cutoff; " +
+          "available_date selects the latest book available at the cutoff. Without as_of, returns " +
+          "400 with code as_of_required.",
       },
     },
     pricing: {
@@ -2817,6 +2835,16 @@ export const CAPABILITIES: Capability[] = [
       sources: ["ds_ph.zarr", "funds"],
     },
     tags: ["funds", "holdings", "knowledge-mode"],
+    examples: [
+      {
+        request: {
+          bw_fund_id: "BW-FUND-S000006037",
+          as_of: "2020-06-30",
+          time_basis: "available_date",
+          limit: 25,
+        },
+      },
+    ],
   },
   {
     id: "fund-hedge",
