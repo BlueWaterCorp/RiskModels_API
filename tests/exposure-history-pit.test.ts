@@ -24,18 +24,33 @@ const symbolRows = [
   { symbol: "BW-BBG0125CL1D2", ticker: "IXHL", name: "Incannex Healthcare Inc." },
   { symbol: "BW-BBG0116Y22N3", ticker: "NEXN", name: "Nexxen International Ltd." },
 ];
+const aliasRows = [
+  { bw_sym_id: META, alias_value: "FB", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: "2022-06-09" },
+  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2022-06-09", valid_to: null },
+  { bw_sym_id: SPACEX, alias_value: "SPCX", alias_type: "TICKER", valid_from: "2026-06-12", valid_to: null },
+];
+const masterRows = [
+  { bw_sym_id: META, ticker: "META", company_name: "Meta Platforms, Inc.", cik: "0001326801", valid_from: "2012-05-18", valid_to: null, merged_into: null },
+  { bw_sym_id: SPACEX, ticker: "SPCX", company_name: "Space Exploration Technologies Corp", cik: "0001879026", valid_from: "2026-06-12", valid_to: null, merged_into: null },
+];
 
 // Set to make the reviewed-events read fail (the only failure injected; every other table is the fixture).
 const eventsDown = { on: false };
 
 function query(rows: unknown[], fail = false) {
+  let filtered = rows as Array<Record<string, unknown>>;
   const q: Record<string, unknown> = {
     select: () => q,
-    eq: () => q,
-    in: (_col: string, vals: string[]) =>
-      query((rows as Array<Record<string, unknown>>).filter((r) => !("symbol" in r) || vals.includes(r.symbol as string)), fail),
+    eq: (col: string, value: unknown) => {
+      filtered = filtered.filter((r) => r[col] === value);
+      return q;
+    },
+    in: (col: string, vals: unknown[]) => {
+      filtered = filtered.filter((r) => vals.includes(r[col]));
+      return q;
+    },
     then: (res: (v: unknown) => unknown) =>
-      Promise.resolve(fail ? { data: null, error: { message: "connection refused" } } : { data: rows, error: null }).then(res),
+      Promise.resolve(fail ? { data: null, error: { message: "connection refused" } } : { data: filtered, error: null }).then(res),
   };
   return q;
 }
@@ -47,6 +62,8 @@ vi.mock("@/lib/supabase/admin", () => ({
         table === "security_events" ? fx.events
           : table === "security_event_legs" ? fx.legs
             : table === "symbols" ? symbolRows
+              : table === "security_aliases" ? aliasRows
+                : table === "security_master" ? masterRows
               : [],
         table === "security_events" && eventsDown.on,
       ),
@@ -139,12 +156,17 @@ describe("heldTickerWindows: reviewed fixtures", () => {
     expect(after[0].status).not.toBe("rewritten");
   });
 
-  it("FB: Meta before 2022-06-09 (priced as META); META before then names no security", async () => {
+  it("FB and the current META ticker both map to Meta before 2022-06-09", async () => {
     const ws = await heldTickerWindows(["FB", "META"], { asOf: AS_OF });
     expect(covering(ws, "FB", "2021-12-31")[0]).toMatchObject({
       status: "rewritten", priced_as: "META", bw_sym_id: META, event_ids: ["META-FB-20220609"],
     });
-    expect(covering(ws, "FB", "2023-01-03")[0].priced_as).toBe("FB");
+    expect(covering(ws, "FB", "2023-01-03")[0]).toMatchObject({
+      status: "dropped", priced_as: null, outcome: "current_identity_unavailable",
+    });
+    expect(covering(ws, "META", "2020-06-30")[0]).toMatchObject({
+      status: "rewritten", priced_as: "META", bw_sym_id: META, outcome: "current_ticker_mapped_to_held_date",
+    });
     expect(covering(ws, "META", "2023-01-03")[0]).toMatchObject({ status: "unchanged", priced_as: "META" });
   });
 

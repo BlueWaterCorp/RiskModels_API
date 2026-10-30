@@ -9,11 +9,12 @@
  * ticker under which today's registry holds the security it became, and reports every rewrite with
  * its event ids and exact ratios.
  *
- * Only tickers that appear in reviewed events are examined; every other position passes through
- * untouched, so a book with no reviewed history behaves exactly as before. Positions carry dollar
- * values, which a ratio does not change; a split into several securities (spin-off) cannot be priced
- * here and is reported `unsupported` with the position left as submitted. A position that became cash
- * or was cancelled is dropped and reported.
+ * Tickers that appear in reviewed events are always examined. For an explicitly dated book, every
+ * submitted ticker is also checked against point-in-time alias and security-master validity so a
+ * current ticker cannot be priced before its security existed or under a different historical holder.
+ * Positions carry dollar values, which a ratio does not change; a split into several securities
+ * (spin-off) cannot be priced here and is reported `unsupported` with the position left as submitted.
+ * A position that cannot be mapped safely, became cash or was cancelled is dropped and reported.
  */
 import { describe, loadEvents, resolveIdentity, type IdentitySource } from "@/lib/identity/resolve";
 import { applyEvents, effectiveEvents, fracToRatio, fracToString, parseDecimal, tickerWindows } from "@/lib/identity/security-events";
@@ -39,7 +40,7 @@ export type PositionTransition = {
   submitted_ticker: string;
   held_on: string;
   as_of: string;
-  /** rewritten: priced under another ticker; carried: same ticker, events applied (e.g. ADS -> ordinary). */
+  /** rewritten: identity or pricing ticker changed; carried: same ticker, events applied (e.g. ADS -> ordinary). */
   status: "rewritten" | "carried" | "dropped" | "unsupported" | "unresolved";
   identity_source: IdentitySource | null;
   source_bw_sym_id: string | null;
@@ -53,15 +54,51 @@ export type PositionTransition = {
 
 export type TransitionResult<T> = { positions: T[]; transitions: PositionTransition[] };
 
+const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER", "LEGACY_TICKER"];
+
 /** Today's registry ticker for each id (symbols, else the security master). */
 async function registryTickers(ids: string[]): Promise<Map<string, string | null>> {
   const d = await describe(ids);
   return new Map(ids.map((id) => [id, d.get(id)?.ticker ?? null]));
 }
 
+type HeldDateTicker =
+  | { status: "resolved"; ticker: string }
+  | { status: "not_valid"; tickers: [] }
+  | { status: "ambiguous"; tickers: string[] };
+
+const covers = (row: { valid_from: string | null; valid_to: string | null }, date: string) =>
+  (!row.valid_from || row.valid_from.slice(0, 10) <= date) && (!row.valid_to || date < row.valid_to.slice(0, 10));
+
+/** Historical ticker for a currently resolved security, with the master row proving it existed then. */
+async function heldDateTicker(bwSymId: string, heldOn: string): Promise<HeldDateTicker> {
+  const admin = createAdminClient();
+  const [al, sm] = await Promise.all([
+    admin.from("security_aliases").select("alias_type, alias_value, valid_from, valid_to").eq("bw_sym_id", bwSymId).in("alias_type", TICKER_ALIAS_TYPES),
+    admin.from("security_master").select("ticker, valid_from, valid_to, merged_into").eq("bw_sym_id", bwSymId),
+  ]);
+  if (al.error) throw new Error(`security_aliases read failed: ${al.error.message}`);
+  if (sm.error) throw new Error(`security_master read failed: ${sm.error.message}`);
+
+  const master = ((sm.data ?? []) as Array<{ ticker: string | null; valid_from: string | null; valid_to: string | null; merged_into: string | null }>)
+    .filter((r) => !r.merged_into && covers(r, heldOn));
+  if (!master.length) return { status: "not_valid", tickers: [] };
+
+  const aliasRows = ((al.data ?? []) as Array<{ alias_type: string; alias_value: string; valid_from: string | null; valid_to: string | null }>)
+    .filter((r) => covers(r, heldOn));
+  const preferredAliases = aliasRows.some((r) => r.alias_type === "TICKER") ? aliasRows.filter((r) => r.alias_type === "TICKER") : aliasRows;
+  const aliases = preferredAliases
+    .map((r) => r.alias_value.trim().toUpperCase())
+    .filter(Boolean);
+  const fallbackTickers = master.map((r) => r.ticker?.trim().toUpperCase()).filter(Boolean) as string[];
+  const tickers = [...new Set(aliases.length ? aliases : fallbackTickers)].sort();
+  if (tickers.length === 1) return { status: "resolved", ticker: tickers[0] };
+  return { status: "ambiguous", tickers };
+}
+
 export async function transitionPositions<T extends { ticker: string }>(
   positions: T[],
-  opts: { heldOn: string; asOf: string; knownAsOf?: string | null },
+  opts: { heldOn: string; asOf: string; knownAsOf?: string | null; mapCurrentTickerToHeldDate?: boolean },
 ): Promise<TransitionResult<T>> {
   const { heldOn, asOf } = opts;
   if (heldOn > asOf) throw new Error(`positions_as_of ${heldOn} is after as_of ${asOf}`);
@@ -69,7 +106,8 @@ export async function transitionPositions<T extends { ticker: string }>(
   const eff = effectiveEvents(events, opts.knownAsOf ?? null);
   const eventTickers = new Set(eff.flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.ticker).filter(Boolean)));
   const byId = new Map(events.map((e) => [e.event_id, e]));
-  const touched = [...new Set(positions.map((p) => p.ticker.trim().toUpperCase()))].filter((t) => eventTickers.has(t));
+  const submittedTickers = [...new Set(positions.map((p) => p.ticker.trim().toUpperCase()))];
+  const touched = (opts.mapCurrentTickerToHeldDate ?? true) ? submittedTickers : submittedTickers.filter((t) => eventTickers.has(t));
   if (!touched.length) return { positions, transitions: [] };
 
   // ticker -> what it became (null: leave the position as submitted)
@@ -85,6 +123,60 @@ export async function transitionPositions<T extends { ticker: string }>(
       source_bw_sym_id: identity.bw_sym_id,
     };
     if (identity.status !== "resolved" || !identity.bw_sym_id) {
+      if (opts.mapCurrentTickerToHeldDate ?? true) {
+        const current = await resolveIdentity(req, events, asOf);
+        if (current.status !== "resolved" || !current.bw_sym_id) {
+          plan.set(t, {
+            ticker: null, drop: true,
+            transition: {
+              ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
+              status: "dropped", bw_sym_id: null, ticker: null, outcome: `current_identity_${current.status}`,
+              event_ids: [], steps: [],
+              detail: `${t} on ${heldOn}: identity ${identity.status}; ${t} on ${asOf}: identity ${current.status}. Position dropped to avoid pricing an unverified security.`,
+            },
+          });
+          continue;
+        }
+        const heldTicker = await heldDateTicker(current.bw_sym_id, heldOn);
+        if (heldTicker.status !== "resolved") {
+          plan.set(t, {
+            ticker: null, drop: true,
+            transition: {
+              ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
+              status: "dropped", bw_sym_id: null, ticker: null,
+              outcome: heldTicker.status === "not_valid" ? "current_security_not_valid_on_held_date" : "held_date_ticker_ambiguous",
+              event_ids: [], steps: [],
+              detail: heldTicker.status === "not_valid"
+                ? `${t} on ${asOf} resolves to ${current.bw_sym_id}, which was not valid on ${heldOn}. Position dropped.`
+                : `${t} on ${asOf} resolves to ${current.bw_sym_id}, but its ticker on ${heldOn} is ambiguous (${heldTicker.tickers.join(", ")}). Position dropped.`,
+            },
+          });
+          continue;
+        }
+        const registryTicker = (await registryTickers([current.bw_sym_id])).get(current.bw_sym_id);
+        if (!registryTicker) {
+          plan.set(t, {
+            ticker: null, drop: true,
+            transition: {
+              ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
+              status: "dropped", bw_sym_id: null, ticker: null, outcome: "current_security_registry_ticker_unavailable",
+              event_ids: [], steps: [],
+              detail: `${t} on ${asOf} resolves to ${current.bw_sym_id}, but no registry ticker is available for pricing. Position dropped.`,
+            },
+          });
+          continue;
+        }
+        plan.set(t, {
+          ticker: registryTicker, drop: false,
+          transition: {
+            ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
+            status: "rewritten", bw_sym_id: current.bw_sym_id, ticker: registryTicker,
+            outcome: "current_ticker_mapped_to_held_date", event_ids: [], steps: [],
+            detail: `${t} submitted for ${heldOn} -> ${current.bw_sym_id}, traded as ${heldTicker.ticker} on that date. Priced as ${registryTicker}.`,
+          },
+        });
+        continue;
+      }
       plan.set(t, {
         ticker: null, drop: false,
         transition: { ...base, status: "unresolved", bw_sym_id: null, ticker: null, outcome: identity.status, event_ids: [], steps: [],
@@ -157,7 +249,11 @@ export function transitionFootnotes(transitions: PositionTransition[]): string[]
       case "carried":
         return `${t.submitted_ticker} held on ${t.held_on} carried through${ev}.`;
       case "dropped":
-        return `${t.submitted_ticker} held on ${t.held_on} removed: ${t.outcome === "cashed_out" ? "converted to cash" : "cancelled"}${ev}.`;
+        return `${t.submitted_ticker} held on ${t.held_on} removed: ${
+          t.outcome === "cashed_out" ? "converted to cash"
+            : t.outcome === "cancelled" ? "cancelled"
+              : t.detail.replace(/\.$/, "")
+        }${ev}.`;
       default:
         return `${t.submitted_ticker} held on ${t.held_on} left as submitted (${t.status}).`;
     }
@@ -183,8 +279,6 @@ export type HeldTickerWindow = {
   outcome: string;
   event_ids: string[];
 };
-
-const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER", "LEGACY_TICKER"];
 
 /** Dates at which the alias and security-master evidence for `ticker` changes (empty on a read error). */
 async function evidenceDates(ticker: string): Promise<string[]> {

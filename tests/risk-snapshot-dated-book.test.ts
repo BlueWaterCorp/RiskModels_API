@@ -12,19 +12,36 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
 
 const META = "BW-BBG000MM2P62";
+const AAPL = "BW-BBG000B9XRY4";
 const symbolRows = [
   { symbol: META, ticker: "META", name: "Meta Platforms, Inc." },
+  { symbol: AAPL, ticker: "AAPL", name: "Apple Inc" },
   { symbol: "BW-BBG00YJ8L8T5", ticker: "SPCK", name: "The SPAC and New Issue ETF" },
   { symbol: "BW-BBG000NQF3Z5", ticker: "SPCX", name: "Space Exploration Technologies Corp" },
 ];
+const aliasRows = [
+  { bw_sym_id: META, alias_value: "FB", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: "2022-06-09" },
+  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2022-06-09", valid_to: null },
+  { bw_sym_id: AAPL, alias_value: "AAPL", alias_type: "TICKER", valid_from: "2000-01-01", valid_to: null },
+];
+const masterRows = [
+  { bw_sym_id: META, ticker: "META", company_name: "Meta Platforms, Inc.", cik: "0001326801", valid_from: "2012-05-18", valid_to: null, merged_into: null },
+  { bw_sym_id: AAPL, ticker: "AAPL", company_name: "Apple Inc", cik: "0000320193", valid_from: "2000-01-01", valid_to: null, merged_into: null },
+];
 
 function query(rows: unknown[]) {
+  let filtered = rows as Array<Record<string, unknown>>;
   const q: Record<string, unknown> = {
     select: () => q,
-    eq: () => q,
-    in: (_col: string, vals: string[]) =>
-      query((rows as Array<Record<string, unknown>>).filter((r) => !("symbol" in r) || vals.includes(r.symbol as string))),
-    then: (res: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(res),
+    eq: (col: string, value: unknown) => {
+      filtered = filtered.filter((r) => r[col] === value);
+      return q;
+    },
+    in: (col: string, vals: unknown[]) => {
+      filtered = filtered.filter((r) => vals.includes(r[col]));
+      return q;
+    },
+    then: (res: (v: unknown) => unknown) => Promise.resolve({ data: filtered, error: null }).then(res),
   };
   return q;
 }
@@ -36,6 +53,8 @@ vi.mock("@/lib/supabase/admin", () => ({
         table === "security_events" ? fx.events
           : table === "security_event_legs" ? fx.legs
             : table === "symbols" ? symbolRows
+              : table === "security_aliases" ? aliasRows
+                : table === "security_master" ? masterRows
               : [],
       ),
   }),
@@ -152,5 +171,14 @@ describe("transitionFootnotes", () => {
       "SPCX held on 2026-03-31 is priced as SPCK (SPCK-SPCX-20260407).",
     ]);
     expect(transitionFootnotes([])).toEqual([]);
+  });
+
+  it("prints the explicit reason for a held-date identity drop", () => {
+    expect(transitionFootnotes([{
+      submitted_ticker: "SPCX", held_on: "2026-05-01", as_of: "2026-10-22", status: "dropped",
+      identity_source: "ticker_alias_window", source_bw_sym_id: "BW-BBG000NQF3Z5", bw_sym_id: null, ticker: null,
+      outcome: "current_security_not_valid_on_held_date", event_ids: [], steps: [],
+      detail: "SPCX on 2026-10-22 resolves to BW-BBG000NQF3Z5, which was not valid on 2026-05-01. Position dropped.",
+    }])[1]).toContain("which was not valid on 2026-05-01");
   });
 });

@@ -18,10 +18,10 @@
       "ticker": "FB",
       "held_from": "2022-06-09",
       "held_to": null,
-      "status": "unresolved",
-      "priced_as": "FB",
+      "status": "dropped",
+      "priced_as": null,
       "bw_sym_id": null,
-      "outcome": "unavailable",
+      "outcome": "current_identity_unavailable",
       "event_ids": []
     },
     {
@@ -49,11 +49,21 @@
     {
       "ticker": "META",
       "held_from": null,
-      "held_to": "2022-06-09",
-      "status": "unresolved",
-      "priced_as": "META",
+      "held_to": "2012-05-18",
+      "status": "dropped",
+      "priced_as": null,
       "bw_sym_id": null,
-      "outcome": "unavailable",
+      "outcome": "current_security_not_valid_on_held_date",
+      "event_ids": []
+    },
+    {
+      "ticker": "META",
+      "held_from": "2012-05-18",
+      "held_to": "2022-06-09",
+      "status": "rewritten",
+      "priced_as": "META",
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "outcome": "current_ticker_mapped_to_held_date",
       "event_ids": []
     },
     {
@@ -147,11 +157,21 @@
     {
       "ticker": "SPCX",
       "held_from": "2026-04-07",
+      "held_to": "2026-06-12",
+      "status": "dropped",
+      "priced_as": null,
+      "bw_sym_id": null,
+      "outcome": "current_security_not_valid_on_held_date",
+      "event_ids": []
+    },
+    {
+      "ticker": "SPCX",
+      "held_from": "2026-06-12",
       "held_to": null,
-      "status": "unresolved",
+      "status": "unchanged",
       "priced_as": "SPCX",
       "bw_sym_id": null,
-      "outcome": "unavailable",
+      "outcome": "unchanged",
       "event_ids": []
     }
   ]

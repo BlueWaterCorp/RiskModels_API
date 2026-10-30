@@ -11,21 +11,49 @@ const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/
 
 const ETF = "BW-BBG00YJ8L8T5";
 const SPACEX = "BW-BBG000NQF3Z5";
+const META = "BW-BBG000MM2P62";
+const SQ = "BW-SQ";
+const AAPL = "BW-BBG000B9XRY4";
 const symbolRows = [
   { symbol: ETF, ticker: "SPCK", name: "The SPAC and New Issue ETF" },
   { symbol: SPACEX, ticker: "SPCX", name: "Space Exploration Technologies Corp" },
+  { symbol: META, ticker: "META", name: "Meta Platforms, Inc." },
+  { symbol: SQ, ticker: "XYZ", name: "Block, Inc." },
+  { symbol: AAPL, ticker: "AAPL", name: "Apple Inc" },
   { symbol: "BW-BBG00GCTC8Y9", ticker: "SOS", name: "SOS Ltd" },
   { symbol: "BW-BBG0125CL1D2", ticker: "IXHL", name: "Incannex Healthcare Inc." },
   { symbol: "BW-BBG0116Y22N3", ticker: "NEXN", name: "Nexxen International Ltd." },
 ];
 
+const aliasRows = [
+  { bw_sym_id: META, alias_value: "FB", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: "2022-06-09" },
+  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2022-06-09", valid_to: null },
+  { bw_sym_id: SQ, alias_value: "SQ", alias_type: "TICKER", valid_from: "2015-11-19", valid_to: "2025-01-21" },
+  { bw_sym_id: SQ, alias_value: "XYZ", alias_type: "TICKER", valid_from: "2025-01-21", valid_to: null },
+  { bw_sym_id: SPACEX, alias_value: "SPCX", alias_type: "TICKER", valid_from: "2026-06-12", valid_to: null },
+  { bw_sym_id: AAPL, alias_value: "AAPL", alias_type: "TICKER", valid_from: "2000-01-01", valid_to: null },
+];
+
+const masterRows = [
+  { bw_sym_id: META, ticker: "META", company_name: "Meta Platforms, Inc.", cik: "0001326801", valid_from: "2012-05-18", valid_to: null, merged_into: null },
+  { bw_sym_id: SQ, ticker: "XYZ", company_name: "Block, Inc.", cik: "0001512673", valid_from: "2015-11-19", valid_to: null, merged_into: null },
+  { bw_sym_id: SPACEX, ticker: "SPCX", company_name: "Space Exploration Technologies Corp", cik: "0001879026", valid_from: "2026-06-12", valid_to: null, merged_into: null },
+  { bw_sym_id: AAPL, ticker: "AAPL", company_name: "Apple Inc", cik: "0000320193", valid_from: "2000-01-01", valid_to: null, merged_into: null },
+];
+
 function query(rows: unknown[]) {
+  let filtered = rows as Array<Record<string, unknown>>;
   const q: Record<string, unknown> = {
     select: () => q,
-    eq: () => q,
-    in: (_col: string, vals: string[]) =>
-      query((rows as Array<Record<string, unknown>>).filter((r) => !("symbol" in r) || vals.includes(r.symbol as string))),
-    then: (res: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(res),
+    eq: (col: string, value: unknown) => {
+      filtered = filtered.filter((r) => r[col] === value);
+      return q;
+    },
+    in: (col: string, vals: unknown[]) => {
+      filtered = filtered.filter((r) => vals.includes(r[col]));
+      return q;
+    },
+    then: (res: (v: unknown) => unknown) => Promise.resolve({ data: filtered, error: null }).then(res),
   };
   return q;
 }
@@ -37,6 +65,8 @@ vi.mock("@/lib/supabase/admin", () => ({
         table === "security_events" ? fx.events
           : table === "security_event_legs" ? fx.legs
             : table === "symbols" ? symbolRows
+              : table === "security_aliases" ? aliasRows
+                : table === "security_master" ? masterRows
               : [],
       ),
   }),
@@ -103,6 +133,31 @@ describe("transitionPositions: the five reviewed fixtures", () => {
     expect(r).toEqual({ positions: [{ ticker: "AAPL", value: 5 }], transitions: [] });
   });
 
+  it("maps a current ticker to the security and ticker that existed on the held date", async () => {
+    const r = await transitionPositions([{ ticker: "META", value: 5 }], { heldOn: "2020-06-30", asOf: "2026-10-22" });
+    expect(r.positions).toEqual([{ ticker: "META", value: 5 }]);
+    expect(r.transitions[0]).toMatchObject({
+      submitted_ticker: "META", status: "rewritten", outcome: "current_ticker_mapped_to_held_date",
+      source_bw_sym_id: META, bw_sym_id: META, ticker: "META",
+    });
+    expect(r.transitions[0].detail).toContain(`${META}, traded as FB on that date`);
+  });
+
+  it("carries a ticker rename without a reviewed event through the current registry", async () => {
+    const r = await transitionPositions([{ ticker: "SQ", value: 5 }], { heldOn: "2024-06-30", asOf: "2026-10-22" });
+    expect(r.positions).toEqual([{ ticker: "XYZ", value: 5 }]);
+    expect(r.transitions[0]).toMatchObject({ submitted_ticker: "SQ", status: "rewritten", bw_sym_id: SQ, ticker: "XYZ" });
+  });
+
+  it("drops a current ticker when its security did not yet exist on the held date", async () => {
+    const r = await transitionPositions([{ ticker: "SPCX", value: 5 }], { heldOn: "2026-05-01", asOf: "2026-10-22" });
+    expect(r.positions).toEqual([]);
+    expect(r.transitions[0]).toMatchObject({
+      submitted_ticker: "SPCX", status: "dropped", source_bw_sym_id: SPACEX,
+      outcome: "current_security_not_valid_on_held_date", bw_sym_id: null, ticker: null,
+    });
+  });
+
   it("a cash merger drops the position and says so", async () => {
     const r = await transitionPositions([{ ticker: "TWTR", value: 5 }, { ticker: "AAPL", value: 7 }], { heldOn: "2020-01-02", asOf: "2026-10-01" });
     expect(r.positions).toEqual([{ ticker: "AAPL", value: 7 }]);
@@ -136,6 +191,17 @@ describe("POST /api/portfolio/exposure with a dated book", () => {
     expect(body.transitions[0]).toMatchObject({ status: "rewritten", source_bw_sym_id: ETF, event_ids: [] });
   });
 
+  it("positions_as_of maps META to the security that traded as FB on the held date", async () => {
+    const { status, body } = await post({
+      positions: [{ ticker: "META", value: 10 }], positions_as_of: "2020-06-30", as_of: "2026-10-22",
+    });
+    expect(status).toBe(200);
+    expect(seen.at(-1)).toEqual([{ ticker: "META", value: 10 }]);
+    expect(body.transitions[0]).toMatchObject({
+      status: "rewritten", outcome: "current_ticker_mapped_to_held_date", bw_sym_id: META, ticker: "META",
+    });
+  });
+
   it("no dates: the book is today's and no transition runs", async () => {
     const { body } = await post({ positions: [{ ticker: "SPCX", value: 10 }] });
     expect(seen.at(-1)).toEqual([{ ticker: "SPCX", value: 10 }]);
@@ -151,5 +217,14 @@ describe("POST /api/portfolio/exposure with a dated book", () => {
     const { status, body } = await post({ positions: [{ ticker: "TWTR", value: 1 }], positions_as_of: "2020-01-02", as_of: "2024-01-02" });
     expect(status).toBe(422);
     expect(body.transitions[0].status).toBe("dropped");
+  });
+
+  it("a ticker whose current security was not listed on positions_as_of is a 422 with an explicit transition reason", async () => {
+    const { status, body } = await post({
+      positions: [{ ticker: "SPCX", value: 1 }], positions_as_of: "2026-05-01", as_of: "2026-10-22",
+    });
+    expect(status).toBe(422);
+    expect(body.dropped).toEqual([]);
+    expect(body.transitions[0]).toMatchObject({ status: "dropped", outcome: "current_security_not_valid_on_held_date" });
   });
 });

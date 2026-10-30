@@ -68,7 +68,7 @@ async function buildSnapshotResponse(
     transitions = t.transitions;
     if (!t.positions.length) {
       return NextResponse.json(
-        { error: "No valid positions", message: "Every position became cash or was cancelled after positions_as_of", transitions },
+        { error: "No valid positions", message: "Every position was removed by the dated-book transition; see transitions", transitions },
         { status: 400, headers: getCorsHeaders(origin) },
       );
     }

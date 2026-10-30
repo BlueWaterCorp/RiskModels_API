@@ -78,15 +78,16 @@ export const POST = withBilling(
         const t = await transitionPositions(submitted, {
           heldOn: positions_as_of ?? as_of!,
           asOf: as_of ?? new Date().toISOString().slice(0, 10),
+          mapCurrentTickerToHeldDate: Boolean(positions_as_of),
         });
         positions = t.positions;
         transitions = t.transitions;
         if (!positions.length) {
-          // Every position became cash or was cancelled before as_of: nothing to model, so not billed.
+          // Every position was removed by the dated-book transition: nothing to model, so not billed.
           return NextResponse.json(
             {
               error: "No modelled positions",
-              message: "Every submitted position became cash or was cancelled by as_of; see transitions.",
+              message: "Every submitted position was removed by the dated-book transition; see transitions.",
               dropped: [],
               transitions,
             },

@@ -152,7 +152,7 @@ components:
   schemas:
     PositionTransition:
       type: object
-      description: How reviewed corporate-action events moved one submitted ticker between the date the book was recorded and the model date.
+      description: How point-in-time identity and reviewed corporate-action events map one submitted ticker between the date the book was recorded and the model date.
       properties:
         submitted_ticker: { type: string }
         held_on: { type: string, format: date }
@@ -160,12 +160,14 @@ components:
         status:
           type: string
           enum: [rewritten, carried, dropped, unsupported, unresolved]
-          description: "`rewritten`: priced under another ticker. `carried`: same ticker, events applied (e.g. ADS to ordinary share). `dropped`: became cash or was cancelled. `unsupported`: became several securities or an unknown outcome; left as submitted. `unresolved`: identity on held_on ambiguous or unavailable; left as submitted."
+          description: "`rewritten`: identity was mapped or priced under another ticker. `carried`: same ticker, events applied (e.g. ADS to ordinary share). `dropped`: no safe held-date identity existed, or the security became cash or was cancelled. `unsupported`: became several securities or an unknown outcome; left as submitted. `unresolved`: identity on held_on ambiguous or unavailable on an as_of-only request; left as submitted."
         identity_source: { type: string, nullable: true }
         source_bw_sym_id: { type: string, nullable: true }
         bw_sym_id: { type: string, nullable: true, description: The security priced, when one. }
         ticker: { type: string, nullable: true, description: The ticker the position is priced under. }
-        outcome: { type: string }
+        outcome:
+          type: string
+          description: Resolution result. Point-in-time fallback values include `current_ticker_mapped_to_held_date`, `current_identity_unavailable`, `current_identity_ambiguous`, `current_security_not_valid_on_held_date`, `held_date_ticker_ambiguous`, and `current_security_registry_ticker_unavailable`.
         event_ids: { type: array, items: { type: string } }
         steps:
           type: array
@@ -9134,15 +9136,18 @@ paths:
         that window (e.g. not yet listed) as `no_data_at_as_of`. Same price as a latest call.
 
 
-        **Dated books.** With `as_of` or `positions_as_of`, each ticker that appears in a reviewed
-        corporate-action event is read as of `positions_as_of` (default `as_of`) and carried to
-        `as_of` through those events before it is priced, so a reused ticker is not priced as its
-        later owner (SPCX held on 2026-03-31 is the ETF that trades as SPCK, not SpaceX). Every
-        such position is listed in `transitions` with its event ids, exact `numerator/denominator`
-        ratios and SEC sources. A position that became cash or was cancelled is removed from the book;
-        one that became several securities (a spin-off) is left as submitted and marked
-        `unsupported`, because a dollar value cannot be split without prices. Tickers in no reviewed
-        event are priced exactly as without the dates.
+        **Dated books.** With `positions_as_of`, every submitted ticker is read on that date and
+        carried to `as_of` through reviewed events before pricing. If the held-date identity is
+        unavailable, the submitted ticker is resolved at `as_of`; that security is used only when
+        its alias and security-master validity prove which ticker it traded under on the held date.
+        Otherwise the position is dropped rather than priced under an unverified current holder.
+        Thus a reused ticker is not priced as its later owner (SPCX held on 2026-03-31 is the ETF
+        that trades as SPCK, not SpaceX), while META submitted for 2020-06-30 maps to the security
+        then trading as FB. With `as_of` alone, the prior reviewed-event behavior is unchanged.
+        Every moved, mapped, dropped or unsupported position is listed in `transitions` with its
+        event ids and exact `numerator/denominator` ratios when events apply. A position that became
+        several securities (a spin-off) is left as submitted and marked `unsupported`, because a
+        dollar value cannot be split without prices.
 
 
         The earliest supported `as_of` is 2011-12-07: model history is served from the first date
@@ -9248,7 +9253,7 @@ paths:
                 properties:
                   transitions:
                     type: array
-                    description: Present when `as_of` or `positions_as_of` is sent. One entry per submitted ticker that reviewed corporate-action events moved, rewrote, removed or could not carry.
+                    description: Present when `as_of` or `positions_as_of` is sent. One entry per submitted ticker that point-in-time identity or reviewed corporate-action events moved, mapped, removed or could not carry.
                     items: { $ref: '#/components/schemas/PositionTransition' }
                   as_of:
                     type: object
@@ -9631,7 +9636,7 @@ paths:
                 positions_as_of:
                   type: string
                   format: date
-                  description: Optional date the book was recorded (YYYY-MM-DD, not in the future), same meaning as on POST /portfolio/exposure. Data is still the latest available; tickers that appear in reviewed corporate-action events are read as of this date and carried to today before pricing. Positions that become the same ticker are netted. The JSON response lists them in `transitions`; the PDF and PNG print them as a footnote.
+                  description: Optional date the book was recorded (YYYY-MM-DD, not in the future), same meaning as on POST /portfolio/exposure. Data is still the latest available; every ticker is validated on this date, mapped through its current security when needed, and carried to today through reviewed events before pricing. Positions without a safe held-date identity are dropped; positions that become the same ticker are netted. The JSON response lists transitions; the PDF and PNG print them as a footnote.
                 format:
                   type: string
                   enum: [pdf, json, png]
