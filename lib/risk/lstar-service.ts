@@ -25,12 +25,13 @@
 
 import {
   resolveSymbolByTicker,
-  fetchHistory,
+  fetchHistoryWithSource,
   pivotHistory,
   extractMetric,
   type PivotedHistoryRow,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
+import { historyStartForPredatingWindow } from "@/lib/risk/history-window";
 import { LSTAR_STYLE_AXIS_REMOVED_MESSAGE } from "@/lib/api/schemas";
 
 export const LSTAR_DEFAULT_THRESHOLD = 0.01;
@@ -89,6 +90,7 @@ export interface LstarResult {
   market_factor_etf: string;
   universe: string;
   data_source: string;
+  history_starts?: string;
 }
 
 export interface GetLstarOptions {
@@ -282,19 +284,35 @@ export class LstarService {
     startDate.setFullYear(startDate.getFullYear() - years);
     const startDateStr = startDate.toISOString().split("T")[0]!;
 
-    const rows = await fetchHistory(symbolRecord.symbol, INDUSTRY_KEYS, {
-      periodicity: "daily",
-      startDate: startDateStr,
-      orderBy: "asc",
-    });
+    const { rows, historyStarts } = await fetchHistoryWithSource(
+      symbolRecord.symbol,
+      INDUSTRY_KEYS,
+      {
+        periodicity: "daily",
+        startDate: startDateStr,
+        orderBy: "asc",
+      },
+    );
 
     if (rows.length === 0) {
-      return this.emptyResult(upperTicker, marketFactorEtf, threshold, axis);
+      return this.emptyResult(
+        upperTicker,
+        marketFactorEtf,
+        threshold,
+        axis,
+        historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
+      );
     }
 
     const pivoted = pivotHistory(rows);
     if (pivoted.length === 0) {
-      return this.emptyResult(upperTicker, marketFactorEtf, threshold, axis);
+      return this.emptyResult(
+        upperTicker,
+        marketFactorEtf,
+        threshold,
+        axis,
+        historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
+      );
     }
 
     const dates = pivoted.map((p) => p.teo);
@@ -347,6 +365,7 @@ export class LstarService {
     marketFactorEtf: string,
     threshold: number,
     axis: LstarAxis,
+    historyStart?: string,
   ): LstarResult {
     return {
       ticker,
@@ -364,6 +383,7 @@ export class LstarService {
       market_factor_etf: marketFactorEtf,
       universe: "US_EQUITY",
       data_source: "zarr",
+      ...(historyStart ? { history_starts: historyStart } : {}),
     };
   }
 }

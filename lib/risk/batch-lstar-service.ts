@@ -24,6 +24,7 @@ export interface BatchLstarTickerResult {
   market_factor_etf?: string;
   universe?: string;
   data_source?: string;
+  history_starts?: string;
 }
 
 export interface BatchLstarSummary {
@@ -68,6 +69,9 @@ function successPayload(result: LstarResult): BatchLstarTickerResult {
     market_factor_etf: result.market_factor_etf,
     universe: result.universe,
     data_source: result.data_source,
+    ...(result.history_starts
+      ? { history_starts: result.history_starts }
+      : {}),
   };
 }
 
@@ -140,11 +144,32 @@ export function batchLstarToLongRows(
 ): Record<string, unknown>[] {
   const rows: Record<string, unknown>[] = [];
   for (const entry of Object.values(body.results)) {
-    if (entry.status !== "success" || !entry.dates?.length) continue;
+    if (entry.status !== "success") continue;
+    if (!entry.dates?.length) {
+      // Marker row only when the window predates the security's history.
+      if (!entry.history_starts) continue;
+      rows.push({
+        ticker: entry.ticker,
+        status: entry.status,
+        history_starts: entry.history_starts ?? null,
+        date: null,
+        lstar: null,
+        market_hr: null,
+        sector_hr: null,
+        subsector_hr: null,
+        total_er: null,
+        residual_return: null,
+        l2_sector_er: null,
+        l3_subsector_er: null,
+      });
+      continue;
+    }
     const n = entry.dates.length;
     for (let i = 0; i < n; i += 1) {
       rows.push({
         ticker: entry.ticker,
+        status: entry.status,
+        history_starts: entry.history_starts ?? null,
         date: entry.dates[i],
         lstar: entry.lstar?.[i] ?? null,
         market_hr: entry.market_hr?.[i] ?? null,

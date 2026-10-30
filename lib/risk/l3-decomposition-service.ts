@@ -8,7 +8,8 @@
  * Response field names use V3 abbreviated convention (V3_DATA_CONTRACT.md).
  */
 
-import { resolveSymbolByTicker, fetchHistory, pivotHistory } from '@/lib/dal/risk-engine-v3';
+import { resolveSymbolByTicker, fetchHistoryWithSource, pivotHistory } from '@/lib/dal/risk-engine-v3';
+import { historyStartForPredatingWindow } from '@/lib/risk/history-window';
 
 /** Internal row series from `fetchHistory` / `pivotHistory` (V3 abbreviated wire keys). */
 export interface L3DecompositionResult {
@@ -24,6 +25,7 @@ export interface L3DecompositionResult {
   market_factor_etf: string;
   universe: string;
   data_source: string;
+  history_starts?: string;
 }
 
 /** Wire shape for REST / OpenAPI / quickstart notebook (semantic suffixes). */
@@ -40,6 +42,7 @@ export type L3DecompositionPublicBody = {
   market_factor_etf: string;
   universe: string;
   data_source: string;
+  history_starts?: string;
 };
 
 export function toL3DecompositionPublicBody(
@@ -58,6 +61,7 @@ export function toL3DecompositionPublicBody(
     market_factor_etf: r.market_factor_etf,
     universe: r.universe,
     data_source: r.data_source,
+    ...(r.history_starts ? { history_starts: r.history_starts } : {}),
   };
 }
 
@@ -65,6 +69,7 @@ export class L3DecompositionService {
   private emptyDecomposition(
     ticker: string,
     marketFactorEtf: string,
+    historyStart?: string,
   ): L3DecompositionResult {
     return {
       ticker,
@@ -79,6 +84,7 @@ export class L3DecompositionService {
       market_factor_etf: marketFactorEtf,
       universe: "US_EQUITY",
       data_source: "zarr",
+      ...(historyStart ? { history_starts: historyStart } : {}),
     };
   }
 
@@ -113,28 +119,40 @@ export class L3DecompositionService {
       startDate.setFullYear(startDate.getFullYear() - years);
       const startDateStr = startDate.toISOString().split('T')[0]!;
 
-      const rows = await fetchHistory(symbolRecord.symbol, [
-        'l3_mkt_hr',
-        'l3_sec_hr',
-        'l3_sub_hr',
-        'l3_mkt_er',
-        'l3_sec_er',
-        'l3_sub_er',
-        'l3_res_er'
-      ], {
-        periodicity: 'daily',
-        startDate: startDateStr,
-        orderBy: 'asc',
-      });
+      const { rows, historyStarts } = await fetchHistoryWithSource(
+        symbolRecord.symbol,
+        [
+          'l3_mkt_hr',
+          'l3_sec_hr',
+          'l3_sub_hr',
+          'l3_mkt_er',
+          'l3_sec_er',
+          'l3_sub_er',
+          'l3_res_er'
+        ],
+        {
+          periodicity: 'daily',
+          startDate: startDateStr,
+          orderBy: 'asc',
+        },
+      );
 
       // Match GET /ticker-returns: known ticker + empty history → 200 with empty arrays, not 404.
       if (rows.length === 0) {
-        return this.emptyDecomposition(ticker, marketFactorEtf);
+        return this.emptyDecomposition(
+          ticker,
+          marketFactorEtf,
+          historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
+        );
       }
 
       const pivoted = pivotHistory(rows);
       if (pivoted.length === 0) {
-        return this.emptyDecomposition(ticker, marketFactorEtf);
+        return this.emptyDecomposition(
+          ticker,
+          marketFactorEtf,
+          historyStartForPredatingWindow(historyStarts[symbolRecord.symbol]),
+        );
       }
 
       const dates = pivoted.map(p => p.teo);

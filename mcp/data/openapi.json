@@ -1743,6 +1743,11 @@
             "type": "boolean",
             "description": "`true` when the most-recent-holder check could not read its evidence (security master, registry or daily index outage) and the previous answer was returned unchecked; a later request may answer a different security. Absent otherwise.\n"
           },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present only on an empty response when the requested window ends before this security's earliest non-null daily close or return observation. Rows before this date are omitted.\n"
+          },
           "_metadata": {
             "type": "object",
             "additionalProperties": true,
@@ -2248,6 +2253,11 @@
           "data_source": {
             "type": "string",
             "example": "security_history"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present only when the returned arrays are empty because the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -2380,6 +2390,11 @@
           "data_source": {
             "type": "string",
             "example": "zarr"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present only when the returned arrays are empty because the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -3567,6 +3582,11 @@
           "data_source": {
             "type": "string",
             "example": "zarr"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present only when the returned arrays are empty because the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -3672,6 +3692,11 @@
           },
           "data_source": {
             "type": "string"
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Present only on a successful empty result when the requested window ends before this security's earliest non-null daily close or return observation.\n"
           }
         }
       },
@@ -4261,6 +4286,11 @@
             "type": "integer",
             "description": "HTTP status code.",
             "example": 404
+          },
+          "history_starts": {
+            "type": "string",
+            "format": "date",
+            "description": "Earliest non-null daily close or return date for the resolved security. Present only when a historical request ends before the security's own history begins.\n"
           },
           "details": {
             "type": "object",
@@ -12309,7 +12339,7 @@
     "/batch/lstar": {
       "post": {
         "summary": "Batch Lstar residual returns (up to 100 tickers)",
-        "description": "Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3) for up to 100 tickers in one call. Uses the same level selection as `GET /lstar`: the canonical ERM3 `lstar_level` when `threshold` is omitted, the legacy marginal-ER rule when a threshold is passed. Response is a `results` map keyed by upper-case ticker; per-ticker failures use `status: error` or `not_found` without failing the whole batch.\n**Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.\n**Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with non-empty histories are included.\n",
+        "description": "Fetch Lstar-dispatched daily residual return and recommended hedge level (L1/L2/L3) for up to 100 tickers in one call. Uses the same level selection as `GET /lstar`: the canonical ERM3 `lstar_level` when `threshold` is omitted, the legacy marginal-ER rule when a threshold is passed. Response is a `results` map keyed by upper-case ticker; per-ticker failures use `status: error` or `not_found` without failing the whole batch.\n**Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.\n**Parquet/CSV:** Long-format table with columns `ticker`, `status`, `history_starts`, `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. A successful ticker whose requested window predates its history is represented by one marker row: `date` and the data columns are null, while `history_starts` gives the security's first observation. Unresolved and failed tickers are omitted.\n",
         "operationId": "batchLstar",
         "tags": [
           "Risk Metrics"

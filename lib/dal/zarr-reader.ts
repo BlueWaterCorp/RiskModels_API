@@ -785,6 +785,150 @@ async function readColumnBlock(
   }
 }
 
+export function firstValidIndex(values: ReadonlyArray<number | null>): number | null {
+  const index = values.findIndex((value) => value !== null && Number.isFinite(value));
+  return index >= 0 ? index : null;
+}
+
+export function filterRowsByHistoryStarts(
+  rows: ReadonlyArray<SecurityHistoryRow>,
+  historyStarts: Readonly<Record<string, string>>,
+): SecurityHistoryRow[] {
+  return rows.filter((row) => {
+    const historyStart = historyStarts[row.symbol];
+    return historyStart === undefined || row.teo >= historyStart;
+  });
+}
+
+export function earliestFirstValidDate(
+  teo: ReadonlyArray<string>,
+  closeValues: ReadonlyArray<number | null>,
+  returnValues: ReadonlyArray<number | null>,
+): string | null {
+  const closeIndex = firstValidIndex(closeValues);
+  const returnIndex = firstValidIndex(returnValues);
+  const closeDate = closeIndex === null ? null : teo[closeIndex] ?? null;
+  const returnDate = returnIndex === null ? null : teo[returnIndex] ?? null;
+  if (closeDate === null) return returnDate;
+  if (returnDate === null) return closeDate;
+  return closeDate < returnDate ? closeDate : returnDate;
+}
+
+const HISTORY_START_CACHE_TTL_MS = 30 * 60 * 1000;
+const HISTORY_START_CACHE_MAX = 10_000;
+const historyStartCache = new Map<
+  string,
+  { at: number; date: string | null }
+>();
+
+function historyStartCacheGet(key: string): string | null | undefined {
+  const hit = historyStartCache.get(key);
+  if (!hit) return undefined;
+  if (Date.now() - hit.at >= HISTORY_START_CACHE_TTL_MS) {
+    historyStartCache.delete(key);
+    return undefined;
+  }
+  historyStartCache.delete(key);
+  historyStartCache.set(key, hit);
+  return hit.date;
+}
+
+function historyStartCacheSet(key: string, date: string | null): void {
+  historyStartCache.set(key, { at: Date.now(), date });
+  if (historyStartCache.size > HISTORY_START_CACHE_MAX) {
+    const oldest = historyStartCache.keys().next().value;
+    if (oldest !== undefined) historyStartCache.delete(oldest);
+  }
+}
+
+/** Test hook: clears release-scoped per-symbol history anchors. */
+export function _resetHistoryStartCacheForTest(): void {
+  historyStartCache.clear();
+}
+
+async function readFirstValidDates(
+  grp: Group<Readable>,
+  teo: string[],
+  members: Array<{ symbol: string; idx: number }>,
+  storeKey: string,
+): Promise<{ starts: Map<string, string>; withoutAnchor: string[] }> {
+  const starts = new Map<string, string>();
+  const withoutAnchor: string[] = [];
+  const pending: Array<{ symbol: string; idx: number; cacheKey: string }> = [];
+
+  for (const member of members) {
+    const cacheKey = `${storeKey}|${member.symbol}`;
+    const cached = historyStartCacheGet(cacheKey);
+    if (cached === undefined) {
+      pending.push({ ...member, cacheKey });
+    } else if (cached === null) {
+      withoutAnchor.push(member.symbol);
+    } else {
+      starts.set(member.symbol, cached);
+    }
+  }
+
+  const candidates = new Map(
+    pending.map((member) => [
+      member.symbol,
+      { close: null as (number | null)[] | null, returns: null as (number | null)[] | null },
+    ]),
+  );
+
+  for (const varName of ["close", "return"] as const) {
+    if (pending.length === 0) break;
+
+    let arr: ZarrArray<DataType, Readable>;
+    try {
+      arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    } catch {
+      continue;
+    }
+
+    const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1);
+    const byChunk = new Map<number, Array<{ symbol: string; idx: number }>>();
+    for (const member of pending) {
+      const chunk = Math.floor(member.idx / chunkW);
+      const list = byChunk.get(chunk) ?? [];
+      list.push(member);
+      byChunk.set(chunk, list);
+    }
+
+    await Promise.all(
+      [...byChunk.values()].map(async (list) => {
+        const columns = await readColumnBlock(
+          grp,
+          varName,
+          arr,
+          { t0: 0, t1: teo.length, mode: "float" },
+          list.map((member) => member.idx),
+        );
+        if (!columns) return;
+        list.forEach((member, index) => {
+          const candidate = candidates.get(member.symbol);
+          if (!candidate) return;
+          if (varName === "close") candidate.close = columns[index]!;
+          else candidate.returns = columns[index]!;
+        });
+      }),
+    );
+  }
+
+  for (const member of pending) {
+    const candidate = candidates.get(member.symbol)!;
+    if (candidate.close === null || candidate.returns === null) {
+      withoutAnchor.push(member.symbol);
+      continue;
+    }
+    const date = earliestFirstValidDate(teo, candidate.close, candidate.returns);
+    historyStartCacheSet(member.cacheKey, date);
+    if (date === null) withoutAnchor.push(member.symbol);
+    else starts.set(member.symbol, date);
+  }
+
+  return { starts, withoutAnchor };
+}
+
 export interface ReadHistorySliceParams {
   symbols: string[];
   keys: V3MetricKey[];
@@ -797,6 +941,7 @@ export interface ReadHistorySliceParams {
 export interface ReadHistorySliceResult {
   rows: SecurityHistoryRow[];
   range: [string, string];
+  historyStarts: Record<string, string>;
 }
 
 function shouldUseSupabaseForKeys(keys: V3MetricKey[]): boolean {
@@ -818,6 +963,7 @@ function cacheKeyForZarr(p: ReadHistorySliceParams, prefix: ZarrGcsPrefix): stri
     per: p.periodicity,
     ord: p.orderBy ?? "asc",
     fs: factorSet,
+    historyFloor: 2,
   });
   const h = createHash("sha256").update(payload).digest("hex");
   return generateCacheKey("zarr_hist", h);
@@ -886,20 +1032,21 @@ export async function readHistorySlice(
 
   if (periodicity !== "daily") {
     logSliceTelemetry(params, "non_daily_skip", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
   if (shouldUseSupabaseForKeys(keys)) {
     logSliceTelemetry(params, "unsupported_keys_skip", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
 
   // One prefix for the whole slice: every store below is opened from the same release.
   const prefix = await resolveZarrGcsPrefix();
   const ck = cacheKeyForZarr(params, prefix);
-  // A request this large was never cached (see the write below); skip the lookup.
-  const hit = estimateSliceRows(params) > MAX_CACHED_SLICE_ROWS ? null : await getCache<ReadHistorySliceResult>(ck);
-  // `[]` is truthy in JS — only treat cache as a hit when we stored real rows.
-  if (hit?.rows?.length) {
+  // Large populated slices are not written below, but an empty pre-history
+  // result is small and cacheable even when the request's upper-bound estimate
+  // is large, so every request checks for a stored result.
+  const hit = await getCache<ReadHistorySliceResult>(ck);
+  if (hit) {
     logSliceTelemetry(params, "cache_hit", hit.rows.length, Date.now() - _tStart);
     return hit;
   }
@@ -910,13 +1057,13 @@ export async function readHistorySlice(
   const dailyGrp = await openZarrGroup(zarrDailyBasename(), prefix);
   if (!dailyGrp) {
     logSliceTelemetry(params, "open_failed", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
   const dailyTeo = await readTeoStrings(dailyGrp);
   const dailySymMap = await readSymbolIndexMap(dailyGrp);
   if (!dailyTeo?.length || !dailySymMap?.size) {
     logSliceTelemetry(params, "empty_axes", 0, Date.now() - _tStart);
-    return { rows: [], range: ["", ""] };
+    return { rows: [], range: ["", ""], historyStarts: {} };
   }
 
   const needHedge = keys.some((k) => getZarrSpec(k)?.role === "hedge");
@@ -948,6 +1095,51 @@ export async function readHistorySlice(
   const etfGrp = await openZarrGroup(zarrEtfBasename(), prefix);
   const etfTeo = etfGrp ? await readTeoStrings(etfGrp) : null;
   const etfSymMap = etfGrp ? await readSymbolIndexMap(etfGrp) : null;
+
+  const stockCoreMembers = symbols.flatMap((symbol) => {
+    const idx = dailySymMap.get(symbol);
+    return idx === undefined ? [] : [{ symbol, idx }];
+  });
+  const etfCoreMembers = symbols.flatMap((symbol) => {
+    if (dailySymMap.has(symbol)) return [];
+    const idx = etfSymMap?.get(symbol);
+    return idx === undefined ? [] : [{ symbol, idx }];
+  });
+  const [stockHistory, etfHistory] = await Promise.all([
+    readFirstValidDates(
+      dailyGrp,
+      dailyTeo,
+      stockCoreMembers,
+      `${zarrPrefixCacheKey(prefix)}|${zarrDailyBasename()}`,
+    ),
+    etfGrp && etfTeo?.length
+      ? readFirstValidDates(
+          etfGrp,
+          etfTeo,
+          etfCoreMembers,
+          `${zarrPrefixCacheKey(prefix)}|${zarrEtfBasename()}`,
+        )
+      : Promise.resolve({ starts: new Map<string, string>(), withoutAnchor: [] }),
+  ]);
+  const historyStarts = Object.fromEntries([
+    ...stockHistory.starts.entries(),
+    ...etfHistory.starts.entries(),
+  ]);
+  const symbolsOutsideAnchorStores = symbols.filter(
+    (symbol) => !dailySymMap.has(symbol) && !etfSymMap?.has(symbol),
+  );
+  const symbolsWithoutAnchor = [
+    ...new Set([
+      ...stockHistory.withoutAnchor,
+      ...etfHistory.withoutAnchor,
+      ...symbolsOutsideAnchorStores,
+    ]),
+  ];
+  if (symbolsWithoutAnchor.length > 0) {
+    console.warn("[zarr-internal] history anchor unavailable; preserving rows", {
+      symbols: symbolsWithoutAnchor,
+    });
+  }
 
   // Shortest common range across every stock-side store involved in this
   // request, clipped to the caller's [startDate, endDate] window. Guarantees
@@ -1004,9 +1196,6 @@ export async function readHistorySlice(
       if (etfT1 < etfT0) etfT1 = etfT0;
     }
   }
-
-  const rangeStart = validWindow ? (dailyTeo[dt0] ?? effStart) : "";
-  const rangeEnd = validWindow ? (dailyTeo[Math.max(0, dt1 - 1)] ?? effEnd) : "";
 
   // Reads are grouped by (store variable, symbol chunk). Every store here is
   // chunked [whole teo axis, 64 symbols], and zarrita decodes the whole chunk
@@ -1198,7 +1387,7 @@ export async function readHistorySlice(
     windowRows <= SHORT_WINDOW_ROWS
       ? Math.max(1, Number(process.env.ZARR_SHORT_READ_CONCURRENCY ?? 48) || 48)
       : Math.max(1, Number(process.env.ZARR_READ_CONCURRENCY ?? 8) || 8);
-  const rows: SecurityHistoryRow[] = [];
+  const rawRows: SecurityHistoryRow[] = [];
   let cursor = 0;
   await Promise.all(
     Array.from(
@@ -1206,7 +1395,7 @@ export async function readHistorySlice(
       async () => {
         while (cursor < tasks.length) {
           const part = await tasks[cursor++]();
-          rows.push(...part);
+          rawRows.push(...part);
         }
       },
     ),
@@ -1214,6 +1403,7 @@ export async function readHistorySlice(
 
   // Ties (same teo and key) keep the caller's symbol order.
   const symbolPos = new Map(symbols.map((s, i) => [s, i] as const));
+  const rows = filterRowsByHistoryStarts(rawRows, historyStarts);
   rows.sort((a, b) => {
     const c = a.teo.localeCompare(b.teo);
     if (c !== 0) return orderBy === "asc" ? c : -c;
@@ -1222,15 +1412,20 @@ export async function readHistorySlice(
     return (symbolPos.get(a.symbol) ?? 0) - (symbolPos.get(b.symbol) ?? 0);
   });
 
+  const servedDates = rows.map((row) => row.teo);
+  const rangeStart = servedDates.length > 0 ? servedDates.reduce((a, b) => (a < b ? a : b)) : "";
+  const rangeEnd = servedDates.length > 0 ? servedDates.reduce((a, b) => (a > b ? a : b)) : "";
+
   const result: ReadHistorySliceResult = {
     rows,
     range: [rangeStart, rangeEnd],
+    historyStarts,
   };
 
   // Large slices (multi-year history for many names) are not cached: they would
   // exceed the cache's value limit, and serializing them just to be refused
   // costs seconds and gigabytes per request.
-  if (rows.length > 0 && rows.length <= MAX_CACHED_SLICE_ROWS) {
+  if (rows.length <= MAX_CACHED_SLICE_ROWS) {
     await setCache(ck, result, CACHE_TTL.FREQUENT).catch(() => {});
   }
 

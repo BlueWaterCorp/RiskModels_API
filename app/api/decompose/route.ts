@@ -3,7 +3,7 @@ import { getCorsHeaders } from "@/lib/cors";
 import { withBilling, BillingContext } from "@/lib/agent/billing-middleware";
 import {
   resolveSymbolByTicker,
-  fetchLatestMetrics,
+  fetchLatestMetricsWithHistoryStart,
   fetchLatestMetricsWithFallback,
   type V3MetricKey,
 } from "@/lib/dal/risk-engine-v3";
@@ -116,12 +116,31 @@ export const POST = withBilling(
       as_of,
       servedHistoryStartForKeys(DECOMPOSE_METRIC_KEYS),
     );
-    if (floorErr) {
-      return NextResponse.json(floorErr, { status: 404, headers: corsHeaders });
-    }
 
     try {
       const symbolRecord = await resolveSymbolByTicker(ticker);
+      if (floorErr) {
+        if (!symbolRecord) {
+          return NextResponse.json(floorErr, {
+            status: 404,
+            headers: corsHeaders,
+          });
+        }
+        const { historyStart } = await fetchLatestMetricsWithHistoryStart(
+          symbolRecord.symbol,
+          DECOMPOSE_METRIC_KEYS,
+          "daily",
+          as_of,
+        );
+        return NextResponse.json(
+          {
+            ...floorErr,
+            ...(historyStart && as_of !== undefined && historyStart > as_of ? { history_starts: historyStart } : {}),
+          },
+          { status: 404, headers: corsHeaders },
+        );
+      }
+
       if (!symbolRecord) {
         const metadata = await getRiskMetadata();
         const response = NextResponse.json(
@@ -136,18 +155,24 @@ export const POST = withBilling(
       // (that table is latest-only by construction) and reads the date-indexed
       // zarr bounded at as_of — "latest complete row ≤ as_of", reality mode,
       // report_date basis (ADR 2026-08-01). No as_of → fast path untouched.
-      const latestData = as_of
-        ? await fetchLatestMetrics(
-            symbolRecord.symbol,
-            DECOMPOSE_METRIC_KEYS,
-            "daily",
-            as_of,
-          )
-        : await fetchLatestMetricsWithFallback(
-            symbolRecord.symbol,
-            DECOMPOSE_METRIC_KEYS,
-            "daily",
-          );
+      let historyStart: string | null = null;
+      let latestData: Awaited<ReturnType<typeof fetchLatestMetricsWithFallback>>;
+      if (as_of) {
+        const historical = await fetchLatestMetricsWithHistoryStart(
+          symbolRecord.symbol,
+          DECOMPOSE_METRIC_KEYS,
+          "daily",
+          as_of,
+        );
+        latestData = historical.latest;
+        historyStart = historical.historyStart;
+      } else {
+        latestData = await fetchLatestMetricsWithFallback(
+          symbolRecord.symbol,
+          DECOMPOSE_METRIC_KEYS,
+          "daily",
+        );
+      }
 
       if (!latestData) {
         // House PIT convention (AGENTS_CROSS_REPO.md §0): nothing known at or
@@ -160,6 +185,9 @@ export const POST = withBilling(
                 error: `No metrics found for ${ticker} at or before as_of=${as_of}`,
                 as_of,
                 as_of_basis: "report_date",
+                ...(historyStart && as_of < historyStart
+                  ? { history_starts: historyStart }
+                  : {}),
               }
             : { error: "No metrics found" },
           { status: 404, headers: corsHeaders },

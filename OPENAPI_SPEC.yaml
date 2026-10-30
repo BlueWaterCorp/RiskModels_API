@@ -1563,6 +1563,13 @@ components:
             `true` when the most-recent-holder check could not read its evidence (security
             master, registry or daily index outage) and the previous answer was returned unchecked; a later
             request may answer a different security. Absent otherwise.
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Present only on an empty response when the requested window ends before this
+            security's earliest non-null daily close or return observation. Rows before this
+            date are omitted.
         _metadata:
           type: object
           additionalProperties: true
@@ -1985,6 +1992,12 @@ components:
         data_source:
           type: string
           example: security_history
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Present only when the returned arrays are empty because the requested window ends
+            before this security's earliest non-null daily close or return observation.
 
     ReturnsDecompositionResponse:
       type: object
@@ -2084,6 +2097,12 @@ components:
         data_source:
           type: string
           example: zarr
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Present only when the returned arrays are empty because the requested window ends
+            before this security's earliest non-null daily close or return observation.
 
     IndustryPanelRow:
       type: object
@@ -2987,6 +3006,12 @@ components:
         data_source:
           type: string
           example: zarr
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Present only when the returned arrays are empty because the requested window ends
+            before this security's earliest non-null daily close or return observation.
 
     BatchLstarTickerResult:
       type: object
@@ -3057,6 +3082,12 @@ components:
           type: string
         data_source:
           type: string
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Present only on a successful empty result when the requested window ends before
+            this security's earliest non-null daily close or return observation.
 
     BatchLstarResponse:
       type: object
@@ -3403,6 +3434,12 @@ components:
           type: integer
           description: HTTP status code.
           example: 404
+        history_starts:
+          type: string
+          format: date
+          description: >
+            Earliest non-null daily close or return date for the resolved security. Present only
+            when a historical request ends before the security's own history begins.
         details:
           type: object
           properties:
@@ -8746,9 +8783,11 @@ paths:
 
         **Billing:** $0.015/ticker + $0.0075/extra year, minimum $0.03/call.
 
-        **Parquet/CSV:** Long-format table with columns `ticker`, `date`, `lstar`,
-        `residual_return`, hedge ratios, and raw ER inputs. Only successful tickers with
-        non-empty histories are included.
+        **Parquet/CSV:** Long-format table with columns `ticker`, `status`, `history_starts`,
+        `date`, `lstar`, `residual_return`, hedge ratios, and raw ER inputs. A successful ticker
+        whose requested window predates its history is represented by one marker row: `date` and
+        the data columns are null, while `history_starts` gives the security's first observation.
+        Unresolved and failed tickers are omitted.
       operationId: batchLstar
       tags: [Risk Metrics]
       x-pricing:

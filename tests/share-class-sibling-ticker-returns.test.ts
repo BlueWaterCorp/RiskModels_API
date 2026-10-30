@@ -86,6 +86,7 @@ async function call(ticker: string) {
   fetchHistory.mockImplementation(async (_symbol: string, keys: string[]) => ({
     rows: [Object.fromEntries(Object.entries(GOOG_ROW).filter(([k]) => k === "teo" || keys.includes(k)))],
     dataSource: "zarr",
+    historyStarts: { "BW-BBG009S3NB30": "2004-08-19" },
   }));
   return GET(new NextRequest(`http://x/api/ticker-returns?ticker=${ticker}&years=1`));
 }
