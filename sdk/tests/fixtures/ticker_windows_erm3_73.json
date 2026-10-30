@@ -50,10 +50,10 @@
       "ticker": "META",
       "held_from": null,
       "held_to": "2012-05-18",
-      "status": "unresolved",
-      "priced_as": "META",
+      "status": "dropped",
+      "priced_as": null,
       "bw_sym_id": null,
-      "outcome": "unavailable",
+      "outcome": "current_security_not_valid_on_held_date",
       "event_ids": []
     },
     {
@@ -160,10 +160,10 @@
       "ticker": "SPCX",
       "held_from": "2026-04-07",
       "held_to": "2026-06-12",
-      "status": "unresolved",
-      "priced_as": "SPCX",
+      "status": "dropped",
+      "priced_as": null,
       "bw_sym_id": null,
-      "outcome": "unavailable",
+      "outcome": "current_security_not_valid_on_held_date",
       "event_ids": []
     },
     {

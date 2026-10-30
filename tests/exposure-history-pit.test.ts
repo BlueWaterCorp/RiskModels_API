@@ -136,13 +136,19 @@ const covering = <W extends { ticker: string; held_from: string | null; held_to:
 describe("heldTickerWindows: reviewed fixtures", () => {
   beforeEach(() => _resetIdentityCache());
 
-  it("SPCX: the ETF before 2026-04-07 (priced as SPCK), today's holder after", async () => {
+  it("SPCX: the ETF before 2026-04-07, a dropped gap, then today's holder", async () => {
     const ws = await heldTickerWindows(["SPCX"], { asOf: AS_OF });
     expect(ws[0]).toMatchObject({
       ticker: "SPCX", held_from: null, held_to: "2026-04-07", status: "rewritten",
       priced_as: "SPCK", bw_sym_id: ETF, event_ids: ["SPCK-SPCX-20260407"],
     });
     expect(covering(ws, "SPCX", "2026-03-31")).toEqual([ws[0]]);
+    const gap = covering(ws, "SPCX", "2026-04-07");
+    expect(gap).toHaveLength(1);
+    expect(gap[0]).toMatchObject({
+      held_from: "2026-04-07", held_to: "2026-06-12", status: "dropped",
+      priced_as: null, bw_sym_id: null, outcome: "current_security_not_valid_on_held_date",
+    });
     const after = covering(ws, "SPCX", "2026-09-30");
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({ priced_as: "SPCX", bw_sym_id: null });

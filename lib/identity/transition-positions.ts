@@ -522,7 +522,6 @@ export async function heldTickerWindows(
         heldOn,
         asOf: opts.asOf,
         knownAsOf: opts.knownAsOf,
-        mapCurrentTickerToHeldDate: false,
         preloaded: { events, evidence },
       });
       const tr = r.transitions[0];

@@ -247,5 +247,9 @@ def test_undated_book_is_todays_book_and_uses_todays_registry() -> None:
 def test_window_for_uses_inclusive_start_and_exclusive_end() -> None:
     pack = _pit_pack()
     assert pack.window_for("spcx", "2026-04-06")["priced_as"] == "SPCK"
-    assert pack.window_for("SPCX", "2026-04-07")["priced_as"] == "SPCX"
+    gap = pack.window_for("SPCX", "2026-04-07")
+    assert gap["status"] == "dropped"
+    assert gap["priced_as"] is None
+    assert gap["outcome"] == "current_security_not_valid_on_held_date"
+    assert pack.window_for("SPCX", "2026-06-12")["priced_as"] == "SPCX"
     assert pack.window_for("AAPL", "2020-01-02") is None
