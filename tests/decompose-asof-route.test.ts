@@ -169,6 +169,16 @@ describe("POST /api/decompose — as_of threads to the zarr read (Verify a shape
     const body = await res.json();
     expect(body.history_available_from).toBe("2013-01-01");
     expect(body.history_starts).toBe("2025-03-28");
+
+    // A security whose history began before as_of gets only the store floor.
+    mockAsOfFetch.mockResolvedValue({ latest: null, historyStart: "1999-01-22" });
+    const early = await decomposePOST(
+      post({ ticker: "CRWV", as_of: "2012-12-31" }),
+      fakeContext,
+    );
+    const earlyBody = await early.json();
+    expect(earlyBody.history_available_from).toBe("2013-01-01");
+    expect(earlyBody.history_starts).toBeUndefined();
   });
 
   it("skips the fast path, serves the row ≤ as_of, echoes the basis", async () => {

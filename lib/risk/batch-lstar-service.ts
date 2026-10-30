@@ -146,6 +146,8 @@ export function batchLstarToLongRows(
   for (const entry of Object.values(body.results)) {
     if (entry.status !== "success") continue;
     if (!entry.dates?.length) {
+      // Marker row only when the window predates the security's history.
+      if (!entry.history_starts) continue;
       rows.push({
         ticker: entry.ticker,
         status: entry.status,

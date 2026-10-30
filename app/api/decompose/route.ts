@@ -135,7 +135,7 @@ export const POST = withBilling(
         return NextResponse.json(
           {
             ...floorErr,
-            ...(historyStart ? { history_starts: historyStart } : {}),
+            ...(historyStart && historyStart > as_of ? { history_starts: historyStart } : {}),
           },
           { status: 404, headers: corsHeaders },
         );

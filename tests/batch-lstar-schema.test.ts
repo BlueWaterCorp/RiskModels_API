@@ -89,6 +89,12 @@ describe("batchLstarToLongRows", () => {
 
     const rows = batchLstarToLongRows(body);
     expect(rows).toHaveLength(3);
+    // An empty success without history_starts (series ended before the window) emits no marker row.
+    const ended = batchLstarToLongRows({
+      ...body,
+      results: { NVDA: { ...body.results.CRWV, ticker: "NVDA", history_starts: undefined } },
+    } as typeof body);
+    expect(ended).toHaveLength(0);
     expect(rows[0]).toMatchObject({
       ticker: "NVDA",
       status: "success",
