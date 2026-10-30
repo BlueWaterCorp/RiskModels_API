@@ -4325,7 +4325,7 @@ components:
         `aum_reported` is the fund's reported net assets;
         `aum_erm3` is the net value of its in-model positions (for a
         long/short fund this is small, so weights use `aum_reported`).
-      required: [bw_fund_id, teo, report_date, time_basis, ticker_as_of, n_holdings_returned, n_total_holdings, holdings]
+      required: [bw_fund_id, teo, n_holdings_returned, n_total_holdings, holdings]
       properties:
         bw_fund_id: { type: string }
         ticker: { type: string, nullable: true }
@@ -4345,31 +4345,32 @@ components:
         report_date:
           type: string
           format: date
-          description: Report date of the selected filing; equal to `teo`.
+          description: Report date of the selected filing; equal to `teo`. Present when `as_of` is set.
         time_basis:
           type: string
           enum: [report_date, available_date]
-          description: Axis used to select the book when `as_of` is present.
+          description: Axis used to select the book. Present when `as_of` is set.
         filing_date: { type: string, format: date, nullable: true, description: SEC filing date of that report. }
         filing_date_source:
           type: string
+          enum: [exact, approx]
           nullable: true
-          description: Provenance label carried by the selected filing date.
+          description: Provenance label carried by the selected filing date. Present when `as_of` is set.
         has_new_data:
           type: boolean
-          description: True when at least one position was newly reported at the selected report date.
+          description: True when at least one position was newly reported at the selected report date. Present when `as_of` is set.
         book_rows:
           type: integer
           nullable: true
-          description: Number of source filing rows when published by the holdings store.
+          description: Number of source filing rows when published by the holdings store. Present when `as_of` is set.
         universe_dropped_mv:
           type: number
           nullable: true
-          description: Market value excluded by the model-universe gate.
+          description: Market value excluded by the model-universe gate. Present when `as_of` is set.
         ticker_as_of:
           type: string
           enum: [current_registry]
-          description: Tickers are current registry labels, not historical report-date labels.
+          description: Tickers are current registry labels, not historical report-date labels. Present when `as_of` is set.
         aum_reported: { type: number, format: float, nullable: true }
         aum_erm3: { type: number, format: float, nullable: true }
         net_assets:
@@ -13045,7 +13046,9 @@ paths:
             `time_basis_required` explains the two choices. `report_date` returns
             the book for the latest period ending on or before `as_of`, even if
             filed later. `available_date` returns the latest book filed on or
-            before `as_of` (no look-ahead). Ignored without `as_of`.
+            before `as_of` (no look-ahead). Without `as_of`, returns 400 with
+            code `as_of_required` because this parameter only selects a dated
+            book. Example: `?as_of=2020-06-30&time_basis=available_date`.
       responses:
         "200":
           description: The fund's book (or the top-25 fallback).
@@ -13055,6 +13058,7 @@ paths:
               description: Latest teo in the per-fund holdings panel.
             X-Data-Filing-Date:
               schema: { type: string, format: date }
+              description: Selected book's filing date; omitted when unavailable or later than `as_of`.
             X-API-Cost-USD:
               schema: { type: string }
           content:
@@ -13062,7 +13066,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/FundHoldingsResponse"
         "400":
-          description: Malformed limit, as_of, or time_basis param.
+          description: >
+            Malformed limit, as_of, or time_basis param; `time_basis` without
+            `as_of` returns code `as_of_required`.
           content:
             application/json:
               schema:

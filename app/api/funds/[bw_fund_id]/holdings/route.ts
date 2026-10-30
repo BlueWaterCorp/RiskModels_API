@@ -14,6 +14,22 @@ const DEFAULT_TOP_N = 25;
 const MAX_TOP_N = 5000;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+const DATED_RESPONSE_FIELDS = new Set([
+  "report_date",
+  "time_basis",
+  "filing_date_source",
+  "has_new_data",
+  "book_rows",
+  "universe_dropped_mv",
+  "ticker_as_of",
+]);
+
+function legacySnapshot(snapshot: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(snapshot).filter(([key]) => !DATED_RESPONSE_FIELDS.has(key)),
+  );
+}
+
 /**
  * GET /api/funds/{bw_fund_id}/holdings?limit=25&as_of=YYYY-MM-DD&time_basis=report_date
  *
@@ -62,6 +78,17 @@ export const GET = withBilling(
     const asOf = asOfParam ?? undefined;
 
     const timeBasisRaw = request.nextUrl.searchParams.get("time_basis");
+    if (!asOf && timeBasisRaw !== null) {
+      return NextResponse.json(
+        {
+          error: "as_of is required when time_basis is set",
+          code: "as_of_required",
+          detail: "time_basis only selects a dated book; include an as_of cutoff date.",
+          example: `?as_of=2020-06-30&time_basis=${timeBasisRaw}`,
+        },
+        { status: 400 },
+      );
+    }
     if (asOf && timeBasisRaw === null) {
       // A dated request must say which clock it means. The two answers differ by
       // the filing lag (Contrafund's 2020-06-30 book was filed 2020-08-20), and a
@@ -101,7 +128,9 @@ export const GET = withBilling(
       return NextResponse.json({ error: "Fund not found" }, { status: 404 });
     }
 
-    const book = await readFundHoldingsBook(bwFundId, limit, asOf, timeBasis);
+    const book = asOf
+      ? await readFundHoldingsBook(bwFundId, limit, asOf, timeBasis)
+      : await readFundHoldingsBook(bwFundId, limit);
     // The fallback table is latest-only. It remains part of the undated route,
     // but cannot answer a point-in-time request without risking a fall-forward.
     const snapshot = book ?? (asOf ? null : await readFundHoldingsTopN(bwFundId, limit));
@@ -118,26 +147,34 @@ export const GET = withBilling(
     }
 
     const headers = new Headers({ "X-Data-As-Of": snapshot.teo });
-    const filingDate = book?.filing_date ?? fund.latest_filing_date;
+    const selectedFilingDate = book?.filing_date ?? null;
+    const filingDate = asOf
+      ? selectedFilingDate && selectedFilingDate <= asOf
+        ? selectedFilingDate
+        : null
+      : selectedFilingDate ?? fund.latest_filing_date;
     if (filingDate) {
       headers.set("X-Data-Filing-Date", filingDate);
     }
 
-    return NextResponse.json(
-      {
-        bw_fund_id: bwFundId,
-        ticker: fund.ticker,
-        fund_name: fund.fund_name,
-        equity_style_9box: fund.equity_style_9box,
-        source: book ? "full_book" : "top_25_longs",
-        report_date: book?.report_date ?? snapshot.teo,
-        filing_date: filingDate ?? null,
-        time_basis: book?.time_basis ?? timeBasis,
-        ticker_as_of: "current_registry",
-        ...snapshot,
-      },
-      { headers },
-    );
+    const responseSnapshot = asOf
+      ? {
+          ...snapshot,
+          report_date: book?.report_date ?? snapshot.teo,
+          filing_date: filingDate,
+          time_basis: book?.time_basis ?? timeBasis,
+          ticker_as_of: "current_registry",
+        }
+      : legacySnapshot(snapshot as unknown as Record<string, unknown>);
+
+    return NextResponse.json({
+      bw_fund_id: bwFundId,
+      ticker: fund.ticker,
+      fund_name: fund.fund_name,
+      equity_style_9box: fund.equity_style_9box,
+      source: book ? "full_book" : "top_25_longs",
+      ...responseSnapshot,
+    }, { headers });
   },
   { capabilityId: "fund-holdings" },
 );

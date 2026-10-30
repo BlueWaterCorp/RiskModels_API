@@ -68,3 +68,11 @@ def test_get_fund_holdings_requires_time_basis_with_as_of() -> None:
 
     with pytest.raises(ValueError, match="time_basis is required"):
         _client(handler).get_fund_holdings(FUND_ID, as_of="2020-06-30")
+
+
+def test_get_fund_holdings_requires_as_of_with_time_basis() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
+        raise AssertionError("no request should be sent")
+
+    with pytest.raises(ValueError, match="as_of is required"):
+        _client(handler).get_fund_holdings(FUND_ID, time_basis="available_date")

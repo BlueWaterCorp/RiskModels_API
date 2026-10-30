@@ -2190,8 +2190,14 @@ class RiskModelsClient:
 
         ``as_of`` requires ``time_basis``: ``"report_date"`` (book for the period
         ending on or before ``as_of``, may be filed later) or ``"available_date"``
-        (book filed on or before ``as_of``, no look-ahead).
+        (book filed on or before ``as_of``, no look-ahead). ``time_basis`` only
+        selects a dated book and therefore also requires ``as_of``.
         """
+        if time_basis is not None and as_of is None:
+            raise ValueError(
+                "as_of is required with time_basis; for example, "
+                "as_of='2020-06-30', time_basis='available_date'"
+            )
         if as_of is not None and time_basis is None:
             raise ValueError(
                 "time_basis is required with as_of: 'report_date' or 'available_date'"

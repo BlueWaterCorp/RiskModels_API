@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { BoolArray } from "zarrita";
 
-import { selectFundHoldingsTeoIndex } from "@/lib/dal/funds-zarr-reader";
+import {
+  decodeFundFilingDateSource,
+  decodeNumericCells,
+  selectFundHoldingsTeoIndex,
+} from "@/lib/dal/funds-zarr-reader";
 
 // Real Contrafund reporting facts around the June 2020 filing. The monthly
 // axis carries March forward through April and May; only March and June are
@@ -58,5 +63,18 @@ describe("Contrafund point-in-time holdings selection", () => {
     const { result, hasNewDataAt } = select(undefined, "report_date");
     expect(TEOS[await result]).toBe("2020-06-30");
     expect(hasNewDataAt).not.toHaveBeenCalled();
+  });
+
+  it("decodes the bool-typed new-data column for the real filing months", () => {
+    const column = decodeNumericCells(new BoolArray(REAL_FILING));
+    expect(column).toEqual([1, 0, 0, 1]);
+    expect(column?.some((cell) => cell != null && cell !== 0)).toBe(true);
+  });
+
+  it("maps numeric filing-date provenance codes", () => {
+    expect(decodeFundFilingDateSource(1)).toBe("exact");
+    expect(decodeFundFilingDateSource(2)).toBe("approx");
+    expect(decodeFundFilingDateSource(0)).toBeNull();
+    expect(decodeFundFilingDateSource(null)).toBeNull();
   });
 });

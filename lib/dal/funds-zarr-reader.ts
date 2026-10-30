@@ -741,16 +741,40 @@ async function readNumericAtTeo(
     const loc = grp.resolve(varName);
     const arr = await open.v2(loc, { kind: "array" });
     const ch = await get(arr, [slice(0, nSymbols), teoIdx]);
-    const d = ch?.data;
-    if (!ArrayBuffer.isView(d)) return null;
-    return Array.from(d as unknown as ArrayLike<number | bigint>, (raw) => {
-      const value = Number(raw);
-      return Number.isFinite(value) ? value : null;
-    });
+    return decodeNumericCells(ch?.data);
   } catch (err) {
     if (err instanceof NodeNotFoundError || err instanceof KeyError) return null;
     throw err;
   }
+}
+
+/** Decode numeric typed arrays and zarrita's indexable boolean array. */
+export function decodeNumericCells(data: unknown): (number | null)[] | null {
+  if (data == null) return null;
+  const length = (data as { length?: unknown }).length;
+  const getter = (data as { get?: (idx: number) => unknown }).get;
+  if (
+    typeof length !== "number" ||
+    (!ArrayBuffer.isView(data) && typeof getter !== "function")
+  ) {
+    return null;
+  }
+  const out: (number | null)[] = [];
+  for (let i = 0; i < length; i++) {
+    const raw = typeof getter === "function"
+      ? getter.call(data, i)
+      : (data as ArrayLike<number | bigint>)[i];
+    const value = Number(raw);
+    out.push(Number.isFinite(value) ? value : null);
+  }
+  return out;
+}
+
+/** Store code for filing-date provenance: 1 exact, 2 approximate. */
+export function decodeFundFilingDateSource(raw: number | null | undefined): "exact" | "approx" | null {
+  if (raw === 1) return "exact";
+  if (raw === 2) return "approx";
+  return null;
 }
 
 /** Read a single scalar from a 1-D (teo,) variable via a length-1 slice. */
@@ -958,21 +982,21 @@ export async function selectFundHoldingsTeoIndex(
 
 export interface FundHoldingsBook extends FundHoldingsSnapshot {
   /** Selection axis used for this response. */
-  time_basis: FundHoldingsTimeBasis;
+  time_basis?: FundHoldingsTimeBasis;
   /** Report date of the selected filing; equal to `teo`. */
-  report_date: string;
+  report_date?: string;
   /** SEC filing date of the report the book comes from; null when not stamped. */
   filing_date: string | null;
   /** Provenance label carried by the selected filing date. */
-  filing_date_source: string | null;
+  filing_date_source?: "exact" | "approx" | null;
   /** True when at least one position was newly reported at the selected teo. */
-  has_new_data: boolean;
+  has_new_data?: boolean;
   /** Number of source filing rows, when published as a zarr attribute. */
-  book_rows: number | null;
+  book_rows?: number | null;
   /** Market value dropped by the model universe gate. */
-  universe_dropped_mv: number | null;
+  universe_dropped_mv?: number | null;
   /** Tickers are labels from the current symbol registry, not historical labels. */
-  ticker_as_of: "current_registry";
+  ticker_as_of?: "current_registry";
   /** Net assets from the filing's own header; null when the filing lacks one. */
   net_assets: number | null;
   /**
@@ -1010,11 +1034,13 @@ export async function readFundHoldingsBook(
   asOf?: string,
   timeBasis: FundHoldingsTimeBasis = "report_date",
 ): Promise<FundHoldingsBook | null> {
-  const ck = generateCacheKey("funds_zarr", "fund_holdings_book_v5", {
-    fund: bwFundId,
-    as_of: asOf ?? "latest",
-    time_basis: timeBasis,
-  });
+  const ck = asOf
+    ? generateCacheKey("funds_zarr", "fund_holdings_book_v5", {
+        fund: bwFundId,
+        as_of: asOf,
+        time_basis: timeBasis,
+      })
+    : generateCacheKey("funds_zarr", "fund_holdings_book_v4", { fund: bwFundId });
   let labelsFailed = false;
   const full = await withZarrCache<FundHoldingsBook | null>(
     ck,
@@ -1025,23 +1051,20 @@ export async function readFundHoldingsBook(
       const symbols = await readSymbolStrings(grp);
       if (!teos || teos.length === 0 || !symbols || symbols.length === 0) return null;
 
-      const [
-        aumReported,
-        aumErm3,
-        aumSource,
-        droppedMv,
-        universeDroppedMv,
-        filingDates,
-        filingDateSources,
-      ] = await Promise.all([
+      const [aumReported, aumErm3, aumSource, droppedMv, filingDates] = await Promise.all([
         readFloatSlice1d(grp, "aum_reported", 0, teos.length),
         readFloatSlice1d(grp, "aum_erm3", 0, teos.length),
         readFloatSlice1d(grp, "aum_source", 0, teos.length),
         readFloatSlice1d(grp, "identity_dropped_mv", 0, teos.length),
-        readFloatSlice1d(grp, "universe_dropped_mv", 0, teos.length),
         readDatetimeVarStrings(grp, "filing_date"),
-        readStringVarStrings(grp, "filing_date_source"),
       ]);
+
+      const [universeDroppedMv, filingDateSources] = asOf
+        ? await Promise.all([
+            readFloatSlice1d(grp, "universe_dropped_mv", 0, teos.length),
+            readFloatSlice1d(grp, "filing_date_source", 0, teos.length),
+          ])
+        : [null, null];
 
       const newDataByTeo = new Map<number, boolean>();
       const hasNewDataAt = async (idx: number): Promise<boolean> => {
@@ -1065,7 +1088,7 @@ export async function readFundHoldingsBook(
 
       const adjMv = await readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length);
       if (!adjMv) return null;
-      const hasNewData = await hasNewDataAt(teoIdx);
+      const hasNewData = asOf ? await hasNewDataAt(teoIdx) : undefined;
       const aumRep = aumReported?.[teoIdx] ?? null;
       const netErm3 = aumErm3?.[teoIdx] ?? null;
       // aum_source 1 = N-PORT NET_ASSETS header; 0 = Σ adj_mv fallback.
@@ -1118,37 +1141,33 @@ export async function readFundHoldingsBook(
           grossWithTicker += Math.abs(h.adj_mv);
         }
       }
-      const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
-      const rawBookRows = attrs.book_rows;
-      const datedBookRows =
-        Array.isArray(rawBookRows)
-          ? rawBookRows[teoIdx]
-          : rawBookRows && typeof rawBookRows === "object"
-            ? (rawBookRows as Record<string, unknown>)[teos[teoIdx]!]
-            : rawBookRows;
-      const bookRowsNumber = datedBookRows == null ? null : Number(datedBookRows);
-      const rawFilingSource = attrs.filing_date_source;
-      const attrFilingSource =
-        typeof rawFilingSource === "string"
-          ? rawFilingSource
-          : Array.isArray(rawFilingSource)
-            ? rawFilingSource[teoIdx]
-            : rawFilingSource && typeof rawFilingSource === "object"
-              ? (rawFilingSource as Record<string, unknown>)[teos[teoIdx]!]
-              : null;
+      let bookRows: number | null = null;
+      if (asOf) {
+        const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+        const rawBookRows = attrs.book_rows;
+        const datedBookRows =
+          Array.isArray(rawBookRows)
+            ? rawBookRows[teoIdx]
+            : rawBookRows && typeof rawBookRows === "object"
+              ? (rawBookRows as Record<string, unknown>)[teos[teoIdx]!]
+              : rawBookRows;
+        const bookRowsNumber = datedBookRows == null ? null : Number(datedBookRows);
+        bookRows = bookRowsNumber != null && Number.isFinite(bookRowsNumber) ? bookRowsNumber : null;
+      }
       return {
         teo: teos[teoIdx]!,
-        report_date: teos[teoIdx]!,
-        time_basis: timeBasis,
         filing_date: filingDates?.[teoIdx] ?? null,
-        filing_date_source:
-          filingDateSources?.[teoIdx] ||
-          (attrFilingSource == null ? null : String(attrFilingSource)),
-        has_new_data: hasNewData,
-        book_rows:
-          bookRowsNumber != null && Number.isFinite(bookRowsNumber) ? bookRowsNumber : null,
-        universe_dropped_mv: universeDroppedMv?.[teoIdx] ?? null,
-        ticker_as_of: "current_registry",
+        ...(asOf
+          ? {
+              report_date: teos[teoIdx]!,
+              time_basis: timeBasis,
+              filing_date_source: decodeFundFilingDateSource(filingDateSources?.[teoIdx]),
+              has_new_data: hasNewData,
+              book_rows: bookRows,
+              universe_dropped_mv: universeDroppedMv?.[teoIdx] ?? null,
+              ticker_as_of: "current_registry" as const,
+            }
+          : {}),
         aum_reported: aumRep,
         aum_erm3: netErm3,
         net_assets: netAssets,

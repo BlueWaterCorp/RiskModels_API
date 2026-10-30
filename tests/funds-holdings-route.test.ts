@@ -121,7 +121,7 @@ beforeEach(() => {
 });
 
 describe("GET /api/funds/[bw_fund_id]/holdings", () => {
-  it("serves the full book with point-in-time metadata", async () => {
+  it("keeps the undated full-book response on the legacy shape", async () => {
     vi.mocked(fetchFund).mockResolvedValue(FUND);
     vi.mocked(readFundHoldingsBook).mockResolvedValue(BOOK);
     const res = await GET(req("/api/funds/BW-FUND-S000006037/holdings?limit=1"), fakeContext);
@@ -129,8 +129,6 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
     expect(vi.mocked(readFundHoldingsBook)).toHaveBeenCalledWith(
       "BW-FUND-S000006037",
       1,
-      undefined,
-      "report_date",
     );
     expect(vi.mocked(readFundHoldingsTopN)).not.toHaveBeenCalled();
     expect(res.headers.get("X-Data-As-Of")).toBe("2020-06-30");
@@ -138,16 +136,20 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
     const body = await res.json();
     expect(body.source).toBe("full_book");
     expect(body).toMatchObject({
-      report_date: "2020-06-30",
       filing_date: "2020-08-20",
-      filing_date_source: "exact",
-      time_basis: "report_date",
-      has_new_data: true,
-      book_rows: 278,
-      universe_dropped_mv: 174_000_000,
-      ticker_as_of: "current_registry",
       weight_basis: "net_assets",
     });
+    for (const field of [
+      "report_date",
+      "filing_date_source",
+      "time_basis",
+      "has_new_data",
+      "book_rows",
+      "universe_dropped_mv",
+      "ticker_as_of",
+    ]) {
+      expect(body).not.toHaveProperty(field);
+    }
     expect(body.coverage.unmatched_mv).toBe(6_661_000_000);
     expect(body.n_total_holdings).toBe(224);
     expect(body.coverage.n_positions).toBe(224);
@@ -168,7 +170,16 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
       "BW-FUND-S000006037",
       25,
     );
-    const body = await res.json();
+    const text = await res.text();
+    expect(text).toBe(JSON.stringify({
+      bw_fund_id: "BW-FUND-S000006037",
+      ticker: "FCNTX",
+      fund_name: "Contrafund",
+      equity_style_9box: "Large Blend",
+      source: "top_25_longs",
+      ...SNAPSHOT,
+    }));
+    const body = JSON.parse(text);
     expect(body.source).toBe("top_25_longs");
     expect(body.bw_fund_id).toBe("BW-FUND-S000006037");
     expect(body.holdings).toHaveLength(1);
@@ -247,6 +258,42 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
       "2020-06-30",
       "report_date",
     );
+    expect(res.headers.get("X-Data-Filing-Date")).toBeNull();
+    const body = await res.json();
+    expect(body.filing_date).toBeNull();
+    expect(body.report_date).toBe("2020-06-30");
+    expect(body.time_basis).toBe("report_date");
+  });
+
+  it("uses only the selected dated book's filing stamp", async () => {
+    vi.mocked(fetchFund).mockResolvedValue(FUND);
+    vi.mocked(readFundHoldingsBook).mockResolvedValue({
+      ...BOOK,
+      filing_date: "2020-05-26",
+      report_date: "2020-03-31",
+      time_basis: "available_date",
+      teo: "2020-03-31",
+    });
+    const res = await GET(
+      req("/api/funds/BW-FUND-S000006037/holdings?as_of=2020-06-30&time_basis=available_date"),
+      fakeContext,
+    );
+    expect(res.headers.get("X-Data-Filing-Date")).toBe("2020-05-26");
+    expect(await res.json()).toMatchObject({
+      filing_date: "2020-05-26",
+      report_date: "2020-03-31",
+    });
+  });
+
+  it("does not substitute the fund's latest filing stamp on a dated book", async () => {
+    vi.mocked(fetchFund).mockResolvedValue(FUND);
+    vi.mocked(readFundHoldingsBook).mockResolvedValue({ ...BOOK, filing_date: null });
+    const res = await GET(
+      req("/api/funds/BW-FUND-S000006037/holdings?as_of=2020-08-01&time_basis=report_date"),
+      fakeContext,
+    );
+    expect(res.headers.get("X-Data-Filing-Date")).toBeNull();
+    expect((await res.json()).filing_date).toBeNull();
   });
 
   it("returns 404 before the first eligible filing and never uses the latest fallback", async () => {
@@ -283,9 +330,24 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
     expect(vi.mocked(fetchFund)).not.toHaveBeenCalled();
   });
 
+  it("rejects time_basis without as_of and explains that it only selects a dated book", async () => {
+    const res = await GET(
+      req("/api/funds/BW-FUND-S000006037/holdings?time_basis=available_date"),
+      fakeContext,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "as_of is required when time_basis is set",
+      code: "as_of_required",
+      detail: "time_basis only selects a dated book; include an as_of cutoff date.",
+      example: "?as_of=2020-06-30&time_basis=available_date",
+    });
+    expect(vi.mocked(fetchFund)).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["as_of=2020-02-30", "as_of must be YYYY-MM-DD"],
-    ["time_basis=filing", "time_basis must be report_date or available_date"],
+    ["as_of=2020-06-30&time_basis=filing", "time_basis must be report_date or available_date"],
   ])("rejects an invalid query value: %s", async (query, error) => {
     const res = await GET(
       req(`/api/funds/BW-FUND-S000006037/holdings?${query}`),
