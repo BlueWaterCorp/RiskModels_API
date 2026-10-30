@@ -228,7 +228,11 @@ def test_fb_and_meta_held_in_2021_net_into_one_meta_name() -> None:
     assert d["stock_beta_usd"] == pytest.approx(10_000 * 1.2)
     # One name: residual variance is (6k + 4k)^2, not 6k^2 + 4k^2.
     assert d["residual_daily_variance"] == pytest.approx(10_000**2 * 4e-4 * 0.5)
-    assert [t["ticker"] for t in d["transitions"]] == ["FB"]
+    assert [t["ticker"] for t in d["transitions"]] == ["FB", "META"]
+    assert d["transitions"][1] == {
+        "ticker": "META", "held_on": "2021-12-31", "priced_as": "META", "bw_sym_id": "BW-BBG000MM2P62",
+        "status": "carried", "event_ids": ["META-FB-20220609"],
+    }
 
 
 def test_undated_book_is_todays_book_and_uses_todays_registry() -> None:
@@ -243,5 +247,9 @@ def test_undated_book_is_todays_book_and_uses_todays_registry() -> None:
 def test_window_for_uses_inclusive_start_and_exclusive_end() -> None:
     pack = _pit_pack()
     assert pack.window_for("spcx", "2026-04-06")["priced_as"] == "SPCK"
-    assert pack.window_for("SPCX", "2026-04-07")["priced_as"] == "SPCX"
+    gap = pack.window_for("SPCX", "2026-04-07")
+    assert gap["status"] == "dropped"
+    assert gap["priced_as"] is None
+    assert gap["outcome"] == "current_security_not_valid_on_held_date"
+    assert pack.window_for("SPCX", "2026-06-12")["priced_as"] == "SPCX"
     assert pack.window_for("AAPL", "2020-01-02") is None

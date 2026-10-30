@@ -6,9 +6,18 @@ import { join } from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
-let aliasRows: Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null }> = [];
+const currentRows = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/current-ticker-production-rows.json"), "utf-8"));
+let aliasRows: Array<{ bw_sym_id: string; valid_from: string | null; valid_to: string | null; alias_type?: string; alias_value?: string }> = [];
 let listingRows: Array<{ bw_sym_id: string; listed_on: string | null; listed_on_or_before: string | null; basis: string }> = [];
-let masterRows: Array<{ bw_sym_id: string; cik: string | null; merged_into: string | null; ticker?: string; company_name?: string }> = [];
+let masterRows: Array<{
+  bw_sym_id: string;
+  cik: string | null;
+  merged_into: string | null;
+  ticker?: string;
+  company_name?: string;
+  valid_from?: string | null;
+  valid_to?: string | null;
+}> = [];
 let nameRows: Array<Record<string, unknown>> = [];
 
 function query(rows: unknown[]) {
@@ -245,11 +254,9 @@ describe("GET /api/identity/resolve: reviewed events outrank aliases", () => {
   });
 
   it("today's FB is the security-master row that now carries the ticker (the ETF)", async () => {
-    aliasRows = [{ bw_sym_id: "BW-BBG000MM2P62", valid_from: "2012-05-18", valid_to: null }];
-    masterRows = [
-      { bw_sym_id: "BW-BBG000MM2P62", cik: "0001326801", merged_into: null },
-      { bw_sym_id: "BW-BBG01VRMNFB1", cik: null, merged_into: null, ticker: "FB", company_name: "PROSHARES TR" },
-    ];
+    aliasRows = currentRows.security_aliases.filter((row: { alias_value: string }) => row.alias_value === "FB");
+    masterRows = currentRows.security_master.filter((row: { bw_sym_id: string }) =>
+      row.bw_sym_id === "BW-BBG000MM2P62" || row.bw_sym_id === "BW-BBG01VRMNFB1");
     const { body } = await call("identifier=FB&as_of=2026-10-16");
     expect(body.identity).toMatchObject({ bw_sym_id: "BW-BBG01VRMNFB1", source: "security_master_ticker" });
     expect(body.result.holdings[0]).toMatchObject({ ticker: "FB", name: "PROSHARES TR" });

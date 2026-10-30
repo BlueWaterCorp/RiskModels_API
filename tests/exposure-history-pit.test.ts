@@ -12,30 +12,38 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EXPOSURE_PANEL_VARS } from "@/lib/dal/zarr-reader";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
+const currentRows = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/current-ticker-production-rows.json"), "utf-8"));
 
 const ETF = "BW-BBG00YJ8L8T5";
 const SPACEX = "BW-BBG000NQF3Z5";
 const META = "BW-BBG000MM2P62";
 const symbolRows = [
-  { symbol: ETF, ticker: "SPCK", name: "The SPAC and New Issue ETF" },
-  { symbol: SPACEX, ticker: "SPCX", name: "Space Exploration Technologies Corp" },
-  { symbol: META, ticker: "META", name: "Meta Platforms, Inc." },
+  ...currentRows.symbols,
   { symbol: "BW-BBG00GCTC8Y9", ticker: "SOS", name: "SOS Ltd" },
   { symbol: "BW-BBG0125CL1D2", ticker: "IXHL", name: "Incannex Healthcare Inc." },
   { symbol: "BW-BBG0116Y22N3", ticker: "NEXN", name: "Nexxen International Ltd." },
 ];
+const aliasRows: unknown[] = currentRows.security_aliases;
+const masterRows: unknown[] = currentRows.security_master;
 
 // Set to make the reviewed-events read fail (the only failure injected; every other table is the fixture).
 const eventsDown = { on: false };
 
 function query(rows: unknown[], fail = false) {
+  let filtered = rows as Array<Record<string, unknown>>;
   const q: Record<string, unknown> = {
     select: () => q,
-    eq: () => q,
-    in: (_col: string, vals: string[]) =>
-      query((rows as Array<Record<string, unknown>>).filter((r) => !("symbol" in r) || vals.includes(r.symbol as string)), fail),
+    eq: (col: string, value: unknown) => {
+      filtered = filtered.filter((r) => r[col] === value);
+      return q;
+    },
+    in: (col: string, vals: unknown[]) => {
+      filtered = filtered.filter((r) => vals.includes(r[col]));
+      return q;
+    },
+    or: () => q,
     then: (res: (v: unknown) => unknown) =>
-      Promise.resolve(fail ? { data: null, error: { message: "connection refused" } } : { data: rows, error: null }).then(res),
+      Promise.resolve(fail ? { data: null, error: { message: "connection refused" } } : { data: filtered, error: null }).then(res),
   };
   return q;
 }
@@ -47,6 +55,8 @@ vi.mock("@/lib/supabase/admin", () => ({
         table === "security_events" ? fx.events
           : table === "security_event_legs" ? fx.legs
             : table === "symbols" ? symbolRows
+              : table === "security_aliases" ? aliasRows
+                : table === "security_master" ? masterRows
               : [],
         table === "security_events" && eventsDown.on,
       ),
@@ -67,7 +77,7 @@ vi.mock("@/lib/agent/billing-middleware", () => ({
 vi.mock("@/lib/dal/risk-metadata", () => ({ getRiskMetadata: async () => ({}) }));
 vi.mock("@/lib/dal/response-headers", () => ({ addMetadataHeaders: () => undefined, buildMetadataBody: () => ({}) }));
 
-// Today's registry: SPCX is SpaceX, SPCK is the ETF, META is Meta. FB has no current holder here.
+// Today's pricing registry has SPCX, SPCK and META; FB has no priced row here.
 const registry: Record<string, Record<string, unknown>> = {
   SPCX: { symbol: SPACEX, ticker: "SPCX", asset_type: "stock", sector_etf: null, subsector_etf: null },
   SPCK: { symbol: ETF, ticker: "SPCK", asset_type: "etf", sector_etf: null, subsector_etf: null },
@@ -126,25 +136,36 @@ const covering = <W extends { ticker: string; held_from: string | null; held_to:
 describe("heldTickerWindows: reviewed fixtures", () => {
   beforeEach(() => _resetIdentityCache());
 
-  it("SPCX: the ETF before 2026-04-07 (priced as SPCK), today's holder after", async () => {
+  it("SPCX: the ETF before 2026-04-07, a dropped gap, then today's holder", async () => {
     const ws = await heldTickerWindows(["SPCX"], { asOf: AS_OF });
     expect(ws[0]).toMatchObject({
       ticker: "SPCX", held_from: null, held_to: "2026-04-07", status: "rewritten",
       priced_as: "SPCK", bw_sym_id: ETF, event_ids: ["SPCK-SPCX-20260407"],
     });
     expect(covering(ws, "SPCX", "2026-03-31")).toEqual([ws[0]]);
+    const gap = covering(ws, "SPCX", "2026-04-07");
+    expect(gap).toHaveLength(1);
+    expect(gap[0]).toMatchObject({
+      held_from: "2026-04-07", held_to: "2026-06-12", status: "dropped",
+      priced_as: null, bw_sym_id: null, outcome: "current_security_not_valid_on_held_date",
+    });
     const after = covering(ws, "SPCX", "2026-09-30");
     expect(after).toHaveLength(1);
     expect(after[0]).toMatchObject({ priced_as: "SPCX", bw_sym_id: null });
     expect(after[0].status).not.toBe("rewritten");
   });
 
-  it("FB: Meta before 2022-06-09 (priced as META); META before then names no security", async () => {
+  it("FB maps to Meta before retirement; the history feed otherwise retains submitted tickers", async () => {
     const ws = await heldTickerWindows(["FB", "META"], { asOf: AS_OF });
     expect(covering(ws, "FB", "2021-12-31")[0]).toMatchObject({
       status: "rewritten", priced_as: "META", bw_sym_id: META, event_ids: ["META-FB-20220609"],
     });
-    expect(covering(ws, "FB", "2023-01-03")[0].priced_as).toBe("FB");
+    expect(covering(ws, "FB", "2023-01-03")[0]).toMatchObject({
+      status: "dropped", priced_as: null, outcome: "submitted_ticker_retired",
+    });
+    expect(covering(ws, "META", "2020-06-30")[0]).toMatchObject({
+      status: "carried", priced_as: "META", bw_sym_id: META, outcome: "held",
+    });
     expect(covering(ws, "META", "2023-01-03")[0]).toMatchObject({ status: "unchanged", priced_as: "META" });
   });
 

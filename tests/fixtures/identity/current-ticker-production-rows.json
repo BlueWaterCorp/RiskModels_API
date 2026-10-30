@@ -1,0 +1,208 @@
+{
+  "security_master": [
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "ticker": "META",
+      "company_name": "Meta Platforms, Inc.",
+      "cik": "0001326801",
+      "valid_from": "2012-05-18",
+      "valid_to": null,
+      "merged_into": null
+    },
+    {
+      "bw_sym_id": "BW-BBG000NQF3Z5",
+      "ticker": "SPCX",
+      "company_name": "SPACE EXPLORATION TECHNOLOGIES CORP",
+      "cik": "0001181412",
+      "valid_from": "2026-06-12",
+      "valid_to": null,
+      "merged_into": null
+    },
+    {
+      "bw_sym_id": "BW-BBG0018SLC07",
+      "ticker": "XYZ",
+      "company_name": "Block, Inc.",
+      "cik": "0001512673",
+      "valid_from": "2015-11-19",
+      "valid_to": null,
+      "merged_into": null
+    },
+    {
+      "bw_sym_id": "BW-BBG00YJ8L8T5",
+      "ticker": "SPCK",
+      "company_name": "Collaborative Investment Series Trust",
+      "cik": "0001719812",
+      "valid_from": "2000-01-01",
+      "valid_to": null,
+      "merged_into": null
+    },
+    {
+      "bw_sym_id": "BW-BBG01VRMNFB1",
+      "ticker": "FB",
+      "company_name": "PROSHARES TR",
+      "cik": null,
+      "valid_from": "2025-10-01",
+      "valid_to": null,
+      "merged_into": null
+    },
+    {
+      "bw_sym_id": "BW-C0001181412",
+      "ticker": "SPCX",
+      "company_name": "SPACE EXPLORATION TECHNOLOGIES CORP",
+      "cik": "0001181412",
+      "valid_from": "2026-06-11",
+      "valid_to": "2026-06-11",
+      "merged_into": "BW-BBG000NQF3Z5"
+    },
+    {
+      "bw_sym_id": "BW-SVPDJ6JAQTBW9",
+      "ticker": "SQ",
+      "company_name": "EQC Liquidating Trust",
+      "cik": "0000803649",
+      "valid_from": "2000-01-01",
+      "valid_to": "2025-01-21",
+      "merged_into": null
+    }
+  ],
+  "security_aliases": [
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "EODHD_TICKER",
+      "alias_value": "FB",
+      "valid_from": "2012-05-18",
+      "valid_to": "2022-06-09"
+    },
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "TICKER",
+      "alias_value": "FB",
+      "valid_from": "2012-05-18",
+      "valid_to": "2022-06-09"
+    },
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "EODHD_TICKER",
+      "alias_value": "META",
+      "valid_from": "2022-06-09",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "EODHD_TICKER",
+      "alias_value": "META",
+      "valid_from": "2012-05-18",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "FINRA_TICKER",
+      "alias_value": "META",
+      "valid_from": "2021-06-30",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "TICKER",
+      "alias_value": "META",
+      "valid_from": "2012-05-18",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG000MM2P62",
+      "alias_type": "TICKER",
+      "alias_value": "META",
+      "valid_from": "2022-06-09",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG0018SLC07",
+      "alias_type": "LEGACY_TICKER",
+      "alias_value": "SQ",
+      "valid_from": "2011-03-02",
+      "valid_to": "2021-12-08"
+    },
+    {
+      "bw_sym_id": "BW-BBG0018SLC07",
+      "alias_type": "EODHD_TICKER",
+      "alias_value": "XYZ",
+      "valid_from": "2015-11-19",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG0018SLC07",
+      "alias_type": "FINRA_TICKER",
+      "alias_value": "XYZ",
+      "valid_from": "2025-01-21",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-BBG0018SLC07",
+      "alias_type": "TICKER",
+      "alias_value": "XYZ",
+      "valid_from": "2015-11-19",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-S1VVF0E8B5K1A",
+      "alias_type": "LEGACY_TICKER",
+      "alias_value": "META",
+      "valid_from": "2012-05-18",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-SM52M6AC77C7B",
+      "alias_type": "LEGACY_TICKER",
+      "alias_value": "XYZ",
+      "valid_from": "2015-11-19",
+      "valid_to": null
+    },
+    {
+      "bw_sym_id": "BW-SVPDJ6JAQTBW9",
+      "alias_type": "EODHD_TICKER",
+      "alias_value": "SQ",
+      "valid_from": "2015-11-19",
+      "valid_to": "2025-01-21"
+    },
+    {
+      "bw_sym_id": "BW-SVPDJ6JAQTBW9",
+      "alias_type": "LEGACY_TICKER",
+      "alias_value": "SQ",
+      "valid_from": "2015-11-19",
+      "valid_to": "2025-01-21"
+    },
+    {
+      "bw_sym_id": "BW-SVPDJ6JAQTBW9",
+      "alias_type": "TICKER",
+      "alias_value": "SQ",
+      "valid_from": "2015-11-19",
+      "valid_to": "2025-01-21"
+    }
+  ],
+  "symbols": [
+    {
+      "symbol": "BW-BBG000MM2P62",
+      "ticker": "META",
+      "name": "Meta Platforms Inc Class A"
+    },
+    {
+      "symbol": "BW-BBG000NQF3Z5",
+      "ticker": "SPCX",
+      "name": "SPACE EXPLORATION TECHNOLOGIES CORP"
+    },
+    {
+      "symbol": "BW-BBG0018SLC07",
+      "ticker": "XYZ",
+      "name": "Block, Inc. Class A"
+    },
+    {
+      "symbol": "BW-BBG00YJ8L8T5",
+      "ticker": "SPCK",
+      "name": "SPAC and New Issue ETF"
+    },
+    {
+      "symbol": "BW-C0001181412",
+      "ticker": "SPCX#1",
+      "name": null
+    }
+  ]
+}
