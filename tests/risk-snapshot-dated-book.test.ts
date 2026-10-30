@@ -177,6 +177,7 @@ describe("transitionFootnotes", () => {
     expect(transitionFootnotes([{
       submitted_ticker: "SPCX", held_on: "2026-05-01", as_of: "2026-10-22", status: "dropped",
       identity_source: "ticker_alias_window", source_bw_sym_id: "BW-BBG000NQF3Z5", bw_sym_id: null, ticker: null,
+      held_date_tickers: [],
       outcome: "current_security_not_valid_on_held_date", event_ids: [], steps: [],
       detail: "SPCX on 2026-10-22 resolves to BW-BBG000NQF3Z5, which was not valid on 2026-05-01. Position dropped.",
     }])[1]).toContain("which was not valid on 2026-05-01");

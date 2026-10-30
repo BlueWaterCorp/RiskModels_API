@@ -260,7 +260,8 @@ class ExposureHistoryPack:
     @property
     def ticker_windows(self) -> list[dict]:
         """Point-in-time ticker windows from the API (ERM3-73): for tickers in reviewed
-        corporate-action events, which security a holding dated in each window is priced as."""
+        corporate-action events, which security a holding dated in each window is priced as.
+        Dropped windows carry an outcome code; unresolved windows retain the submitted ticker."""
         return list(self.meta.get("ticker_windows") or [])
 
     def window_for(self, ticker: str, held_on: str) -> dict | None:

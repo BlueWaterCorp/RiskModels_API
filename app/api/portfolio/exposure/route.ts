@@ -24,6 +24,29 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+type TransitionDroppedPosition = { ticker: string; value_usd: number; reason: string; detail: string };
+
+function datedBookCoverage(
+  submitted: Array<{ ticker: string; value: number }>,
+  transitions: PositionTransition[] | undefined,
+): { inputGrossUsd: number; dropped: TransitionDroppedPosition[] } {
+  const inputGrossUsd = submitted.reduce((sum, p) => sum + Math.abs(p.value), 0);
+  const valueByTicker = new Map<string, number>();
+  for (const p of submitted) {
+    const ticker = p.ticker.trim().toUpperCase();
+    valueByTicker.set(ticker, (valueByTicker.get(ticker) ?? 0) + p.value);
+  }
+  const dropped = (transitions ?? [])
+    .filter((t) => t.status === "dropped")
+    .map((t) => ({
+      ticker: t.submitted_ticker,
+      value_usd: valueByTicker.get(t.submitted_ticker) ?? 0,
+      reason: t.outcome,
+      detail: t.detail,
+    }));
+  return { inputGrossUsd, dropped };
+}
+
 /** Distinct tickers submitted: sets the price tier for the pre-flight balance check. */
 async function getItemCount(req: NextRequest): Promise<number | undefined> {
   try {
@@ -83,12 +106,14 @@ export const POST = withBilling(
         positions = t.positions;
         transitions = t.transitions;
         if (!positions.length) {
+          const datedCoverage = datedBookCoverage(submitted, transitions);
           // Every position was removed by the dated-book transition: nothing to model, so not billed.
           return NextResponse.json(
             {
               error: "No modelled positions",
               message: "Every submitted position was removed by the dated-book transition; see transitions.",
-              dropped: [],
+              dropped: datedCoverage.dropped,
+              coverage: { input_gross_usd: datedCoverage.inputGrossUsd, dropped: datedCoverage.dropped },
               transitions,
             },
             { status: 422, headers: getCorsHeaders(origin) },
@@ -104,13 +129,18 @@ export const POST = withBilling(
       });
 
       if ("error" in result) {
+        const datedCoverage = datedBookCoverage(submitted, transitions);
         // No stock with metrics and no ETF held with returns: a 4xx, so not billed.
         return NextResponse.json(
           {
             error: "No modelled positions",
             message:
               "None of the submitted positions could be modelled: no stock has risk metrics at the model date and no ETF held has return history. Each entry in dropped gives the ticker's reason and a one-line detail.",
-            dropped: result.dropped,
+            dropped: [...datedCoverage.dropped, ...(result.dropped ?? [])],
+            coverage: {
+              input_gross_usd: datedCoverage.inputGrossUsd,
+              dropped: [...datedCoverage.dropped, ...(result.dropped ?? [])],
+            },
             ...(transitions ? { transitions } : {}),
           },
           { status: 422, headers: getCorsHeaders(origin) },
@@ -123,9 +153,20 @@ export const POST = withBilling(
 
       const metadata = await getRiskMetadata();
       const latency = Math.round(performance.now() - fetchStart);
+      const datedCoverage = datedBookCoverage(submitted, transitions);
+      const resultWithDatedCoverage = datedCoverage.dropped.length
+        ? {
+            ...result,
+            coverage: {
+              ...result.coverage,
+              input_gross_usd: datedCoverage.inputGrossUsd,
+              dropped: [...datedCoverage.dropped, ...result.coverage.dropped],
+            },
+          }
+        : result;
       const response = NextResponse.json(
         {
-          ...result,
+          ...resultWithDatedCoverage,
           ...(transitions ? { transitions } : {}),
           _metadata: buildMetadataBody(metadata, { data_source: "zarr" }),
           _agent: {

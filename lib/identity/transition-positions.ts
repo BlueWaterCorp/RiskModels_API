@@ -9,15 +9,24 @@
  * ticker under which today's registry holds the security it became, and reports every rewrite with
  * its event ids and exact ratios.
  *
- * Tickers that appear in reviewed events are always examined. For an explicitly dated book, every
- * submitted ticker is also checked against point-in-time alias and security-master validity so a
- * current ticker cannot be priced before its security existed or under a different historical holder.
+ * Tickers that resolve on the held date follow the original reviewed-event behavior. For an
+ * explicitly dated book, only an unresolved ticker is mapped from its current security back to the
+ * held date, and only a dated security-master row can prove that the security existed then.
  * Positions carry dollar values, which a ratio does not change; a split into several securities
  * (spin-off) cannot be priced here and is reported `unsupported` with the position left as submitted.
  * A position that cannot be mapped safely, became cash or was cancelled is dropped and reported.
  */
-import { describe, loadEvents, resolveIdentity, type IdentitySource } from "@/lib/identity/resolve";
-import { applyEvents, effectiveEvents, fracToRatio, fracToString, parseDecimal, tickerWindows } from "@/lib/identity/security-events";
+import { loadEvents, type IdentityAnswer, type IdentitySource } from "@/lib/identity/resolve";
+import {
+  applyEvents,
+  effectiveEvents,
+  fracToRatio,
+  fracToString,
+  parseDecimal,
+  tickerWindows,
+  type SecurityEvent,
+  type TickerWindow,
+} from "@/lib/identity/security-events";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type TransitionStepOut = {
@@ -46,6 +55,10 @@ export type PositionTransition = {
   source_bw_sym_id: string | null;
   bw_sym_id: string | null;
   ticker: string | null;
+  /** Every ticker label for the resolved security whose half-open window covers held_on. */
+  held_date_tickers: string[];
+  /** Present only when held_date_tickers has exactly one label. */
+  held_date_ticker?: string;
   outcome: string;
   event_ids: string[];
   steps: TransitionStepOut[];
@@ -56,80 +69,215 @@ export type TransitionResult<T> = { positions: T[]; transitions: PositionTransit
 
 const TICKER_ALIAS_TYPES = ["TICKER", "EODHD_TICKER", "FINRA_TICKER", "LEGACY_TICKER"];
 
-/** Today's registry ticker for each id (symbols, else the security master). */
-async function registryTickers(ids: string[]): Promise<Map<string, string | null>> {
-  const d = await describe(ids);
-  return new Map(ids.map((id) => [id, d.get(id)?.ticker ?? null]));
-}
-
-type HeldDateTicker =
-  | { status: "resolved"; ticker: string }
-  | { status: "not_valid"; tickers: [] }
-  | { status: "ambiguous"; tickers: string[] };
+type AliasRow = {
+  bw_sym_id: string;
+  alias_type: string;
+  alias_value: string;
+  valid_from: string | null;
+  valid_to: string | null;
+};
+type MasterRow = {
+  bw_sym_id: string;
+  ticker: string | null;
+  company_name: string | null;
+  cik: string | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  merged_into: string | null;
+};
+type SymbolRow = { symbol: string; ticker: string | null; name: string | null };
+type TransitionEvidence = {
+  aliases: AliasRow[];
+  masters: MasterRow[];
+  symbols: SymbolRow[];
+  windows: TickerWindow[];
+};
 
 const covers = (row: { valid_from: string | null; valid_to: string | null }, date: string) =>
   (!row.valid_from || row.valid_from.slice(0, 10) <= date) && (!row.valid_to || date < row.valid_to.slice(0, 10));
 
-/** Historical ticker for a currently resolved security, with the master row proving it existed then. */
-async function heldDateTicker(bwSymId: string, heldOn: string): Promise<HeldDateTicker> {
+const baseIdentity = { duplicate_records: [] as string[], excluded_candidates: [] as Array<{ bw_sym_id: string; reason: string }> };
+
+/** One batched read per identity table for the request. */
+async function transitionEvidence(tickers: string[], events: SecurityEvent[], knownAsOf: string | null): Promise<TransitionEvidence> {
+  const eventTickers = effectiveEvents(events, knownAsOf)
+    .flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.ticker).filter(Boolean));
+  const lookupTickers = [...new Set([...tickers, ...eventTickers])];
   const admin = createAdminClient();
-  const [al, sm] = await Promise.all([
-    admin.from("security_aliases").select("alias_type, alias_value, valid_from, valid_to").eq("bw_sym_id", bwSymId).in("alias_type", TICKER_ALIAS_TYPES),
-    admin.from("security_master").select("ticker, valid_from, valid_to, merged_into").eq("bw_sym_id", bwSymId),
+  const [al, sy] = await Promise.all([
+    admin.from("security_aliases")
+      .select("bw_sym_id, alias_type, alias_value, valid_from, valid_to")
+      .in("alias_value", lookupTickers)
+      .in("alias_type", TICKER_ALIAS_TYPES),
+    admin.from("symbols").select("symbol, ticker, name").in("ticker", lookupTickers),
   ]);
   if (al.error) throw new Error(`security_aliases read failed: ${al.error.message}`);
+  if (sy.error) throw new Error(`symbols read failed: ${sy.error.message}`);
+  const aliases = (al.data ?? []) as AliasRow[];
+  const symbols = (sy.data ?? []) as SymbolRow[];
+  const ids = [...new Set([...aliases.map((r) => r.bw_sym_id), ...symbols.map((r) => r.symbol)])];
+  const sm = ids.length
+    ? await admin.from("security_master")
+      .select("bw_sym_id, ticker, company_name, cik, valid_from, valid_to, merged_into")
+      .in("bw_sym_id", ids)
+    : { data: [], error: null };
   if (sm.error) throw new Error(`security_master read failed: ${sm.error.message}`);
+  return { aliases, masters: (sm.data ?? []) as MasterRow[], symbols, windows: tickerWindows(events, knownAsOf) };
+}
 
-  const master = ((sm.data ?? []) as Array<{ ticker: string | null; valid_from: string | null; valid_to: string | null; merged_into: string | null }>)
-    .filter((r) => !r.merged_into && covers(r, heldOn));
-  if (!master.length) return { status: "not_valid", tickers: [] };
+function contradictedBy(windows: TickerWindow[], id: string, heldOn: string): boolean {
+  const mine = windows.filter((w) => w.bw_sym_id === id);
+  return mine.length > 0 && !mine.some((w) => (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end));
+}
 
-  const aliasRows = ((al.data ?? []) as Array<{ alias_type: string; alias_value: string; valid_from: string | null; valid_to: string | null }>)
-    .filter((r) => covers(r, heldOn));
-  const preferredAliases = aliasRows.some((r) => r.alias_type === "TICKER") ? aliasRows.filter((r) => r.alias_type === "TICKER") : aliasRows;
-  const aliases = preferredAliases
-    .map((r) => r.alias_value.trim().toUpperCase())
-    .filter(Boolean);
-  const fallbackTickers = master.map((r) => r.ticker?.trim().toUpperCase()).filter(Boolean) as string[];
-  const tickers = [...new Set(aliases.length ? aliases : fallbackTickers)].sort();
-  if (tickers.length === 1) return { status: "resolved", ticker: tickers[0] };
-  return { status: "ambiguous", tickers };
+/** Batched equivalent of the ticker branch of resolveIdentity for transition requests. */
+function resolveFromEvidence(ticker: string, heldOn: string, evidence: TransitionEvidence): IdentityAnswer {
+  const own = historicalTickerOwnerFromWindows(evidence.windows, ticker, heldOn);
+  if (own.status === "reviewed") {
+    return { ...baseIdentity, status: "resolved", bw_sym_id: own.bw_sym_id, source: "reviewed_event_window", candidates: own.candidates };
+  }
+  if (own.status === "ambiguous") {
+    return { ...baseIdentity, status: "ambiguous", bw_sym_id: null, source: null, candidates: own.candidates };
+  }
+  const masterById = new Map(evidence.masters.map((r) => [r.bw_sym_id, r]));
+  const excluded: Array<{ bw_sym_id: string; reason: string }> = [];
+  const aliasIds = new Set<string>();
+  for (const row of evidence.aliases.filter((r) => r.alias_value.trim().toUpperCase() === ticker && covers(r, heldOn))) {
+    const master = masterById.get(row.bw_sym_id);
+    if (!master) excluded.push({ bw_sym_id: row.bw_sym_id, reason: "alias id not in the security master" });
+    else aliasIds.add(master.merged_into ?? row.bw_sym_id);
+  }
+  const contradicted = [...aliasIds].filter((id) => contradictedBy(evidence.windows, id, heldOn));
+  for (const id of contradicted) aliasIds.delete(id);
+  const ids = [...aliasIds].sort();
+  const common = { ...baseIdentity, excluded_candidates: excluded };
+  if (own.status === "before_first_event") {
+    const chosen = own.bw_sym_id!;
+    const others = ids.filter((id) => id !== chosen);
+    const chosenCik = masterById.get(chosen)?.cik ?? null;
+    if (!others.length || (chosenCik && others.every((id) => masterById.get(id)?.cik === chosenCik))) {
+      return { ...common, status: "resolved", bw_sym_id: chosen, source: "reviewed_event_before_first", candidates: [chosen], duplicate_records: others };
+    }
+    return { ...common, status: "ambiguous", bw_sym_id: null, source: null, candidates: [...new Set([chosen, ...ids])].sort() };
+  }
+  if (ids.length === 1) return { ...common, status: "resolved", bw_sym_id: ids[0], source: "ticker_alias_window", candidates: ids };
+  if (ids.length > 1) return { ...common, status: "ambiguous", bw_sym_id: null, source: null, candidates: ids };
+  const masterIds = evidence.masters
+    .filter((r) => !r.merged_into && r.ticker?.trim().toUpperCase() === ticker && covers(r, heldOn))
+    .map((r) => r.bw_sym_id)
+    .filter((id) => !contradictedBy(evidence.windows, id, heldOn));
+  const uniqueMasterIds = [...new Set(masterIds)].sort();
+  if (uniqueMasterIds.length === 1) return { ...common, status: "resolved", bw_sym_id: uniqueMasterIds[0], source: "security_master_ticker", candidates: uniqueMasterIds };
+  if (uniqueMasterIds.length > 1) return { ...common, status: "ambiguous", bw_sym_id: null, source: null, candidates: uniqueMasterIds };
+  return { ...common, status: "unavailable", bw_sym_id: null, source: null, candidates: [] };
+}
+
+function historicalTickerOwnerFromWindows(windows: TickerWindow[], ticker: string, heldOn: string) {
+  const hits = windows.filter((w) => w.ticker === ticker && (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end));
+  const ids = [...new Set(hits.map((w) => w.bw_sym_id))].sort();
+  if (!ids.length) return { status: "none" as const, bw_sym_id: null, candidates: [] as string[] };
+  if (ids.length > 1) return { status: "ambiguous" as const, bw_sym_id: null, candidates: ids };
+  return { status: hits.every((w) => w.start !== null) ? "reviewed" as const : "before_first_event" as const, bw_sym_id: ids[0], candidates: ids };
+}
+
+function heldLabels(id: string, heldOn: string, evidence: TransitionEvidence): string[] {
+  const aliases = evidence.aliases
+    .filter((r) => r.bw_sym_id === id && covers(r, heldOn))
+    .map((r) => r.alias_value.trim().toUpperCase());
+  const reviewed = evidence.windows
+    .filter((w) => w.bw_sym_id === id && (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end))
+    .map((w) => w.ticker);
+  return [...new Set([...aliases, ...reviewed].filter(Boolean))].sort();
+}
+
+function labelFields(id: string | null, heldOn: string, evidence: TransitionEvidence) {
+  const held_date_tickers = id ? heldLabels(id, heldOn, evidence) : [];
+  return {
+    held_date_tickers,
+    ...(held_date_tickers.length === 1 ? { held_date_ticker: held_date_tickers[0] } : {}),
+  };
+}
+
+function registryTicker(id: string, evidence: TransitionEvidence): string | null {
+  return evidence.symbols.find((r) => r.symbol === id)?.ticker
+    ?? evidence.masters.find((r) => r.bw_sym_id === id)?.ticker
+    ?? null;
+}
+
+function currentIdentity(ticker: string, asOf: string, evidence: TransitionEvidence): IdentityAnswer {
+  const symbolIds = [...new Set(evidence.symbols.filter((r) => r.ticker?.trim().toUpperCase() === ticker).map((r) => r.symbol))].sort();
+  const aliasIds = [...new Set(evidence.aliases
+    .filter((r) => r.alias_value.trim().toUpperCase() === ticker && covers(r, asOf))
+    .map((r) => evidence.masters.find((m) => m.bw_sym_id === r.bw_sym_id)?.merged_into ?? r.bw_sym_id)
+    .filter((id) => !contradictedBy(evidence.windows, id, asOf)))].sort();
+  const ids = [...new Set([...symbolIds, ...aliasIds])].sort();
+  if (ids.length === 1) return { ...baseIdentity, status: "resolved", bw_sym_id: ids[0], source: symbolIds.length ? "current_holder" : "ticker_alias_window", candidates: ids };
+  return { ...baseIdentity, status: ids.length ? "ambiguous" : "unavailable", bw_sym_id: null, source: null, candidates: ids };
+}
+
+function retiredBeforeHeldDate(ticker: string, heldOn: string, evidence: TransitionEvidence): boolean {
+  const mine = evidence.windows.filter((w) => w.ticker === ticker);
+  const ended = mine.some((w) => w.end !== null && w.end <= heldOn);
+  const later = mine.some((w) => w.start !== null && w.start > heldOn)
+    || evidence.aliases.some((r) =>
+      r.alias_value.trim().toUpperCase() === ticker
+      && r.valid_from !== null
+      && r.valid_from.slice(0, 10) > heldOn,
+    )
+    || evidence.symbols.some((r) => r.ticker?.trim().toUpperCase() === ticker);
+  return ended && !later && !mine.some((w) => (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end));
 }
 
 export async function transitionPositions<T extends { ticker: string }>(
   positions: T[],
-  opts: { heldOn: string; asOf: string; knownAsOf?: string | null; mapCurrentTickerToHeldDate?: boolean },
+  opts: {
+    heldOn: string;
+    asOf: string;
+    knownAsOf?: string | null;
+    mapCurrentTickerToHeldDate?: boolean;
+    /** Internal: heldTickerWindows reuses one request-level evidence batch for every time slice. */
+    preloaded?: { events: SecurityEvent[]; evidence: TransitionEvidence };
+  },
 ): Promise<TransitionResult<T>> {
   const { heldOn, asOf } = opts;
   if (heldOn > asOf) throw new Error(`positions_as_of ${heldOn} is after as_of ${asOf}`);
-  const events = await loadEvents();
+  const events = opts.preloaded?.events ?? await loadEvents();
   const eff = effectiveEvents(events, opts.knownAsOf ?? null);
   const eventTickers = new Set(eff.flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.ticker).filter(Boolean)));
   const byId = new Map(events.map((e) => [e.event_id, e]));
   const submittedTickers = [...new Set(positions.map((p) => p.ticker.trim().toUpperCase()))];
   const touched = (opts.mapCurrentTickerToHeldDate ?? true) ? submittedTickers : submittedTickers.filter((t) => eventTickers.has(t));
   if (!touched.length) return { positions, transitions: [] };
+  const evidence = opts.preloaded?.evidence ?? await transitionEvidence(touched, events, opts.knownAsOf ?? null);
 
   // ticker -> what it became (null: leave the position as submitted)
   const plan = new Map<string, { ticker: string | null; drop: boolean; transition: PositionTransition }>();
   for (const t of touched) {
-    const req = {
-      identifier: t, identifier_type: "ticker" as const, as_of: asOf, acquired_on: heldOn, quantity: "1",
-      known_as_of: opts.knownAsOf ?? null, fractions: "exact" as const, elections: {},
-    };
-    const identity = await resolveIdentity(req, events, heldOn);
+    const identity = resolveFromEvidence(t, heldOn, evidence);
     const base = {
       submitted_ticker: t, held_on: heldOn, as_of: asOf, identity_source: identity.source,
-      source_bw_sym_id: identity.bw_sym_id,
+      source_bw_sym_id: identity.bw_sym_id, ...labelFields(identity.bw_sym_id, heldOn, evidence),
     };
     if (identity.status !== "resolved" || !identity.bw_sym_id) {
       if (opts.mapCurrentTickerToHeldDate ?? true) {
-        const current = await resolveIdentity(req, events, asOf);
+        if (retiredBeforeHeldDate(t, heldOn, evidence)) {
+          plan.set(t, {
+            ticker: null, drop: true,
+            transition: {
+              ...base, status: "dropped", bw_sym_id: null, ticker: null, outcome: "submitted_ticker_retired",
+              event_ids: [], steps: [],
+              detail: `${t} was retired before ${heldOn}. Position dropped rather than assigned to a later holder of the ticker.`,
+            },
+          });
+          continue;
+        }
+        const current = currentIdentity(t, asOf, evidence);
         if (current.status !== "resolved" || !current.bw_sym_id) {
           plan.set(t, {
             ticker: null, drop: true,
             transition: {
               ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
+              ...labelFields(current.bw_sym_id, heldOn, evidence),
               status: "dropped", bw_sym_id: null, ticker: null, outcome: `current_identity_${current.status}`,
               event_ids: [], steps: [],
               detail: `${t} on ${heldOn}: identity ${identity.status}; ${t} on ${asOf}: identity ${current.status}. Position dropped to avoid pricing an unverified security.`,
@@ -137,43 +285,44 @@ export async function transitionPositions<T extends { ticker: string }>(
           });
           continue;
         }
-        const heldTicker = await heldDateTicker(current.bw_sym_id, heldOn);
-        if (heldTicker.status !== "resolved") {
+        const masterProof = evidence.masters.some((r) =>
+          r.bw_sym_id === current.bw_sym_id
+          && r.valid_from !== null
+          && r.valid_from.slice(0, 10) <= heldOn
+          && (!r.valid_to || heldOn < r.valid_to.slice(0, 10)),
+        );
+        if (!masterProof) {
           plan.set(t, {
             ticker: null, drop: true,
             transition: {
               ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
-              status: "dropped", bw_sym_id: null, ticker: null,
-              outcome: heldTicker.status === "not_valid" ? "current_security_not_valid_on_held_date" : "held_date_ticker_ambiguous",
+              ...labelFields(current.bw_sym_id, heldOn, evidence),
+              status: "dropped", bw_sym_id: null, ticker: null, outcome: "current_security_not_valid_on_held_date",
               event_ids: [], steps: [],
-              detail: heldTicker.status === "not_valid"
-                ? `${t} on ${asOf} resolves to ${current.bw_sym_id}, which was not valid on ${heldOn}. Position dropped.`
-                : `${t} on ${asOf} resolves to ${current.bw_sym_id}, but its ticker on ${heldOn} is ambiguous (${heldTicker.tickers.join(", ")}). Position dropped.`,
+              detail: `${t} on ${asOf} resolves to ${current.bw_sym_id}, but no dated security-master row proves that security existed on ${heldOn}. Position dropped.`,
             },
           });
           continue;
         }
-        const registryTicker = (await registryTickers([current.bw_sym_id])).get(current.bw_sym_id);
-        if (!registryTicker) {
-          plan.set(t, {
-            ticker: null, drop: true,
-            transition: {
-              ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
-              status: "dropped", bw_sym_id: null, ticker: null, outcome: "current_security_registry_ticker_unavailable",
-              event_ids: [], steps: [],
-              detail: `${t} on ${asOf} resolves to ${current.bw_sym_id}, but no registry ticker is available for pricing. Position dropped.`,
-            },
-          });
-          continue;
-        }
+        const registry = registryTicker(current.bw_sym_id, evidence) ?? t;
+        const labels = heldLabels(current.bw_sym_id, heldOn, evidence);
         plan.set(t, {
-          ticker: registryTicker, drop: false,
+          ticker: registry, drop: false,
           transition: {
             ...base, identity_source: current.source, source_bw_sym_id: current.bw_sym_id,
-            status: "rewritten", bw_sym_id: current.bw_sym_id, ticker: registryTicker,
+            ...labelFields(current.bw_sym_id, heldOn, evidence),
+            status: "rewritten", bw_sym_id: current.bw_sym_id, ticker: registry,
             outcome: "current_ticker_mapped_to_held_date", event_ids: [], steps: [],
-            detail: `${t} submitted for ${heldOn} -> ${current.bw_sym_id}, traded as ${heldTicker.ticker} on that date. Priced as ${registryTicker}.`,
+            detail: `${t} submitted for ${heldOn} -> ${current.bw_sym_id}; held-date ticker labels: ${labels.join(", ") || "none"}. Priced as ${registry}.`,
           },
+        });
+        continue;
+      }
+      if (retiredBeforeHeldDate(t, heldOn, evidence)) {
+        plan.set(t, {
+          ticker: null, drop: true,
+          transition: { ...base, status: "dropped", bw_sym_id: null, ticker: null, outcome: "submitted_ticker_retired", event_ids: [], steps: [],
+            detail: `${t} was retired before ${heldOn}. Position dropped rather than assigned to a later holder of the ticker.` },
         });
         continue;
       }
@@ -218,12 +367,12 @@ export async function transitionPositions<T extends { ticker: string }>(
       continue;
     }
     const target = ids[0];
-    const reg = (await registryTickers([target])).get(target) ?? carry.holdings[0].ticker;
+    const reg = registryTicker(target, evidence) ?? carry.holdings[0].ticker;
     if (reg === t && !steps.length) continue; // the registry already holds this security under the submitted ticker
     const q = carry.holdings[0].quantity;
     plan.set(t, {
       ticker: reg, drop: false,
-      transition: { ...base, status: reg !== t ? "rewritten" : "carried", bw_sym_id: target, ticker: reg, outcome: carry.status, event_ids: carry.applied_event_ids, steps,
+      transition: { ...base, ...labelFields(identity.bw_sym_id, heldOn, evidence), status: reg !== t ? "rewritten" : "carried", bw_sym_id: target, ticker: reg, outcome: carry.status, event_ids: carry.applied_event_ids, steps,
         detail: `${t} held on ${heldOn} is ${target}${steps.length ? `; after ${carry.applied_event_ids.join(", ")} one unit is ${fracToRatio(q)} units` : ""}; priced as ${reg}.` },
     });
   }
@@ -280,17 +429,6 @@ export type HeldTickerWindow = {
   event_ids: string[];
 };
 
-/** Dates at which the alias and security-master evidence for `ticker` changes (empty on a read error). */
-async function evidenceDates(ticker: string): Promise<string[]> {
-  const admin = createAdminClient();
-  const [al, sm] = await Promise.all([
-    admin.from("security_aliases").select("valid_from, valid_to").eq("alias_value", ticker).in("alias_type", TICKER_ALIAS_TYPES),
-    admin.from("security_master").select("valid_from, valid_to").eq("ticker", ticker),
-  ]);
-  const rows = [...((al.error ? [] : al.data) ?? []), ...((sm.error ? [] : sm.data) ?? [])] as Array<{ valid_from: string | null; valid_to: string | null }>;
-  return rows.flatMap((r) => [r.valid_from, r.valid_to]).filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d)).map((d) => d.slice(0, 10));
-}
-
 function dayBefore(d: string): string {
   const t = new Date(`${d}T12:00:00Z`);
   t.setUTCDate(t.getUTCDate() - 1);
@@ -326,11 +464,21 @@ export async function heldTickerWindows(
     if (w.start) s.add(w.start);
     if (w.end) s.add(w.end);
   }
+  const normalizedTickers = [...new Set(tickers.map((x) => x.trim().toUpperCase()))].sort();
+  const evidence = await transitionEvidence(normalizedTickers, events, opts.knownAsOf ?? null);
   const out: HeldTickerWindow[] = [];
-  for (const t of [...new Set(tickers.map((x) => x.trim().toUpperCase()))].sort()) {
+  for (const t of normalizedTickers) {
     const reviewed = datesByTicker.get(t);
     if (!reviewed) continue;
-    const cuts = [...new Set([...reviewed, ...(await evidenceDates(t))])].filter((d) => d <= opts.asOf).sort();
+    const evidenceRows = [
+      ...evidence.aliases.filter((r) => r.alias_value.trim().toUpperCase() === t),
+      ...evidence.masters.filter((r) => r.ticker?.trim().toUpperCase() === t),
+    ];
+    const evidenceCuts = evidenceRows
+      .flatMap((r) => [r.valid_from, r.valid_to])
+      .filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d))
+      .map((d) => d.slice(0, 10));
+    const cuts = [...new Set([...reviewed, ...evidenceCuts])].filter((d) => d <= opts.asOf).sort();
     const pieces: Array<[string | null, string | null]> = [];
     if (!cuts.length) pieces.push([null, null]);
     else {
@@ -340,7 +488,13 @@ export async function heldTickerWindows(
     let prev: HeldTickerWindow | null = null;
     for (const [from, to] of pieces) {
       const heldOn = from ?? (to ? dayBefore(to) : opts.asOf);
-      const r = await transitionPositions([{ ticker: t }], { heldOn, asOf: opts.asOf, knownAsOf: opts.knownAsOf });
+      const r = await transitionPositions([{ ticker: t }], {
+        heldOn,
+        asOf: opts.asOf,
+        knownAsOf: opts.knownAsOf,
+        mapCurrentTickerToHeldDate: false,
+        preloaded: { events, evidence },
+      });
       const tr = r.transitions[0];
       const w: HeldTickerWindow = tr
         ? {
@@ -351,7 +505,7 @@ export async function heldTickerWindows(
           }
         : { ticker: t, held_from: from, held_to: to, status: "unchanged", priced_as: t, bw_sym_id: null, outcome: "unchanged", event_ids: [] };
       if (
-        prev && prev.status === w.status && prev.priced_as === w.priced_as && prev.bw_sym_id === w.bw_sym_id &&
+        prev && prev.status === w.status && prev.priced_as === w.priced_as && prev.bw_sym_id === w.bw_sym_id && prev.outcome === w.outcome &&
         prev.event_ids.join() === w.event_ids.join()
       ) {
         prev.held_to = to;

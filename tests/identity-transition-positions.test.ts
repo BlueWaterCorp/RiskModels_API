@@ -27,7 +27,8 @@ const symbolRows = [
 
 const aliasRows = [
   { bw_sym_id: META, alias_value: "FB", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: "2022-06-09" },
-  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2022-06-09", valid_to: null },
+  // Real Contrafund-book rows: both labels cover 2020; this is label ambiguity, not security ambiguity.
+  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: null },
   { bw_sym_id: SQ, alias_value: "SQ", alias_type: "TICKER", valid_from: "2015-11-19", valid_to: "2025-01-21" },
   { bw_sym_id: SQ, alias_value: "XYZ", alias_type: "TICKER", valid_from: "2025-01-21", valid_to: null },
   { bw_sym_id: SPACEX, alias_value: "SPCX", alias_type: "TICKER", valid_from: "2026-06-12", valid_to: null },
@@ -40,6 +41,7 @@ const masterRows = [
   { bw_sym_id: SPACEX, ticker: "SPCX", company_name: "Space Exploration Technologies Corp", cik: "0001879026", valid_from: "2026-06-12", valid_to: null, merged_into: null },
   { bw_sym_id: AAPL, ticker: "AAPL", company_name: "Apple Inc", cik: "0000320193", valid_from: "2000-01-01", valid_to: null, merged_into: null },
 ];
+const queryCounts = new Map<string, number>();
 
 function query(rows: unknown[]) {
   let filtered = rows as Array<Record<string, unknown>>;
@@ -60,15 +62,17 @@ function query(rows: unknown[]) {
 
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminClient: () => ({
-    from: (table: string) =>
-      query(
+    from: (table: string) => {
+      queryCounts.set(table, (queryCounts.get(table) ?? 0) + 1);
+      return query(
         table === "security_events" ? fx.events
           : table === "security_event_legs" ? fx.legs
             : table === "symbols" ? symbolRows
               : table === "security_aliases" ? aliasRows
                 : table === "security_master" ? masterRows
               : [],
-      ),
+      );
+    },
   }),
 }));
 vi.mock("@/lib/dal/risk-engine-v3", () => ({ resolveSymbolByTicker: vi.fn(async () => null) }));
@@ -78,7 +82,10 @@ vi.mock("@/lib/portfolio/signed-exposure-data", () => ({
   asOfBeforeEarliest: () => null,
   computePortfolioExposure: vi.fn(async (positions: Array<{ ticker: string; value: number }>) => {
     seen.push(positions);
-    return { book: { modelled_stocks: positions.length, direct_etfs: 0 }, dropped: [] };
+    return {
+      book: { modelled_stocks: positions.length, direct_etfs: 0 },
+      coverage: { input_gross_usd: positions.reduce((sum, p) => sum + Math.abs(p.value), 0), dropped: [] },
+    };
   }),
 }));
 vi.mock("@/lib/agent/billing-middleware", () => ({
@@ -110,7 +117,10 @@ async function post(body: unknown) {
 }
 
 describe("transitionPositions: the five reviewed fixtures", () => {
-  beforeEach(() => _resetIdentityCache());
+  beforeEach(() => {
+    _resetIdentityCache();
+    queryCounts.clear();
+  });
 
   it.each(FIXTURES)("%s held %s, priced %s", async (ticker, heldOn, asOf, priced, eventId, ratio, instrument) => {
     const { positions, transitions } = await transitionPositions([{ ticker, value: 1000 }], { heldOn, asOf });
@@ -133,14 +143,28 @@ describe("transitionPositions: the five reviewed fixtures", () => {
     expect(r).toEqual({ positions: [{ ticker: "AAPL", value: 5 }], transitions: [] });
   });
 
-  it("maps a current ticker to the security and ticker that existed on the held date", async () => {
+  it("loads identity evidence once per table for a multi-name dated book", async () => {
+    await transitionPositions(
+      [{ ticker: "META", value: 5 }, { ticker: "AAPL", value: 7 }],
+      { heldOn: "2020-06-30", asOf: "2026-10-22" },
+    );
+    expect(Object.fromEntries(queryCounts)).toMatchObject({
+      security_events: 1,
+      security_event_legs: 1,
+      security_aliases: 1,
+      security_master: 1,
+      symbols: 1,
+    });
+  });
+
+  it("prices the certain security and returns every covering held-date label", async () => {
     const r = await transitionPositions([{ ticker: "META", value: 5 }], { heldOn: "2020-06-30", asOf: "2026-10-22" });
     expect(r.positions).toEqual([{ ticker: "META", value: 5 }]);
     expect(r.transitions[0]).toMatchObject({
-      submitted_ticker: "META", status: "rewritten", outcome: "current_ticker_mapped_to_held_date",
-      source_bw_sym_id: META, bw_sym_id: META, ticker: "META",
+      submitted_ticker: "META", status: "carried", outcome: "held",
+      source_bw_sym_id: META, bw_sym_id: META, ticker: "META", held_date_tickers: ["FB", "META"],
     });
-    expect(r.transitions[0].detail).toContain(`${META}, traded as FB on that date`);
+    expect(r.transitions[0].held_date_ticker).toBeUndefined();
   });
 
   it("carries a ticker rename without a reviewed event through the current registry", async () => {
@@ -176,6 +200,7 @@ describe("POST /api/portfolio/exposure with a dated book", () => {
   beforeEach(() => {
     _resetIdentityCache();
     seen.length = 0;
+    queryCounts.clear();
   });
 
   it.each(FIXTURES)("%s held %s is priced as %s at as_of", async (ticker, heldOn, asOf, priced, eventId) => {
@@ -191,14 +216,14 @@ describe("POST /api/portfolio/exposure with a dated book", () => {
     expect(body.transitions[0]).toMatchObject({ status: "rewritten", source_bw_sym_id: ETF, event_ids: [] });
   });
 
-  it("positions_as_of maps META to the security that traded as FB on the held date", async () => {
+  it("positions_as_of prices META as the certain security despite overlapping held-date labels", async () => {
     const { status, body } = await post({
       positions: [{ ticker: "META", value: 10 }], positions_as_of: "2020-06-30", as_of: "2026-10-22",
     });
     expect(status).toBe(200);
     expect(seen.at(-1)).toEqual([{ ticker: "META", value: 10 }]);
     expect(body.transitions[0]).toMatchObject({
-      status: "rewritten", outcome: "current_ticker_mapped_to_held_date", bw_sym_id: META, ticker: "META",
+      status: "carried", outcome: "held", bw_sym_id: META, ticker: "META", held_date_tickers: ["FB", "META"],
     });
   });
 
@@ -224,7 +249,24 @@ describe("POST /api/portfolio/exposure with a dated book", () => {
       positions: [{ ticker: "SPCX", value: 1 }], positions_as_of: "2026-05-01", as_of: "2026-10-22",
     });
     expect(status).toBe(422);
-    expect(body.dropped).toEqual([]);
+    expect(body.dropped).toEqual([expect.objectContaining({
+      ticker: "SPCX", value_usd: 1, reason: "current_security_not_valid_on_held_date",
+    })]);
+    expect(body.coverage).toMatchObject({ input_gross_usd: 1, dropped: body.dropped });
     expect(body.transitions[0]).toMatchObject({ status: "dropped", outcome: "current_security_not_valid_on_held_date" });
+  });
+
+  it("keeps transition drops and their dollars in successful-response coverage", async () => {
+    const { status, body } = await post({
+      positions: [{ ticker: "AAPL", value: 9 }, { ticker: "SPCX", value: -4 }],
+      positions_as_of: "2026-05-01",
+      as_of: "2026-10-22",
+    });
+    expect(status).toBe(200);
+    expect(seen.at(-1)).toEqual([{ ticker: "AAPL", value: 9 }]);
+    expect(body.coverage.input_gross_usd).toBe(13);
+    expect(body.coverage.dropped).toEqual([expect.objectContaining({
+      ticker: "SPCX", value_usd: -4, reason: "current_security_not_valid_on_held_date",
+    })]);
   });
 });

@@ -165,9 +165,16 @@ components:
         source_bw_sym_id: { type: string, nullable: true }
         bw_sym_id: { type: string, nullable: true, description: The security priced, when one. }
         ticker: { type: string, nullable: true, description: The ticker the position is priced under. }
+        held_date_tickers:
+          type: array
+          items: { type: string }
+          description: Every ticker label for the resolved security whose half-open validity window covers `held_on`; label overlap does not make the security ambiguous.
+        held_date_ticker:
+          type: string
+          description: Present only when `held_date_tickers` contains exactly one label.
         outcome:
           type: string
-          description: Resolution result. Point-in-time fallback values include `current_ticker_mapped_to_held_date`, `current_identity_unavailable`, `current_identity_ambiguous`, `current_security_not_valid_on_held_date`, `held_date_ticker_ambiguous`, and `current_security_registry_ticker_unavailable`.
+          description: Resolution result. Dated-book values include `current_ticker_mapped_to_held_date`, `current_identity_unavailable`, `current_identity_ambiguous`, `current_security_not_valid_on_held_date`, and `submitted_ticker_retired`, plus reviewed-event outcomes such as `held`, `cashed_out`, and `cancelled`.
         event_ids: { type: array, items: { type: string } }
         steps:
           type: array
@@ -8896,8 +8903,10 @@ paths:
         (`window_targets`), so a holding of SPCX dated before 2026-04-07 joins the ETF now listed as
         SPCK, not SpaceX, and FB dated before 2022-06-09 joins Meta. The SDK applies the windows by
         each holding's date; an undated book is today's book and uses today's registry. Tickers in
-        no reviewed event get no windows. Spin-offs are reported `unsupported` and left as
-        submitted. The same applies to `/portfolio/exposure/history/daily`.
+        no reviewed event get no windows. A reviewed ticker retired before the holding date is
+        `dropped` with outcome `submitted_ticker_retired`; an `unresolved` window retains the
+        submitted ticker. Spin-offs are reported `unsupported` and left as submitted. The same
+        applies to `/portfolio/exposure/history/daily`.
 
 
         **Billing:** per successful call, by names delivered (stocks with rows plus ETFs in the
@@ -8977,7 +8986,7 @@ paths:
                         status:
                           type: string
                           enum: [unchanged, rewritten, carried, dropped, unsupported, unresolved]
-                          description: unchanged — today's holder of the ticker; rewritten — priced under another ticker; carried — same ticker, events applied; dropped — converted to cash or cancelled; unsupported (spin-off) and unresolved — left as submitted.
+                          description: unchanged — submitted ticker retained; rewritten — priced under another ticker; carried — same ticker, events applied; dropped — retired, failed held-date proof, converted to cash, or cancelled; unsupported (spin-off) and unresolved — left as submitted.
                         priced_as:
                           type: string
                           nullable: true
@@ -8986,7 +8995,9 @@ paths:
                           type: string
                           nullable: true
                           description: Security priced (the `symbol` column of `names` for a modelled stock), for rewritten and carried windows.
-                        outcome: { type: string }
+                        outcome:
+                          type: string
+                          description: Includes `held`, `unchanged`, `unavailable`, `submitted_ticker_retired`, and reviewed-event outcomes. An unresolved window keeps `priced_as` equal to the submitted ticker; a dropped window has null `priced_as`.
                         event_ids:
                           type: array
                           items: { type: string }
@@ -9136,18 +9147,22 @@ paths:
         that window (e.g. not yet listed) as `no_data_at_as_of`. Same price as a latest call.
 
 
-        **Dated books.** With `positions_as_of`, every submitted ticker is read on that date and
-        carried to `as_of` through reviewed events before pricing. If the held-date identity is
-        unavailable, the submitted ticker is resolved at `as_of`; that security is used only when
-        its alias and security-master validity prove which ticker it traded under on the held date.
-        Otherwise the position is dropped rather than priced under an unverified current holder.
+        **Dated books.** With `positions_as_of`, tickers that resolve on that date retain the prior
+        reviewed-event behavior exactly. Only a ticker that is unresolved on the held date enters
+        the fallback: its current ticker must resolve to exactly one security, and a security-master
+        row with a dated `valid_from` on or before `positions_as_of` must prove that the security
+        existed then (with `valid_to` exclusive). A missing or null `valid_from` is not proof.
+        Multiple ticker labels covering the date are returned in `held_date_tickers` and do not make
+        a certain security ambiguous. Otherwise the position is dropped rather than priced under an
+        unverified current holder.
         Thus a reused ticker is not priced as its later owner (SPCX held on 2026-03-31 is the ETF
         that trades as SPCK, not SpaceX), while META submitted for 2020-06-30 maps to the security
         then trading as FB. With `as_of` alone, the prior reviewed-event behavior is unchanged.
         Every moved, mapped, dropped or unsupported position is listed in `transitions` with its
         event ids and exact `numerator/denominator` ratios when events apply. A position that became
         several securities (a spin-off) is left as submitted and marked `unsupported`, because a
-        dollar value cannot be split without prices.
+        dollar value cannot be split without prices. Identity-transition drops also appear in
+        `coverage.dropped`; `coverage.input_gross_usd` remains the gross dollars originally submitted.
 
 
         The earliest supported `as_of` is 2011-12-07: model history is served from the first date
@@ -9375,7 +9390,7 @@ paths:
                           properties:
                             ticker: { type: string }
                             value_usd: { type: number }
-                            reason: { type: string, enum: [symbol_not_found, etf_outside_priced_universe, no_risk_metrics, not_at_snapshot_teo, no_data_at_as_of, insufficient_history] }
+                            reason: { type: string, enum: [symbol_not_found, etf_outside_priced_universe, no_risk_metrics, not_at_snapshot_teo, no_data_at_as_of, insufficient_history, current_identity_unavailable, current_identity_ambiguous, current_security_not_valid_on_held_date, submitted_ticker_retired, cashed_out, cancelled] }
                             teo: { type: string, nullable: true, description: For not_at_snapshot_teo, the name's own model date. }
                             detail: { type: string, description: One plain-English sentence explaining the reason. }
                             see: { type: string, description: "For etf_outside_priced_universe, /api/data/etf/{ticker}." }
@@ -9423,9 +9438,35 @@ paths:
           description: >
             No stock has risk metrics at the model date and no ETF held has return history. Body:
             `error`, a plain-English `message`, and `dropped` with each ticker's `reason` code and a
-            one-sentence `detail`. Also returned for an `as_of` before 2011-12-07, the earliest
+            one-sentence `detail`. When dated-book transitions remove every position, the body also
+            contains `transitions` and `coverage` with the original `input_gross_usd` plus the same
+            transition drops; this response is not billed. Also returned for an `as_of` before 2011-12-07, the earliest
             supported date; body: `error`, `message`, `detail` (why), `as_of` and
             `history_available_from`. Not charged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  message: { type: string }
+                  dropped:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ticker: { type: string }
+                        value_usd: { type: number }
+                        reason: { type: string }
+                        detail: { type: string }
+                  coverage:
+                    type: object
+                    properties:
+                      input_gross_usd: { type: number }
+                      dropped: { type: array, items: { type: object } }
+                  transitions:
+                    type: array
+                    items: { $ref: '#/components/schemas/PositionTransition' }
         "429":
           description: Rate limit exceeded.
         "500":
@@ -9636,7 +9677,7 @@ paths:
                 positions_as_of:
                   type: string
                   format: date
-                  description: Optional date the book was recorded (YYYY-MM-DD, not in the future), same meaning as on POST /portfolio/exposure. Data is still the latest available; every ticker is validated on this date, mapped through its current security when needed, and carried to today through reviewed events before pricing. Positions without a safe held-date identity are dropped; positions that become the same ticker are netted. The JSON response lists transitions; the PDF and PNG print them as a footnote.
+                  description: Optional date the book was recorded (YYYY-MM-DD, not in the future), same meaning as on POST /portfolio/exposure. Data is still the latest available; tickers resolved on this date retain the reviewed-event behavior, while only unresolved tickers are mapped through a unique current security and a dated held-date existence proof. Positions without that proof are dropped; positions that become the same ticker are netted. The JSON response lists transitions; the PDF and PNG print them as a footnote.
                 format:
                   type: string
                   enum: [pdf, json, png]
