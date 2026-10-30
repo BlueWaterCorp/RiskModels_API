@@ -208,8 +208,9 @@ export const COHORT_NUMERIC_VARS = [
 export type CohortNumericVar = (typeof COHORT_NUMERIC_VARS)[number];
 
 /**
- * H.147: `linked_beta_se` never was a standard error — it is the residual SD of
- * the 252-day link regression, now written as `link_fit_resid_sd`. The old
+ * H.147: `linked_beta_se` was renamed `link_fit_resid_sd`. Since ERM3-10 the
+ * field is the classical OLS SE of `linked_beta` on the window's common sample
+ * (n - 2 degrees of freedom); the name is unchanged. The old
  * public name shipped as a deprecated alias on 2026-08-25 and was removed the
  * same day once the store carried the new plane; `COHORT_REMOVED_VARS` lets the
  * catalogue explain a request for it. Reading still falls back to the old plane

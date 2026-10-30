@@ -973,7 +973,7 @@ export function registerRiskModelsTools(
       title: "RiskModels Cohort Statistics",
       annotations: READ_ONLY_TOOL_ANNOTATIONS,
       description:
-        "Use when you want cross-sectional residual statistics for SPY and the 11 GICS sector SPDR cohorts, on one date or as a time series. Not for one stock's peers (use riskmodels_get_peers) or one stock's rank (use riskmodels_get_rankings). Returns, from GET /cohorts (one date) or GET /cohorts/series (series=true), residual_mean, residual_sd, mean_pairwise_corr, n_names and n_effective by default, more on request. ERM3 residuals are fitted without an intercept, so residual_mean is not zero; link_fit_resid_sd is the residual standard deviation of the 252-day link regression, a fit-quality measure rather than a standard error. Subsector cohorts are not available. " +
+        "Use when you want cross-sectional residual statistics for SPY and the 11 GICS sector SPDR cohorts, on one date or as a time series. Not for one stock's peers (use riskmodels_get_peers) or one stock's rank (use riskmodels_get_rankings). Returns, from GET /cohorts (one date) or GET /cohorts/series (series=true), residual_mean, residual_sd, mean_pairwise_corr, n_names and n_effective by default, more on request. ERM3 residuals are fitted without an intercept, so residual_mean is not zero; link_fit_resid_sd is the OLS standard error of linked_beta on the 252-day window's common sample (n - 2 degrees of freedom). Subsector cohorts are not available. " +
         EOD +
         " Price: $0.04 for one date, $0.15 for a series.",
       inputSchema: {
