@@ -5893,7 +5893,7 @@
             "type": "string",
             "format": "date",
             "nullable": true,
-            "description": "SEC filing date of that report."
+            "description": "SEC filing date of the selected report. Under time_basis=report_date it can be after as_of: the book is the period's, filed later."
           },
           "filing_date_source": {
             "type": "string",
@@ -19328,7 +19328,7 @@
                   "type": "string",
                   "format": "date"
                 },
-                "description": "Selected book's filing date; omitted when unavailable or later than `as_of`."
+                "description": "Selected book's own filing date (can be after `as_of` under `time_basis=report_date`); omitted when unknown."
               },
               "X-API-Cost-USD": {
                 "schema": {

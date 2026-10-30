@@ -4350,7 +4350,7 @@ components:
           type: string
           enum: [report_date, available_date]
           description: Axis used to select the book. Present when `as_of` is set.
-        filing_date: { type: string, format: date, nullable: true, description: SEC filing date of that report. }
+        filing_date: { type: string, format: date, nullable: true, description: "SEC filing date of the selected report. Under time_basis=report_date it can be after as_of: the book is the period's, filed later." }
         filing_date_source:
           type: string
           enum: [exact, approx]
@@ -13058,7 +13058,7 @@ paths:
               description: Selected book's teo; the latest filed book's teo when the request is undated.
             X-Data-Filing-Date:
               schema: { type: string, format: date }
-              description: Selected book's filing date; omitted when unavailable or later than `as_of`.
+              description: Selected book's own filing date (can be after `as_of` under `time_basis=report_date`); omitted when unknown.
             X-API-Cost-USD:
               schema: { type: string }
           content:

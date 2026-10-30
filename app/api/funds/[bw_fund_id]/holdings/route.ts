@@ -148,10 +148,11 @@ export const GET = withBilling(
 
     const headers = new Headers({ "X-Data-As-Of": snapshot.teo });
     const selectedFilingDate = book?.filing_date ?? null;
+    // A dated request echoes the selected book's own filing date, never another
+    // book's. Under report_date it may be after as_of: that is the disclosure
+    // (the 2020-06-30 book was filed 2020-08-20), not a leak.
     const filingDate = asOf
-      ? selectedFilingDate && selectedFilingDate <= asOf
-        ? selectedFilingDate
-        : null
+      ? selectedFilingDate
       : selectedFilingDate ?? fund.latest_filing_date;
     if (filingDate) {
       headers.set("X-Data-Filing-Date", filingDate);
