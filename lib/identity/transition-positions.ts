@@ -98,6 +98,8 @@ const covers = (row: { valid_from: string | null; valid_to: string | null }, dat
 
 const baseIdentity = { duplicate_records: [] as string[], excluded_candidates: [] as Array<{ bw_sym_id: string; reason: string }> };
 
+const postgrestValue = (value: string) => `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+
 /** One batched read per identity table for the request. */
 async function transitionEvidence(tickers: string[], events: SecurityEvent[], knownAsOf: string | null): Promise<TransitionEvidence> {
   const eventTickers = effectiveEvents(events, knownAsOf)
@@ -116,11 +118,13 @@ async function transitionEvidence(tickers: string[], events: SecurityEvent[], kn
   const aliases = (al.data ?? []) as AliasRow[];
   const symbols = (sy.data ?? []) as SymbolRow[];
   const ids = [...new Set([...aliases.map((r) => r.bw_sym_id), ...symbols.map((r) => r.symbol)])];
-  const sm = ids.length
-    ? await admin.from("security_master")
-      .select("bw_sym_id, ticker, company_name, cik, valid_from, valid_to, merged_into")
-      .in("bw_sym_id", ids)
-    : { data: [], error: null };
+  const masterFilters = [
+    ids.length ? `bw_sym_id.in.(${ids.map(postgrestValue).join(",")})` : null,
+    `ticker.in.(${lookupTickers.map(postgrestValue).join(",")})`,
+  ].filter((value): value is string => value !== null);
+  const sm = await admin.from("security_master")
+    .select("bw_sym_id, ticker, company_name, cik, valid_from, valid_to, merged_into")
+    .or(masterFilters.join(","));
   if (sm.error) throw new Error(`security_master read failed: ${sm.error.message}`);
   return { aliases, masters: (sm.data ?? []) as MasterRow[], symbols, windows: tickerWindows(events, knownAsOf) };
 }
@@ -145,7 +149,9 @@ function resolveFromEvidence(ticker: string, heldOn: string, evidence: Transitio
   for (const row of evidence.aliases.filter((r) => r.alias_value.trim().toUpperCase() === ticker && covers(r, heldOn))) {
     const master = masterById.get(row.bw_sym_id);
     if (!master) excluded.push({ bw_sym_id: row.bw_sym_id, reason: "alias id not in the security master" });
-    else aliasIds.add(master.merged_into ?? row.bw_sym_id);
+    else if (master.merged_into) excluded.push({ bw_sym_id: row.bw_sym_id, reason: `merged into ${master.merged_into}` });
+    else if (!covers(master, heldOn)) excluded.push({ bw_sym_id: row.bw_sym_id, reason: "security master row not valid on held date" });
+    else aliasIds.add(row.bw_sym_id);
   }
   const contradicted = [...aliasIds].filter((id) => contradictedBy(evidence.windows, id, heldOn));
   for (const id of contradicted) aliasIds.delete(id);
@@ -199,33 +205,61 @@ function labelFields(id: string | null, heldOn: string, evidence: TransitionEvid
 }
 
 function registryTicker(id: string, evidence: TransitionEvidence): string | null {
+  if (evidence.masters.find((r) => r.bw_sym_id === id)?.merged_into) return null;
   return evidence.symbols.find((r) => r.symbol === id)?.ticker
     ?? evidence.masters.find((r) => r.bw_sym_id === id)?.ticker
     ?? null;
 }
 
 function currentIdentity(ticker: string, asOf: string, evidence: TransitionEvidence): IdentityAnswer {
-  const symbolIds = [...new Set(evidence.symbols.filter((r) => r.ticker?.trim().toUpperCase() === ticker).map((r) => r.symbol))].sort();
+  const masterById = new Map(evidence.masters.map((r) => [r.bw_sym_id, r]));
+  const excluded: Array<{ bw_sym_id: string; reason: string }> = [];
+  const eligible = (id: string, source: string) => {
+    const master = masterById.get(id);
+    if (!master) {
+      excluded.push({ bw_sym_id: id, reason: `${source} id not in the security master` });
+      return false;
+    }
+    if (master.merged_into) {
+      excluded.push({ bw_sym_id: id, reason: `merged into ${master.merged_into}` });
+      return false;
+    }
+    if (!covers(master, asOf)) {
+      excluded.push({ bw_sym_id: id, reason: "security master row not valid on current date" });
+      return false;
+    }
+    return !contradictedBy(evidence.windows, id, asOf);
+  };
+  const symbolIds = [...new Set(evidence.symbols
+    .filter((r) => r.ticker?.trim().toUpperCase() === ticker && eligible(r.symbol, "symbol"))
+    .map((r) => r.symbol))].sort();
   const aliasIds = [...new Set(evidence.aliases
-    .filter((r) => r.alias_value.trim().toUpperCase() === ticker && covers(r, asOf))
-    .map((r) => evidence.masters.find((m) => m.bw_sym_id === r.bw_sym_id)?.merged_into ?? r.bw_sym_id)
-    .filter((id) => !contradictedBy(evidence.windows, id, asOf)))].sort();
-  const ids = [...new Set([...symbolIds, ...aliasIds])].sort();
-  if (ids.length === 1) return { ...baseIdentity, status: "resolved", bw_sym_id: ids[0], source: symbolIds.length ? "current_holder" : "ticker_alias_window", candidates: ids };
-  return { ...baseIdentity, status: ids.length ? "ambiguous" : "unavailable", bw_sym_id: null, source: null, candidates: ids };
+    .filter((r) => r.alias_value.trim().toUpperCase() === ticker && covers(r, asOf) && eligible(r.bw_sym_id, "alias"))
+    .map((r) => r.bw_sym_id))].sort();
+  const masterIds = [...new Set(evidence.masters
+    .filter((r) => r.ticker?.trim().toUpperCase() === ticker && eligible(r.bw_sym_id, "master"))
+    .map((r) => r.bw_sym_id))].sort();
+  const ids = [...new Set([...symbolIds, ...aliasIds, ...masterIds])].sort();
+  const common = { ...baseIdentity, excluded_candidates: excluded };
+  if (ids.length === 1) {
+    const source = symbolIds.includes(ids[0]) ? "current_holder"
+      : aliasIds.includes(ids[0]) ? "ticker_alias_window"
+        : "security_master_ticker";
+    return { ...common, status: "resolved", bw_sym_id: ids[0], source, candidates: ids };
+  }
+  return { ...common, status: ids.length ? "ambiguous" : "unavailable", bw_sym_id: null, source: null, candidates: ids };
 }
 
 function retiredBeforeHeldDate(ticker: string, heldOn: string, evidence: TransitionEvidence): boolean {
   const mine = evidence.windows.filter((w) => w.ticker === ticker);
-  const ended = mine.some((w) => w.end !== null && w.end <= heldOn);
-  const later = mine.some((w) => w.start !== null && w.start > heldOn)
-    || evidence.aliases.some((r) =>
-      r.alias_value.trim().toUpperCase() === ticker
-      && r.valid_from !== null
-      && r.valid_from.slice(0, 10) > heldOn,
-    )
-    || evidence.symbols.some((r) => r.ticker?.trim().toUpperCase() === ticker);
-  return ended && !later && !mine.some((w) => (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end));
+  const endedOwners = new Set(mine.filter((w) => w.end !== null && w.end <= heldOn).map((w) => w.bw_sym_id));
+  const explicitlyRetired = evidence.aliases.some((r) =>
+    r.alias_value.trim().toUpperCase() === ticker
+    && endedOwners.has(r.bw_sym_id)
+    && r.valid_to !== null
+    && r.valid_to.slice(0, 10) <= heldOn,
+  );
+  return explicitlyRetired && !mine.some((w) => (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end));
 }
 
 export async function transitionPositions<T extends { ticker: string }>(
@@ -258,19 +292,20 @@ export async function transitionPositions<T extends { ticker: string }>(
       submitted_ticker: t, held_on: heldOn, as_of: asOf, identity_source: identity.source,
       source_bw_sym_id: identity.bw_sym_id, ...labelFields(identity.bw_sym_id, heldOn, evidence),
     };
+    if (retiredBeforeHeldDate(t, heldOn, evidence)) {
+      plan.set(t, {
+        ticker: null, drop: true,
+        transition: {
+          ...base, identity_source: null, source_bw_sym_id: null, held_date_tickers: [],
+          status: "dropped", bw_sym_id: null, ticker: null, outcome: "submitted_ticker_retired",
+          event_ids: [], steps: [],
+          detail: `${t} was retired before ${heldOn}. Position dropped rather than assigned to a later holder of the ticker.`,
+        },
+      });
+      continue;
+    }
     if (identity.status !== "resolved" || !identity.bw_sym_id) {
       if (opts.mapCurrentTickerToHeldDate ?? true) {
-        if (retiredBeforeHeldDate(t, heldOn, evidence)) {
-          plan.set(t, {
-            ticker: null, drop: true,
-            transition: {
-              ...base, status: "dropped", bw_sym_id: null, ticker: null, outcome: "submitted_ticker_retired",
-              event_ids: [], steps: [],
-              detail: `${t} was retired before ${heldOn}. Position dropped rather than assigned to a later holder of the ticker.`,
-            },
-          });
-          continue;
-        }
         const current = currentIdentity(t, asOf, evidence);
         if (current.status !== "resolved" || !current.bw_sym_id) {
           plan.set(t, {
@@ -287,6 +322,7 @@ export async function transitionPositions<T extends { ticker: string }>(
         }
         const masterProof = evidence.masters.some((r) =>
           r.bw_sym_id === current.bw_sym_id
+          && !r.merged_into
           && r.valid_from !== null
           && r.valid_from.slice(0, 10) <= heldOn
           && (!r.valid_to || heldOn < r.valid_to.slice(0, 10)),
@@ -318,14 +354,6 @@ export async function transitionPositions<T extends { ticker: string }>(
         });
         continue;
       }
-      if (retiredBeforeHeldDate(t, heldOn, evidence)) {
-        plan.set(t, {
-          ticker: null, drop: true,
-          transition: { ...base, status: "dropped", bw_sym_id: null, ticker: null, outcome: "submitted_ticker_retired", event_ids: [], steps: [],
-            detail: `${t} was retired before ${heldOn}. Position dropped rather than assigned to a later holder of the ticker.` },
-        });
-        continue;
-      }
       plan.set(t, {
         ticker: null, drop: false,
         transition: { ...base, status: "unresolved", bw_sym_id: null, ticker: null, outcome: identity.status, event_ids: [], steps: [],
@@ -333,6 +361,7 @@ export async function transitionPositions<T extends { ticker: string }>(
       });
       continue;
     }
+    if (!eventTickers.has(t)) continue;
     const carry = applyEvents(events, {
       bw_sym_id: identity.bw_sym_id, quantity: parseDecimal("1"), acquired_on: heldOn, as_of: asOf, ticker: t,
       known_as_of: opts.knownAsOf ?? null, fractions: "exact",
@@ -368,7 +397,8 @@ export async function transitionPositions<T extends { ticker: string }>(
     }
     const target = ids[0];
     const reg = registryTicker(target, evidence) ?? carry.holdings[0].ticker;
-    if (reg === t && !steps.length) continue; // the registry already holds this security under the submitted ticker
+    const labels = heldLabels(identity.bw_sym_id, heldOn, evidence);
+    if (reg === t && !steps.length && labels.length <= 1) continue;
     const q = carry.holdings[0].quantity;
     plan.set(t, {
       ticker: reg, drop: false,

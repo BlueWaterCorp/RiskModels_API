@@ -12,20 +12,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EXPOSURE_PANEL_VARS } from "@/lib/dal/zarr-reader";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
+const currentRows = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/current-ticker-production-rows.json"), "utf-8"));
 
 const ETF = "BW-BBG00YJ8L8T5";
 const SPACEX = "BW-BBG000NQF3Z5";
 const META = "BW-BBG000MM2P62";
 const symbolRows = [
-  { symbol: ETF, ticker: "SPCK", name: "The SPAC and New Issue ETF" },
-  { symbol: SPACEX, ticker: "SPCX", name: "Space Exploration Technologies Corp" },
-  { symbol: META, ticker: "META", name: "Meta Platforms, Inc." },
+  ...currentRows.symbols,
   { symbol: "BW-BBG00GCTC8Y9", ticker: "SOS", name: "SOS Ltd" },
   { symbol: "BW-BBG0125CL1D2", ticker: "IXHL", name: "Incannex Healthcare Inc." },
   { symbol: "BW-BBG0116Y22N3", ticker: "NEXN", name: "Nexxen International Ltd." },
 ];
-const aliasRows: unknown[] = [];
-const masterRows: unknown[] = [];
+const aliasRows: unknown[] = currentRows.security_aliases;
+const masterRows: unknown[] = currentRows.security_master;
 
 // Set to make the reviewed-events read fail (the only failure injected; every other table is the fixture).
 const eventsDown = { on: false };
@@ -42,6 +41,7 @@ function query(rows: unknown[], fail = false) {
       filtered = filtered.filter((r) => vals.includes(r[col]));
       return q;
     },
+    or: () => q,
     then: (res: (v: unknown) => unknown) =>
       Promise.resolve(fail ? { data: null, error: { message: "connection refused" } } : { data: filtered, error: null }).then(res),
   };
@@ -77,7 +77,7 @@ vi.mock("@/lib/agent/billing-middleware", () => ({
 vi.mock("@/lib/dal/risk-metadata", () => ({ getRiskMetadata: async () => ({}) }));
 vi.mock("@/lib/dal/response-headers", () => ({ addMetadataHeaders: () => undefined, buildMetadataBody: () => ({}) }));
 
-// Today's registry: SPCX is SpaceX, SPCK is the ETF, META is Meta. FB has no current holder here.
+// Today's pricing registry has SPCX, SPCK and META; FB has no priced row here.
 const registry: Record<string, Record<string, unknown>> = {
   SPCX: { symbol: SPACEX, ticker: "SPCX", asset_type: "stock", sector_etf: null, subsector_etf: null },
   SPCK: { symbol: ETF, ticker: "SPCK", asset_type: "etf", sector_etf: null, subsector_etf: null },
@@ -158,7 +158,7 @@ describe("heldTickerWindows: reviewed fixtures", () => {
       status: "dropped", priced_as: null, outcome: "submitted_ticker_retired",
     });
     expect(covering(ws, "META", "2020-06-30")[0]).toMatchObject({
-      status: "unresolved", priced_as: "META", bw_sym_id: null, outcome: "unavailable",
+      status: "carried", priced_as: "META", bw_sym_id: META, outcome: "held",
     });
     expect(covering(ws, "META", "2023-01-03")[0]).toMatchObject({ status: "unchanged", priced_as: "META" });
   });

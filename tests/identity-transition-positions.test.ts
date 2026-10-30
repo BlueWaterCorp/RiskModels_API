@@ -8,17 +8,14 @@ import { join } from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
+const currentRows = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/current-ticker-production-rows.json"), "utf-8"));
 
 const ETF = "BW-BBG00YJ8L8T5";
 const SPACEX = "BW-BBG000NQF3Z5";
 const META = "BW-BBG000MM2P62";
-const SQ = "BW-SQ";
 const AAPL = "BW-BBG000B9XRY4";
 const symbolRows = [
-  { symbol: ETF, ticker: "SPCK", name: "The SPAC and New Issue ETF" },
-  { symbol: SPACEX, ticker: "SPCX", name: "Space Exploration Technologies Corp" },
-  { symbol: META, ticker: "META", name: "Meta Platforms, Inc." },
-  { symbol: SQ, ticker: "XYZ", name: "Block, Inc." },
+  ...currentRows.symbols,
   { symbol: AAPL, ticker: "AAPL", name: "Apple Inc" },
   { symbol: "BW-BBG00GCTC8Y9", ticker: "SOS", name: "SOS Ltd" },
   { symbol: "BW-BBG0125CL1D2", ticker: "IXHL", name: "Incannex Healthcare Inc." },
@@ -26,22 +23,16 @@ const symbolRows = [
 ];
 
 const aliasRows = [
-  { bw_sym_id: META, alias_value: "FB", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: "2022-06-09" },
-  // Real Contrafund-book rows: both labels cover 2020; this is label ambiguity, not security ambiguity.
-  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: null },
-  { bw_sym_id: SQ, alias_value: "SQ", alias_type: "TICKER", valid_from: "2015-11-19", valid_to: "2025-01-21" },
-  { bw_sym_id: SQ, alias_value: "XYZ", alias_type: "TICKER", valid_from: "2025-01-21", valid_to: null },
-  { bw_sym_id: SPACEX, alias_value: "SPCX", alias_type: "TICKER", valid_from: "2026-06-12", valid_to: null },
+  ...currentRows.security_aliases,
   { bw_sym_id: AAPL, alias_value: "AAPL", alias_type: "TICKER", valid_from: "2000-01-01", valid_to: null },
 ];
 
 const masterRows = [
-  { bw_sym_id: META, ticker: "META", company_name: "Meta Platforms, Inc.", cik: "0001326801", valid_from: "2012-05-18", valid_to: null, merged_into: null },
-  { bw_sym_id: SQ, ticker: "XYZ", company_name: "Block, Inc.", cik: "0001512673", valid_from: "2015-11-19", valid_to: null, merged_into: null },
-  { bw_sym_id: SPACEX, ticker: "SPCX", company_name: "Space Exploration Technologies Corp", cik: "0001879026", valid_from: "2026-06-12", valid_to: null, merged_into: null },
+  ...currentRows.security_master,
   { bw_sym_id: AAPL, ticker: "AAPL", company_name: "Apple Inc", cik: "0000320193", valid_from: "2000-01-01", valid_to: null, merged_into: null },
 ];
 const queryCounts = new Map<string, number>();
+const masterOrFilters: string[] = [];
 
 function query(rows: unknown[]) {
   let filtered = rows as Array<Record<string, unknown>>;
@@ -53,6 +44,10 @@ function query(rows: unknown[]) {
     },
     in: (col: string, vals: unknown[]) => {
       filtered = filtered.filter((r) => vals.includes(r[col]));
+      return q;
+    },
+    or: (filter: string) => {
+      masterOrFilters.push(filter);
       return q;
     },
     then: (res: (v: unknown) => unknown) => Promise.resolve({ data: filtered, error: null }).then(res),
@@ -120,6 +115,7 @@ describe("transitionPositions: the five reviewed fixtures", () => {
   beforeEach(() => {
     _resetIdentityCache();
     queryCounts.clear();
+    masterOrFilters.length = 0;
   });
 
   it.each(FIXTURES)("%s held %s, priced %s", async (ticker, heldOn, asOf, priced, eventId, ratio, instrument) => {
@@ -167,19 +163,31 @@ describe("transitionPositions: the five reviewed fixtures", () => {
     expect(r.transitions[0].held_date_ticker).toBeUndefined();
   });
 
-  it("carries a ticker rename without a reviewed event through the current registry", async () => {
+  it("matches main for a held-date-resolved ticker outside reviewed events", async () => {
     const r = await transitionPositions([{ ticker: "SQ", value: 5 }], { heldOn: "2024-06-30", asOf: "2026-10-22" });
-    expect(r.positions).toEqual([{ ticker: "XYZ", value: 5 }]);
-    expect(r.transitions[0]).toMatchObject({ submitted_ticker: "SQ", status: "rewritten", bw_sym_id: SQ, ticker: "XYZ" });
+    expect(r).toEqual({ positions: [{ ticker: "SQ", value: 5 }], transitions: [] });
   });
 
   it("drops a current ticker when its security did not yet exist on the held date", async () => {
-    const r = await transitionPositions([{ ticker: "SPCX", value: 5 }], { heldOn: "2026-05-01", asOf: "2026-10-22" });
+    const r = await transitionPositions([{ ticker: "SPCX", value: 5 }], { heldOn: "2026-04-07", asOf: "2026-10-22" });
     expect(r.positions).toEqual([]);
     expect(r.transitions[0]).toMatchObject({
       submitted_ticker: "SPCX", status: "dropped", source_bw_sym_id: SPACEX,
       outcome: "current_security_not_valid_on_held_date", bw_sym_id: null, ticker: null,
     });
+    expect(masterOrFilters[0]).toContain("ticker.in.");
+    expect(masterOrFilters[0]).toContain("SPCX");
+  });
+
+  it("accepts the canonical current identity after its dated master row begins", async () => {
+    const r = await transitionPositions([{ ticker: "SPCX", value: 5 }], { heldOn: "2026-06-13", asOf: "2026-10-22" });
+    expect(r).toEqual({ positions: [{ ticker: "SPCX", value: 5 }], transitions: [] });
+  });
+
+  it("drops retired FB even though a later unrelated security carries the label", async () => {
+    const r = await transitionPositions([{ ticker: "FB", value: 5 }], { heldOn: "2024-06-30", asOf: "2026-10-22" });
+    expect(r.positions).toEqual([]);
+    expect(r.transitions[0]).toMatchObject({ status: "dropped", outcome: "submitted_ticker_retired" });
   });
 
   it("a cash merger drops the position and says so", async () => {

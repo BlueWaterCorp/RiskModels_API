@@ -10,22 +10,20 @@ import { join } from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fx = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/security-events-parity.json"), "utf-8"));
+const currentRows = JSON.parse(readFileSync(join(process.cwd(), "tests/fixtures/identity/current-ticker-production-rows.json"), "utf-8"));
 
 const META = "BW-BBG000MM2P62";
 const AAPL = "BW-BBG000B9XRY4";
 const symbolRows = [
-  { symbol: META, ticker: "META", name: "Meta Platforms, Inc." },
+  ...currentRows.symbols,
   { symbol: AAPL, ticker: "AAPL", name: "Apple Inc" },
-  { symbol: "BW-BBG00YJ8L8T5", ticker: "SPCK", name: "The SPAC and New Issue ETF" },
-  { symbol: "BW-BBG000NQF3Z5", ticker: "SPCX", name: "Space Exploration Technologies Corp" },
 ];
 const aliasRows = [
-  { bw_sym_id: META, alias_value: "FB", alias_type: "TICKER", valid_from: "2012-05-18", valid_to: "2022-06-09" },
-  { bw_sym_id: META, alias_value: "META", alias_type: "TICKER", valid_from: "2022-06-09", valid_to: null },
+  ...currentRows.security_aliases,
   { bw_sym_id: AAPL, alias_value: "AAPL", alias_type: "TICKER", valid_from: "2000-01-01", valid_to: null },
 ];
 const masterRows = [
-  { bw_sym_id: META, ticker: "META", company_name: "Meta Platforms, Inc.", cik: "0001326801", valid_from: "2012-05-18", valid_to: null, merged_into: null },
+  ...currentRows.security_master,
   { bw_sym_id: AAPL, ticker: "AAPL", company_name: "Apple Inc", cik: "0000320193", valid_from: "2000-01-01", valid_to: null, merged_into: null },
 ];
 
@@ -41,6 +39,7 @@ function query(rows: unknown[]) {
       filtered = filtered.filter((r) => vals.includes(r[col]));
       return q;
     },
+    or: () => q,
     then: (res: (v: unknown) => unknown) => Promise.resolve({ data: filtered, error: null }).then(res),
   };
   return q;
