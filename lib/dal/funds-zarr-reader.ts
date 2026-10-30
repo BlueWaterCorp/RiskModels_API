@@ -730,6 +730,29 @@ async function readFloatAtTeo(
   }
 }
 
+/** Read one numeric/bool column from a (symbol, teo) variable. */
+async function readNumericAtTeo(
+  grp: Group<Readable>,
+  varName: string,
+  teoIdx: number,
+  nSymbols: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const loc = grp.resolve(varName);
+    const arr = await open.v2(loc, { kind: "array" });
+    const ch = await get(arr, [slice(0, nSymbols), teoIdx]);
+    const d = ch?.data;
+    if (!ArrayBuffer.isView(d)) return null;
+    return Array.from(d as unknown as ArrayLike<number | bigint>, (raw) => {
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : null;
+    });
+  } catch (err) {
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) return null;
+    throw err;
+  }
+}
+
 /** Read a single scalar from a 1-D (teo,) variable via a length-1 slice. */
 async function readScalarAtTeo(
   grp: Group<Readable>,
@@ -886,9 +909,70 @@ export interface FundBookCoverage {
   unmatched_mv: number | null;
 }
 
+export type FundHoldingsTimeBasis = "report_date" | "available_date";
+
+interface FundHoldingsTeoSelection {
+  teos: string[];
+  filingDates: string[] | null;
+  aumReported: (number | null)[] | null;
+  aumErm3: (number | null)[] | null;
+  asOf?: string;
+  timeBasis: FundHoldingsTimeBasis;
+  hasNewDataAt: (teoIdx: number) => Promise<boolean>;
+}
+
+/**
+ * Choose the legal holdings column for a latest or point-in-time read.
+ * Latest reads deliberately retain the pre-PIT AUM-stamp rule. Historical
+ * report-date reads require a real filing cell; availability reads use the
+ * filing timestamp and never fall forward when no eligible column exists.
+ */
+export async function selectFundHoldingsTeoIndex(
+  input: FundHoldingsTeoSelection,
+): Promise<number> {
+  const { teos, filingDates, aumReported, aumErm3, asOf, timeBasis, hasNewDataAt } = input;
+  if (teos.length === 0) return -1;
+
+  if (!asOf) {
+    for (let i = teos.length - 1; i >= 0; i--) {
+      if (aumReported?.[i] != null || aumErm3?.[i] != null) return i;
+    }
+    // Preserve the old reader's last-column fallback when neither AUM vector
+    // has a populated value.
+    return teos.length - 1;
+  }
+
+  if (timeBasis === "available_date") {
+    for (let i = teos.length - 1; i >= 0; i--) {
+      const filed = filingDates?.[i];
+      if (filed && filed <= asOf) return i;
+    }
+    return -1;
+  }
+
+  for (let i = teos.length - 1; i >= 0; i--) {
+    if (teos[i]! <= asOf && (await hasNewDataAt(i))) return i;
+  }
+  return -1;
+}
+
 export interface FundHoldingsBook extends FundHoldingsSnapshot {
+  /** Selection axis used for this response. */
+  time_basis: FundHoldingsTimeBasis;
+  /** Report date of the selected filing; equal to `teo`. */
+  report_date: string;
   /** SEC filing date of the report the book comes from; null when not stamped. */
   filing_date: string | null;
+  /** Provenance label carried by the selected filing date. */
+  filing_date_source: string | null;
+  /** True when at least one position was newly reported at the selected teo. */
+  has_new_data: boolean;
+  /** Number of source filing rows, when published as a zarr attribute. */
+  book_rows: number | null;
+  /** Market value dropped by the model universe gate. */
+  universe_dropped_mv: number | null;
+  /** Tickers are labels from the current symbol registry, not historical labels. */
+  ticker_as_of: "current_registry";
   /** Net assets from the filing's own header; null when the filing lacks one. */
   net_assets: number | null;
   /**
@@ -902,17 +986,20 @@ export interface FundHoldingsBook extends FundHoldingsSnapshot {
 }
 
 /**
- * The fund's full book from its latest filed report, shorts included, from
- * the per-fund `ds_ph.zarr` (`adj_mv (symbol, teo)`, negative = short).
- * Months after a filing carry the same positions forward, so the book is
- * dated by the newest teo with reported AUM, not the newest teo. Ranked by
+ * The fund's full book from its latest or selected filed report, shorts
+ * included, from the per-fund `ds_ph.zarr` (`adj_mv (symbol, teo)`, negative
+ * = short). Months after a filing carry the same positions forward. Undated
+ * reads retain the newest-teo-with-reported-AUM rule; dated report-time reads
+ * require newly reported data, and availability reads use the filing date.
+ * Ranked by
  * |adj_mv| descending, then bw_sym_id, and cut to `n`; `book` totals cover
  * every position. `weight` keeps its sign and is adj_mv over filed net assets
  * (`aum_source == 1`, the N-PORT header). When the filing has no header,
  * `aum_reported` is only Σ adj_mv, which for a long/short book is the net,
  * so weights fall back to the book's gross value instead. Each holding carries `ticker`, and `coverage` says
  * how much of the book has one. Returns null when the
- * fund has no ds_ph.zarr or no non-zero holdings.
+ * fund has no ds_ph.zarr, no eligible point-in-time column, or no non-zero
+ * holdings.
  *
  * `readFundHoldingsTopN` (the precomputed top-25 longs) stays the tearsheet
  * path; this is the client-facing full portfolio.
@@ -920,8 +1007,14 @@ export interface FundHoldingsBook extends FundHoldingsSnapshot {
 export async function readFundHoldingsBook(
   bwFundId: string,
   n = 25,
+  asOf?: string,
+  timeBasis: FundHoldingsTimeBasis = "report_date",
 ): Promise<FundHoldingsBook | null> {
-  const ck = generateCacheKey("funds_zarr", "fund_holdings_book_v4", { fund: bwFundId });
+  const ck = generateCacheKey("funds_zarr", "fund_holdings_book_v5", {
+    fund: bwFundId,
+    as_of: asOf ?? "latest",
+    time_basis: timeBasis,
+  });
   let labelsFailed = false;
   const full = await withZarrCache<FundHoldingsBook | null>(
     ck,
@@ -932,23 +1025,47 @@ export async function readFundHoldingsBook(
       const symbols = await readSymbolStrings(grp);
       if (!teos || teos.length === 0 || !symbols || symbols.length === 0) return null;
 
-      const [aumReported, aumErm3, aumSource, droppedMv, filingDates] = await Promise.all([
+      const [
+        aumReported,
+        aumErm3,
+        aumSource,
+        droppedMv,
+        universeDroppedMv,
+        filingDates,
+        filingDateSources,
+      ] = await Promise.all([
         readFloatSlice1d(grp, "aum_reported", 0, teos.length),
         readFloatSlice1d(grp, "aum_erm3", 0, teos.length),
         readFloatSlice1d(grp, "aum_source", 0, teos.length),
         readFloatSlice1d(grp, "identity_dropped_mv", 0, teos.length),
+        readFloatSlice1d(grp, "universe_dropped_mv", 0, teos.length),
         readDatetimeVarStrings(grp, "filing_date"),
+        readStringVarStrings(grp, "filing_date_source"),
       ]);
-      let teoIdx = teos.length - 1;
-      for (let i = teos.length - 1; i >= 0; i--) {
-        if (aumReported?.[i] != null || aumErm3?.[i] != null) {
-          teoIdx = i;
-          break;
-        }
-      }
+
+      const newDataByTeo = new Map<number, boolean>();
+      const hasNewDataAt = async (idx: number): Promise<boolean> => {
+        const cached = newDataByTeo.get(idx);
+        if (cached !== undefined) return cached;
+        const column = await readNumericAtTeo(grp, "has_new_data", idx, symbols.length);
+        const value = column?.some((cell) => cell != null && cell !== 0) ?? false;
+        newDataByTeo.set(idx, value);
+        return value;
+      };
+      const teoIdx = await selectFundHoldingsTeoIndex({
+        teos,
+        filingDates,
+        aumReported,
+        aumErm3,
+        asOf,
+        timeBasis,
+        hasNewDataAt,
+      });
+      if (teoIdx < 0) return null;
 
       const adjMv = await readFloatAtTeo(grp, "adj_mv", teoIdx, symbols.length);
       if (!adjMv) return null;
+      const hasNewData = await hasNewDataAt(teoIdx);
       const aumRep = aumReported?.[teoIdx] ?? null;
       const netErm3 = aumErm3?.[teoIdx] ?? null;
       // aum_source 1 = N-PORT NET_ASSETS header; 0 = Σ adj_mv fallback.
@@ -1001,9 +1118,37 @@ export async function readFundHoldingsBook(
           grossWithTicker += Math.abs(h.adj_mv);
         }
       }
+      const attrs = (grp.attrs ?? {}) as Record<string, unknown>;
+      const rawBookRows = attrs.book_rows;
+      const datedBookRows =
+        Array.isArray(rawBookRows)
+          ? rawBookRows[teoIdx]
+          : rawBookRows && typeof rawBookRows === "object"
+            ? (rawBookRows as Record<string, unknown>)[teos[teoIdx]!]
+            : rawBookRows;
+      const bookRowsNumber = datedBookRows == null ? null : Number(datedBookRows);
+      const rawFilingSource = attrs.filing_date_source;
+      const attrFilingSource =
+        typeof rawFilingSource === "string"
+          ? rawFilingSource
+          : Array.isArray(rawFilingSource)
+            ? rawFilingSource[teoIdx]
+            : rawFilingSource && typeof rawFilingSource === "object"
+              ? (rawFilingSource as Record<string, unknown>)[teos[teoIdx]!]
+              : null;
       return {
         teo: teos[teoIdx]!,
+        report_date: teos[teoIdx]!,
+        time_basis: timeBasis,
         filing_date: filingDates?.[teoIdx] ?? null,
+        filing_date_source:
+          filingDateSources?.[teoIdx] ||
+          (attrFilingSource == null ? null : String(attrFilingSource)),
+        has_new_data: hasNewData,
+        book_rows:
+          bookRowsNumber != null && Number.isFinite(bookRowsNumber) ? bookRowsNumber : null,
+        universe_dropped_mv: universeDroppedMv?.[teoIdx] ?? null,
+        ticker_as_of: "current_registry",
         aum_reported: aumRep,
         aum_erm3: netErm3,
         net_assets: netAssets,

@@ -4321,11 +4321,11 @@ components:
     FundHoldingsResponse:
       type: object
       description: >
-        A fund's book at its latest filed report, shorts included, ranked by
-        |adj_mv|. `aum_reported` is the fund's reported net assets;
+        A fund's selected filed book, shorts included, ranked by |adj_mv|.
+        `aum_reported` is the fund's reported net assets;
         `aum_erm3` is the net value of its in-model positions (for a
         long/short fund this is small, so weights use `aum_reported`).
-      required: [bw_fund_id, teo, n_holdings_returned, n_total_holdings, holdings]
+      required: [bw_fund_id, teo, report_date, time_basis, ticker_as_of, n_holdings_returned, n_total_holdings, holdings]
       properties:
         bw_fund_id: { type: string }
         ticker: { type: string, nullable: true }
@@ -4342,7 +4342,34 @@ components:
           type: string
           format: date
           description: Report date of the filing the book comes from.
+        report_date:
+          type: string
+          format: date
+          description: Report date of the selected filing; equal to `teo`.
+        time_basis:
+          type: string
+          enum: [report_date, available_date]
+          description: Axis used to select the book when `as_of` is present.
         filing_date: { type: string, format: date, nullable: true, description: SEC filing date of that report. }
+        filing_date_source:
+          type: string
+          nullable: true
+          description: Provenance label carried by the selected filing date.
+        has_new_data:
+          type: boolean
+          description: True when at least one position was newly reported at the selected report date.
+        book_rows:
+          type: integer
+          nullable: true
+          description: Number of source filing rows when published by the holdings store.
+        universe_dropped_mv:
+          type: number
+          nullable: true
+          description: Market value excluded by the model-universe gate.
+        ticker_as_of:
+          type: string
+          enum: [current_registry]
+          description: Tickers are current registry labels, not historical report-date labels.
         aum_reported: { type: number, format: float, nullable: true }
         aum_erm3: { type: number, format: float, nullable: true }
         net_assets:
@@ -12970,15 +12997,17 @@ paths:
     get:
       summary: Fund holdings, full book with shorts
       description: >
-        The fund's full book at its latest filed report (SEC N-PORT), shorts
-        included as negative `adj_mv`, ranked by |adj_mv|. Each holding has
+        The fund's full book at its latest filed report, or at a point-in-time
+        cutoff selected with `as_of` and `time_basis`. Shorts are included as
+        negative `adj_mv`, ranked by |adj_mv|. Each holding has
         `ticker`, `bw_sym_id`, `adj_mv` and a signed `weight` against filed
         net assets (gross when a filing reports none; see `weight_basis`).
         `book` gives long/short/net/gross totals over every position, in
         dollars and as a fraction of net assets. Ask for `limit=5000` to get the whole book; the positions
         can go straight into `POST /portfolio/exposure`. A fund with no
         holdings panel falls back to its 25 largest longs (`source:
-        top_25_longs`).
+        top_25_longs`) only when `as_of` is omitted. A dated request never
+        falls forward to that latest-only table.
       operationId: getFundHoldings
       tags: [Funds]
       x-pricing:
@@ -12997,6 +13026,26 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 5000, default: 25 }
           description: Max holdings to return, largest |adj_mv| first (default 25; 5000 returns any fund's whole book).
+        - name: as_of
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: >
+            Inclusive point-in-time cutoff (YYYY-MM-DD). With `report_date`,
+            selects the latest real filing report date at or before the cutoff.
+            With `available_date`, selects the latest filing public by the cutoff.
+        - name: time_basis
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [report_date, available_date]
+          description: >-
+            Required when `as_of` is set; otherwise a 400 with code
+            `time_basis_required` explains the two choices. `report_date` returns
+            the book for the latest period ending on or before `as_of`, even if
+            filed later. `available_date` returns the latest book filed on or
+            before `as_of` (no look-ahead). Ignored without `as_of`.
       responses:
         "200":
           description: The fund's book (or the top-25 fallback).
@@ -13013,7 +13062,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/FundHoldingsResponse"
         "400":
-          description: Malformed limit param.
+          description: Malformed limit, as_of, or time_basis param.
           content:
             application/json:
               schema:
@@ -13025,7 +13074,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InsufficientBalance"
         "404":
-          description: Fund not found, or no holdings panel.
+          description: Fund not found, no holdings panel, or no eligible filing at or before as_of.
           content:
             application/json:
               schema:

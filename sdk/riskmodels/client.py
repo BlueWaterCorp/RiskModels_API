@@ -2179,14 +2179,34 @@ class RiskModelsClient:
         return data
 
     def get_fund_holdings(
-        self, bw_fund_id: str, *, limit: int | None = None
+        self,
+        bw_fund_id: str,
+        *,
+        limit: int | None = None,
+        as_of: str | None = None,
+        time_basis: str | None = None,
     ) -> dict[str, Any]:
-        """Top-N holdings from ``ds_ph.zarr`` (B.2.b, ``$0.005``)."""
-        params = {"limit": str(limit)} if limit is not None else None
+        """Top-N holdings, optionally selected point in time (B.2.b, ``$0.005``).
+
+        ``as_of`` requires ``time_basis``: ``"report_date"`` (book for the period
+        ending on or before ``as_of``, may be filed later) or ``"available_date"``
+        (book filed on or before ``as_of``, no look-ahead).
+        """
+        if as_of is not None and time_basis is None:
+            raise ValueError(
+                "time_basis is required with as_of: 'report_date' or 'available_date'"
+            )
+        params: dict[str, str] = {}
+        if limit is not None:
+            params["limit"] = str(limit)
+        if as_of is not None:
+            params["as_of"] = as_of
+        if time_basis is not None:
+            params["time_basis"] = time_basis
         data, _lineage, _r = self._transport.request(
             "GET",
             f"/funds/{quote(bw_fund_id, safe='')}/holdings",
-            params=params,
+            params=params or None,
         )
         return data
 
