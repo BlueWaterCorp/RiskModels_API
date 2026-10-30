@@ -258,9 +258,10 @@ describe("GET /api/funds/[bw_fund_id]/holdings", () => {
       "2020-06-30",
       "report_date",
     );
-    expect(res.headers.get("X-Data-Filing-Date")).toBeNull();
+    // The book's own filing date is shown even though it is after as_of.
+    expect(res.headers.get("X-Data-Filing-Date")).toBe("2020-08-20");
     const body = await res.json();
-    expect(body.filing_date).toBeNull();
+    expect(body.filing_date).toBe("2020-08-20");
     expect(body.report_date).toBe("2020-06-30");
     expect(body.time_basis).toBe("report_date");
   });
