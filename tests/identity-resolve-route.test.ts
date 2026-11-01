@@ -275,6 +275,33 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
     });
   });
 
+  it("labels an id-based carry from the alias valid at the knowledge cutoff", async () => {
+    aliasRows = currentRows.security_aliases.filter(
+      (row: { bw_sym_id: string; alias_value: string }) =>
+        row.bw_sym_id === "BW-BBG000MM2P62" && row.alias_value === "FB",
+    );
+
+    const { body } = await call(
+      "identifier=BW-BBG000MM2P62&identifier_type=bw_sym_id&acquired_on=2022-06-01&as_of=2022-06-10&known_as_of=2022-06-01",
+    );
+
+    expect(body.identity.candidates[0]).toMatchObject({ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB" });
+    expect(body.result.holdings[0]).toMatchObject({ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB" });
+  });
+
+  it("does not use the current registry ticker when an id-based carry has no known label", async () => {
+    aliasRows = [];
+
+    const { body } = await call(
+      "identifier=BW-BBG000MM2P62&identifier_type=bw_sym_id&acquired_on=2022-06-01&as_of=2022-06-10&known_as_of=2022-06-01",
+    );
+
+    expect(body.identity.candidates[0].ticker).toBeNull();
+    expect(body.identity.candidates[0].current_ticker).toBeUndefined();
+    expect(body.result.holdings[0].ticker).toBeNull();
+    expect(body.result.holdings[0].current_ticker).toBeUndefined();
+  });
+
   it("does not put the requested ticker on ambiguous candidates", async () => {
     aliasRows = currentRows.security_aliases.filter((row: { alias_value: string }) => row.alias_value === "SQ");
     masterRows = currentRows.security_master.filter(
@@ -333,7 +360,7 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
   });
 
   it("does not make the later ticker available before the reviewed rename", async () => {
-    const { body } = await call("identifier=META&acquired_on=2020-06-30&as_of=2026-10-31");
+    const { body } = await call("identifier=META&as_of=2020-06-30&known_as_of=2026-10-18");
 
     expect(body.status).toBe("unavailable");
     expect(body.result.holdings).toEqual([]);

@@ -151,8 +151,14 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const outputsFor = (e: SecurityEvent, input: Leg) => e.outputs.filter((o) => o.input_leg === input.leg);
 export const terminalFor = (e: SecurityEvent, input: Leg) => !outputsFor(e, input).some((o) => o.outcome === "continues");
 
-export function effectiveEvents(events: SecurityEvent[], knownAsOf?: string | null): SecurityEvent[] {
-  const pool = events.filter((e) => !knownAsOf || e.knowledge_date <= knownAsOf);
+export function effectiveEvents(
+  events: SecurityEvent[],
+  knownAsOf?: string | null,
+  effectiveAsOf?: string | null,
+): SecurityEvent[] {
+  const pool = events.filter(
+    (e) => (!knownAsOf || e.knowledge_date <= knownAsOf) && (!effectiveAsOf || e.effective_date <= effectiveAsOf),
+  );
   const replaced = new Set(
     pool.filter((e) => e.review_status === "accepted" && e.supersedes_event_id).map((e) => e.supersedes_event_id!),
   );
@@ -268,8 +274,8 @@ export function applyEvents(
   const applied = new Set<string>();
   const notes: string[] = [];
   const steps: TransitionStep[] = [];
-  for (const e of effectiveEvents(events, opts.known_as_of)) {
-    if (e.effective_date > as_of) continue;
+  const effectiveAsOf = opts.known_as_of && opts.known_as_of < as_of ? opts.known_as_of : as_of;
+  for (const e of effectiveEvents(events, opts.known_as_of, effectiveAsOf)) {
     for (const src of e.inputs) {
       const source = held.get(src.bw_sym_id!);
       if (!source) continue;
@@ -347,12 +353,16 @@ export function applyEvents(
 
 export type TickerWindow = { ticker: string; bw_sym_id: string; start: string | null; end: string | null };
 
-export function tickerWindows(events: SecurityEvent[], knownAsOf?: string | null): TickerWindow[] {
+export function tickerWindows(
+  events: SecurityEvent[],
+  knownAsOf?: string | null,
+  effectiveAsOf?: string | null,
+): TickerWindow[] {
   const opened = new Map<string, string | null>();
   const seen = new Set<string>();
   const out: TickerWindow[] = [];
   const key = (t: string, bw: string) => `${t}|${bw}`;
-  for (const e of effectiveEvents(events, knownAsOf)) {
+  for (const e of effectiveEvents(events, knownAsOf, effectiveAsOf)) {
     const d = e.effective_date;
     for (const i of e.inputs) {
       const k = key(i.ticker, i.bw_sym_id!);
@@ -387,9 +397,10 @@ export function historicalTickerOwner(
   ticker: string,
   heldOn: string,
   knownAsOf?: string | null,
+  effectiveAsOf?: string | null,
 ): TickerOwnership {
   const t = ticker.trim().toUpperCase();
-  const hits = tickerWindows(events, knownAsOf).filter(
+  const hits = tickerWindows(events, knownAsOf, effectiveAsOf).filter(
     (w) => w.ticker === t && (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end),
   );
   const ids = [...new Set(hits.map((h) => h.bw_sym_id))].sort();

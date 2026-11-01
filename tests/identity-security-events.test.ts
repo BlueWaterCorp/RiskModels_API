@@ -10,6 +10,7 @@ import {
   applyEvents,
   buildEvents,
   div,
+  effectiveEvents,
   floor,
   fracToString,
   historicalTickerOwner,
@@ -73,6 +74,16 @@ describe("identity events: parity with the Python resolver", () => {
       expect(historicalTickerOwner(events, c.query.ticker, c.query.held_on)).toEqual(c.expected);
     });
   }
+});
+
+describe("identity events: knowledge and effective cutoffs", () => {
+  it("does not expose a known reviewed rename before its effective bound", () => {
+    const beforeRename = effectiveEvents(events, "2026-10-18", "2020-06-30");
+    const onRename = effectiveEvents(events, "2026-10-18", "2022-06-09");
+
+    expect(beforeRename.map((event) => event.event_id)).not.toContain("META-FB-20220609");
+    expect(onRename.map((event) => event.event_id)).toContain("META-FB-20220609");
+  });
 });
 
 describe("exact fractions", () => {
