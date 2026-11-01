@@ -15,12 +15,12 @@ import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 import {
   applyEvents,
   buildEvents,
-  effectiveEvents,
   fracToString,
   historicalTickerOwner,
   isExact,
   tickerWindows,
   parseDecimal,
+  visibleEvents,
   type EventResolution,
   type EventRow,
   type LegRow,
@@ -266,9 +266,8 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
   const events = await loadEvents();
   const heldOn = req.acquired_on ?? req.as_of;
   const identity = await resolveIdentity(req, events, heldOn);
-  const effectiveAsOf = req.known_as_of && req.known_as_of < req.as_of ? req.known_as_of : req.as_of;
   const reviewedIds = new Set(
-    effectiveEvents(events, req.known_as_of, effectiveAsOf)
+    visibleEvents(events, req.known_as_of)
       .flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.bw_sym_id).filter(Boolean) as string[]),
   );
 
@@ -297,16 +296,23 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
     if (!l) return {};
     return l.listed_on ? { listed_on: l.listed_on, listed_on_basis: "first_trading_date" } : { listed_on_or_before: l.listed_on_or_before };
   };
-  const reviewedSpans: TickerSpan[] = tickerWindows(events, req.known_as_of, req.known_as_of ? effectiveAsOf : null);
+  const reviewedSpans: TickerSpan[] = tickerWindows(events, req.known_as_of);
+  const knownAsOf = req.known_as_of;
+  const visibleAliases = knownAsOf === null
+    ? aliases
+    : aliases.filter((alias) => alias.start !== null && alias.start <= knownAsOf);
   const requestTicker = req.known_as_of !== null && req.identifier_type === "ticker" ? req.identifier.trim().toUpperCase() : null;
-  // At knowledge time, aliases can only label the security as it was known then. Reviewed windows
-  // and events are both cut at the earlier of the knowledge date and requested date.
+  // Label on the requested date from visible reviewed events. At a knowledge cutoff, an alias is
+  // usable only if its dated span had already started; a carried/requested ticker remains the
+  // authoritative fallback when the alias rows conflict.
   const tick = (id: string, on: string, fallback: string | null = null) => {
     const current = names.get(id)?.ticker ?? fallback;
-    const labelOn = req.known_as_of && req.known_as_of < on ? req.known_as_of : on;
-    const d = tickerOn(reviewedSpans, [], id, labelOn) ?? tickerOn([], aliases, id, labelOn);
+    const reviewed = tickerOn(reviewedSpans, [], id, on);
+    const aliased = tickerOn([], visibleAliases, id, on);
     const knownFallback = fallback?.trim() || null;
-    const ticker = d ?? (req.known_as_of && req.identifier_type === "bw_sym_id" ? knownFallback : knownFallback ?? current);
+    const ticker = req.known_as_of === null
+      ? reviewed ?? aliased ?? current
+      : reviewed ?? knownFallback ?? aliased ?? (req.identifier_type === "bw_sym_id" ? null : current);
     return { ticker, ...(ticker && current && ticker !== current ? { current_ticker: current } : {}) };
   };
   // The name a security carried on a date, falling back to today's name; current_name only when it differs.

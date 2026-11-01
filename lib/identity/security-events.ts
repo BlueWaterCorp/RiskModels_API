@@ -151,18 +151,21 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const outputsFor = (e: SecurityEvent, input: Leg) => e.outputs.filter((o) => o.input_leg === input.leg);
 export const terminalFor = (e: SecurityEvent, input: Leg) => !outputsFor(e, input).some((o) => o.outcome === "continues");
 
+export function visibleEvents(events: SecurityEvent[], knownAsOf?: string | null): SecurityEvent[] {
+  const pool = events.filter((e) => !knownAsOf || e.knowledge_date <= knownAsOf);
+  const replaced = new Set(
+    pool.filter((e) => e.review_status === "accepted" && e.supersedes_event_id).map((e) => e.supersedes_event_id!),
+  );
+  return order(pool.filter((e) => e.review_status === "accepted" && !replaced.has(e.event_id)));
+}
+
 export function effectiveEvents(
   events: SecurityEvent[],
   knownAsOf?: string | null,
   effectiveAsOf?: string | null,
 ): SecurityEvent[] {
-  const pool = events.filter(
-    (e) => (!knownAsOf || e.knowledge_date <= knownAsOf) && (!effectiveAsOf || e.effective_date <= effectiveAsOf),
-  );
-  const replaced = new Set(
-    pool.filter((e) => e.review_status === "accepted" && e.supersedes_event_id).map((e) => e.supersedes_event_id!),
-  );
-  return order(pool.filter((e) => e.review_status === "accepted" && !replaced.has(e.event_id)));
+  const visible = visibleEvents(events, knownAsOf);
+  return effectiveAsOf ? visible.filter((e) => e.effective_date <= effectiveAsOf) : visible;
 }
 
 /** Date order; within a date, the event producing a listing (security, ticker) precedes the one consuming it. */
@@ -274,8 +277,7 @@ export function applyEvents(
   const applied = new Set<string>();
   const notes: string[] = [];
   const steps: TransitionStep[] = [];
-  const effectiveAsOf = opts.known_as_of && opts.known_as_of < as_of ? opts.known_as_of : as_of;
-  for (const e of effectiveEvents(events, opts.known_as_of, effectiveAsOf)) {
+  for (const e of effectiveEvents(events, opts.known_as_of, as_of)) {
     for (const src of e.inputs) {
       const source = held.get(src.bw_sym_id!);
       if (!source) continue;
@@ -356,13 +358,14 @@ export type TickerWindow = { ticker: string; bw_sym_id: string; start: string | 
 export function tickerWindows(
   events: SecurityEvent[],
   knownAsOf?: string | null,
-  effectiveAsOf?: string | null,
 ): TickerWindow[] {
   const opened = new Map<string, string | null>();
   const seen = new Set<string>();
   const out: TickerWindow[] = [];
   const key = (t: string, bw: string) => `${t}|${bw}`;
-  for (const e of effectiveEvents(events, knownAsOf, effectiveAsOf)) {
+  // A visible future event still establishes the input ticker's pre-event window. Applying an
+  // effective-date cutoff here would erase that window and make earlier holdings ambiguous.
+  for (const e of visibleEvents(events, knownAsOf)) {
     const d = e.effective_date;
     for (const i of e.inputs) {
       const k = key(i.ticker, i.bw_sym_id!);
@@ -397,10 +400,9 @@ export function historicalTickerOwner(
   ticker: string,
   heldOn: string,
   knownAsOf?: string | null,
-  effectiveAsOf?: string | null,
 ): TickerOwnership {
   const t = ticker.trim().toUpperCase();
-  const hits = tickerWindows(events, knownAsOf, effectiveAsOf).filter(
+  const hits = tickerWindows(events, knownAsOf).filter(
     (w) => w.ticker === t && (w.start === null || w.start <= heldOn) && (w.end === null || heldOn < w.end),
   );
   const ids = [...new Set(hits.map((h) => h.bw_sym_id))].sort();

@@ -275,14 +275,15 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
     });
   });
 
-  it("labels an id-based carry from the alias valid at the knowledge cutoff", async () => {
-    aliasRows = currentRows.security_aliases.filter(
-      (row: { bw_sym_id: string; alias_value: string }) =>
-        row.bw_sym_id === "BW-BBG000MM2P62" && row.alias_value === "FB",
-    );
+  it("keeps the old ticker before an invisible reviewed rename", async () => {
+    const { body } = await call("identifier=FB&as_of=2022-06-01&known_as_of=2022-06-01");
 
+    expect(body.result.holdings[0]).toMatchObject({ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB" });
+  });
+
+  it("uses the visible reviewed input window for an earlier id request with unfiltered aliases", async () => {
     const { body } = await call(
-      "identifier=BW-BBG000MM2P62&identifier_type=bw_sym_id&acquired_on=2022-06-01&as_of=2022-06-10&known_as_of=2022-06-01",
+      "identifier=BW-BBG000MM2P62&identifier_type=bw_sym_id&as_of=2020-06-30&known_as_of=2026-10-18",
     );
 
     expect(body.identity.candidates[0]).toMatchObject({ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB" });
@@ -359,8 +360,19 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
     expect(body.events.map((event: { event_id: string }) => event.event_id)).toEqual(["META-FB-20220609"]);
   });
 
-  it("does not make the later ticker available before the reviewed rename", async () => {
-    const { body } = await call("identifier=META&as_of=2020-06-30&known_as_of=2026-10-18");
+  it("applies a visible rename through as_of without freezing the carry at known_as_of", async () => {
+    const { body } = await call(
+      "identifier=FB&acquired_on=2020-06-30&as_of=2026-10-31&known_as_of=2026-10-18",
+    );
+
+    expect(body.result.holdings).toEqual([
+      expect.objectContaining({ bw_sym_id: "BW-BBG000MM2P62", ticker: "META", quantity: "100" }),
+    ]);
+    expect(body.events.map((event: { event_id: string }) => event.event_id)).toEqual(["META-FB-20220609"]);
+  });
+
+  it("does not make the later ticker available for a holding acquired before the reviewed rename", async () => {
+    const { body } = await call("identifier=META&acquired_on=2020-06-30&as_of=2026-10-18&known_as_of=2026-10-18");
 
     expect(body.status).toBe("unavailable");
     expect(body.result.holdings).toEqual([]);
