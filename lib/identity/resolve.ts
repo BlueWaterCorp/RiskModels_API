@@ -296,12 +296,14 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
     return l.listed_on ? { listed_on: l.listed_on, listed_on_basis: "first_trading_date" } : { listed_on_or_before: l.listed_on_or_before };
   };
   const reviewedSpans: TickerSpan[] = tickerWindows(events, req.known_as_of);
-  const requestTicker = req.identifier_type === "ticker" ? req.identifier.trim().toUpperCase() : null;
-  // Prefer a proven request/carry ticker when dated sources conflict. Keep today's ticker separately.
+  const requestTicker = req.known_as_of !== null && req.identifier_type === "ticker" ? req.identifier.trim().toUpperCase() : null;
+  // At knowledge time, aliases can only label the security as it was known then. Reviewed windows
+  // still apply on the requested date because their own knowledge dates have already been filtered.
   const tick = (id: string, on: string, fallback: string | null = null) => {
     const current = names.get(id)?.ticker ?? fallback;
-    const d = tickerOn(reviewedSpans, aliases, id, on);
-    const ticker = d ?? fallback ?? current;
+    const aliasOn = req.known_as_of && req.known_as_of < on ? req.known_as_of : on;
+    const d = tickerOn(reviewedSpans, [], id, on) ?? tickerOn([], aliases, id, aliasOn);
+    const ticker = d ?? (req.known_as_of ? fallback : null) ?? current;
     return { ticker, ...(ticker && current && ticker !== current ? { current_ticker: current } : {}) };
   };
   // The name a security carried on a date, falling back to today's name; current_name only when it differs.
@@ -353,7 +355,11 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
       bw_sym_id: identity.bw_sym_id,
       ...(identity.bw_sym_id ? label(identity.bw_sym_id, heldOn) : {}),
       held_on: heldOn,
-      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ...tick(id, heldOn, requestTicker), ...label(id, heldOn) })),
+      candidates: identity.candidates.map((id) => ({
+        bw_sym_id: id,
+        ...tick(id, heldOn, identity.status === "resolved" ? requestTicker : null),
+        ...label(id, heldOn),
+      })),
       duplicate_records: identity.duplicate_records,
       excluded_candidates: identity.excluded_candidates,
     },

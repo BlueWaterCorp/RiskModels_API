@@ -246,6 +246,8 @@ describe("GET /api/identity/resolve: dated tickers", () => {
 describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
   beforeEach(() => {
     _resetIdentityCache();
+    listingRows = [];
+    nameRows = [];
     aliasRows = currentRows.security_aliases.filter(
       (row: { bw_sym_id: string }) => row.bw_sym_id === "BW-BBG000MM2P62",
     );
@@ -254,8 +256,8 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
     );
   });
 
-  it("keeps the ticker known on the held date when the later reviewed rename is hidden", async () => {
-    const { body } = await call("identifier=FB&as_of=2022-06-01&known_as_of=2022-06-01&quantity=100&fractions=apply");
+  it("keeps the ticker known at the cutoff when the later reviewed rename and alias are hidden", async () => {
+    const { body } = await call("identifier=FB&acquired_on=2022-06-01&as_of=2022-06-10&known_as_of=2022-06-01&quantity=100&fractions=apply");
 
     expect(body).toMatchObject({
       status: "resolved",
@@ -273,6 +275,53 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
     });
   });
 
+  it("does not put the requested ticker on ambiguous candidates", async () => {
+    aliasRows = currentRows.security_aliases.filter((row: { alias_value: string }) => row.alias_value === "SQ");
+    masterRows = currentRows.security_master.filter(
+      (row: { bw_sym_id: string }) => row.bw_sym_id === "BW-BBG0018SLC07" || row.bw_sym_id === "BW-SVPDJ6JAQTBW9",
+    );
+
+    const { body } = await call("identifier=SQ&as_of=2020-06-30&known_as_of=2010-01-01");
+
+    expect(body.status).toBe("ambiguous");
+    expect(body.identity.candidates).toEqual([
+      expect.objectContaining({ bw_sym_id: "BW-BBG0018SLC07", ticker: "XYZ" }),
+      expect.objectContaining({ bw_sym_id: "BW-SVPDJ6JAQTBW9", ticker: "SQ" }),
+    ]);
+    expect(body.identity.candidates[0].current_ticker).toBeUndefined();
+  });
+
+  it("keeps existing response labels byte-for-byte when known_as_of is omitted", async () => {
+    const beforeRename = (await call("identifier=FB&as_of=2015-06-01")).body;
+    const afterRename = (await call("identifier=FB&acquired_on=2015-06-01&as_of=2026-10-16")).body;
+    aliasRows = currentRows.security_aliases.filter((row: { alias_value: string }) => row.alias_value === "SQ");
+    masterRows = currentRows.security_master.filter(
+      (row: { bw_sym_id: string }) => row.bw_sym_id === "BW-BBG0018SLC07" || row.bw_sym_id === "BW-SVPDJ6JAQTBW9",
+    );
+    const ambiguous = (await call("identifier=SQ&as_of=2020-06-30")).body;
+    const labels = [beforeRename, afterRename, ambiguous].map((body) => JSON.stringify({
+      status: body.status,
+      candidates: body.identity.candidates.map((candidate: Record<string, unknown>) => ({
+        bw_sym_id: candidate.bw_sym_id,
+        ticker: candidate.ticker,
+        ...(candidate.current_ticker ? { current_ticker: candidate.current_ticker } : {}),
+      })),
+      holdings: body.result.holdings.map((holding: Record<string, unknown>) => ({
+        bw_sym_id: holding.bw_sym_id,
+        ticker: holding.ticker,
+        ...(holding.current_ticker ? { current_ticker: holding.current_ticker } : {}),
+      })),
+    }));
+
+    expect(labels).toMatchInlineSnapshot(`
+      [
+        "{"status":"resolved","candidates":[{"bw_sym_id":"BW-BBG000MM2P62","ticker":"FB","current_ticker":"META"}],"holdings":[{"bw_sym_id":"BW-BBG000MM2P62","ticker":"FB","current_ticker":"META"}]}",
+        "{"status":"resolved","candidates":[{"bw_sym_id":"BW-BBG000MM2P62","ticker":"FB","current_ticker":"META"}],"holdings":[{"bw_sym_id":"BW-BBG000MM2P62","ticker":"META"}]}",
+        "{"status":"ambiguous","candidates":[{"bw_sym_id":"BW-BBG0018SLC07","ticker":"SQ","current_ticker":"XYZ"},{"bw_sym_id":"BW-SVPDJ6JAQTBW9","ticker":"SQ"}],"holdings":[]}",
+      ]
+    `);
+  });
+
   it("carries the same id through the reviewed rename after its effective date", async () => {
     const { body } = await call("identifier=FB&acquired_on=2022-06-01&as_of=2026-10-31");
 
@@ -284,7 +333,7 @@ describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
   });
 
   it("does not make the later ticker available before the reviewed rename", async () => {
-    const { body } = await call("identifier=META&as_of=2020-06-30");
+    const { body } = await call("identifier=META&acquired_on=2020-06-30&as_of=2026-10-31");
 
     expect(body.status).toBe("unavailable");
     expect(body.result.holdings).toEqual([]);
