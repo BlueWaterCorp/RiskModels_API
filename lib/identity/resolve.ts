@@ -296,11 +296,13 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
     return l.listed_on ? { listed_on: l.listed_on, listed_on_basis: "first_trading_date" } : { listed_on_or_before: l.listed_on_or_before };
   };
   const reviewedSpans: TickerSpan[] = tickerWindows(events, req.known_as_of);
-  // The ticker a security traded under on a date, falling back to today's; current_ticker only when it differs.
+  const requestTicker = req.identifier_type === "ticker" ? req.identifier.trim().toUpperCase() : null;
+  // Prefer a proven request/carry ticker when dated sources conflict. Keep today's ticker separately.
   const tick = (id: string, on: string, fallback: string | null = null) => {
     const current = names.get(id)?.ticker ?? fallback;
     const d = tickerOn(reviewedSpans, aliases, id, on);
-    return { ticker: d ?? current, ...(d && current && d !== current ? { current_ticker: current } : {}) };
+    const ticker = d ?? fallback ?? current;
+    return { ticker, ...(ticker && current && ticker !== current ? { current_ticker: current } : {}) };
   };
   // The name a security carried on a date, falling back to today's name; current_name only when it differs.
   const label = (id: string, on: string) => {
@@ -334,7 +336,7 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
         quantity_exact: isExact(h.quantity),
       }))
     : identity.bw_sym_id
-      ? [{ bw_sym_id: identity.bw_sym_id, ...tick(identity.bw_sym_id, req.as_of), ...label(identity.bw_sym_id, req.as_of), quantity: req.quantity, quantity_exact: true }]
+      ? [{ bw_sym_id: identity.bw_sym_id, ...tick(identity.bw_sym_id, req.as_of, requestTicker), ...label(identity.bw_sym_id, req.as_of), quantity: req.quantity, quantity_exact: true }]
       : [];
 
   const status =
@@ -351,7 +353,7 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
       bw_sym_id: identity.bw_sym_id,
       ...(identity.bw_sym_id ? label(identity.bw_sym_id, heldOn) : {}),
       held_on: heldOn,
-      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ...tick(id, heldOn), ...label(id, heldOn) })),
+      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ...tick(id, heldOn, requestTicker), ...label(id, heldOn) })),
       duplicate_records: identity.duplicate_records,
       excluded_candidates: identity.excluded_candidates,
     },

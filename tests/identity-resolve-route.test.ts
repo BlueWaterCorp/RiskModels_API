@@ -94,6 +94,21 @@ describe("GET /api/identity/resolve", () => {
     expect(body.events[0].event_type).toBe("distribution");
   });
 
+  it("keeps the existing GE carry result unchanged", async () => {
+    const { body } = await call("identifier=GE&quantity=800&acquired_on=2020-01-02&as_of=2026-10-31");
+
+    expect(body.result.holdings.map((h: { ticker: string; quantity: string }) => [h.ticker, h.quantity])).toEqual([
+      ["GE", "100"],
+      ["GEV", "25"],
+      ["GEHC", "33"],
+    ]);
+    expect(body.events.map((event: { event_id: string }) => event.event_id)).toEqual([
+      "GE-RSPLIT-20210730",
+      "GE-GEHC-20230103",
+      "GE-GEV-20240402",
+    ]);
+  });
+
   it("SOS ADS to ordinary: same id continues, but the instrument change is explicit", async () => {
     const { body } = await call("identifier=SOS&acquired_on=2025-01-02&as_of=2026-10-18");
     const out = body.events.find((e: { event_id: string }) => e.event_id === "SOS-ADS-ORD-20250908").outputs[0];
@@ -225,6 +240,54 @@ describe("GET /api/identity/resolve: dated tickers", () => {
     const { body } = await call("identifier=FB&acquired_on=2015-06-01&as_of=2026-10-16");
     expect(body.result.holdings[0].ticker).toBe("META");
     expect(body.result.holdings[0].current_ticker).toBeUndefined();
+  });
+});
+
+describe("GET /api/identity/resolve: knowledge-time ticker labels", () => {
+  beforeEach(() => {
+    _resetIdentityCache();
+    aliasRows = currentRows.security_aliases.filter(
+      (row: { bw_sym_id: string }) => row.bw_sym_id === "BW-BBG000MM2P62",
+    );
+    masterRows = currentRows.security_master.filter(
+      (row: { bw_sym_id: string }) => row.bw_sym_id === "BW-BBG000MM2P62",
+    );
+  });
+
+  it("keeps the ticker known on the held date when the later reviewed rename is hidden", async () => {
+    const { body } = await call("identifier=FB&as_of=2022-06-01&known_as_of=2022-06-01&quantity=100&fractions=apply");
+
+    expect(body).toMatchObject({
+      status: "resolved",
+      coverage: "inferred",
+      identity: {
+        source: "ticker_alias_window",
+        bw_sym_id: "BW-BBG000MM2P62",
+        held_on: "2022-06-01",
+        candidates: [{ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB", current_ticker: "META" }],
+      },
+      result: {
+        holdings: [{ bw_sym_id: "BW-BBG000MM2P62", ticker: "FB", current_ticker: "META", quantity: "100" }],
+      },
+      events: [],
+    });
+  });
+
+  it("carries the same id through the reviewed rename after its effective date", async () => {
+    const { body } = await call("identifier=FB&acquired_on=2022-06-01&as_of=2026-10-31");
+
+    expect(body.identity.bw_sym_id).toBe("BW-BBG000MM2P62");
+    expect(body.result.holdings).toEqual([
+      expect.objectContaining({ bw_sym_id: "BW-BBG000MM2P62", ticker: "META", quantity: "100" }),
+    ]);
+    expect(body.events.map((event: { event_id: string }) => event.event_id)).toEqual(["META-FB-20220609"]);
+  });
+
+  it("does not make the later ticker available before the reviewed rename", async () => {
+    const { body } = await call("identifier=META&as_of=2020-06-30");
+
+    expect(body.status).toBe("unavailable");
+    expect(body.result.holdings).toEqual([]);
   });
 });
 

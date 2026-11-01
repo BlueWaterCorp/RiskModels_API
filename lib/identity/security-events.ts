@@ -265,7 +265,7 @@ export function applyEvents(
   const cancelled: string[] = [];
   const unknown: string[] = [];
   const unresolved: string[] = [];
-  const applied: string[] = [];
+  const applied = new Set<string>();
   const notes: string[] = [];
   const steps: TransitionStep[] = [];
   for (const e of effectiveEvents(events, opts.known_as_of)) {
@@ -292,7 +292,7 @@ export function applyEvents(
         outs = outs.filter((o) => o.package === choice);
       }
       held.delete(src.bw_sym_id!);
-      applied.push(e.event_id);
+      applied.add(e.event_id);
       for (const o of outs) {
         const step: TransitionStep = {
           event_id: e.event_id,
@@ -342,7 +342,7 @@ export function applyEvents(
     .sort((a, b) => Number(a.bw_sym_id !== bw_sym_id) - Number(b.bw_sym_id !== bw_sym_id) || cmp(a.bw_sym_id, b.bw_sym_id));
   const status =
     unknown.length || unresolved.length ? "unknown" : holdings.length ? "held" : cash.length ? "cashed_out" : cancelled.length ? "cancelled" : "none";
-  return { holdings, cash, cancelled_by: cancelled, unknown_by: unknown, applied_event_ids: applied, fractional_notes: notes, unresolved, status, steps };
+  return { holdings, cash, cancelled_by: cancelled, unknown_by: unknown, applied_event_ids: [...applied], fractional_notes: notes, unresolved, status, steps };
 }
 
 export type TickerWindow = { ticker: string; bw_sym_id: string; start: string | null; end: string | null };
