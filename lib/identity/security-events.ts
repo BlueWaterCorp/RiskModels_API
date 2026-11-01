@@ -151,12 +151,21 @@ const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const outputsFor = (e: SecurityEvent, input: Leg) => e.outputs.filter((o) => o.input_leg === input.leg);
 export const terminalFor = (e: SecurityEvent, input: Leg) => !outputsFor(e, input).some((o) => o.outcome === "continues");
 
-export function effectiveEvents(events: SecurityEvent[], knownAsOf?: string | null): SecurityEvent[] {
+export function visibleEvents(events: SecurityEvent[], knownAsOf?: string | null): SecurityEvent[] {
   const pool = events.filter((e) => !knownAsOf || e.knowledge_date <= knownAsOf);
   const replaced = new Set(
     pool.filter((e) => e.review_status === "accepted" && e.supersedes_event_id).map((e) => e.supersedes_event_id!),
   );
   return order(pool.filter((e) => e.review_status === "accepted" && !replaced.has(e.event_id)));
+}
+
+export function effectiveEvents(
+  events: SecurityEvent[],
+  knownAsOf?: string | null,
+  effectiveAsOf?: string | null,
+): SecurityEvent[] {
+  const visible = visibleEvents(events, knownAsOf);
+  return effectiveAsOf ? visible.filter((e) => e.effective_date <= effectiveAsOf) : visible;
 }
 
 /** Date order; within a date, the event producing a listing (security, ticker) precedes the one consuming it. */
@@ -265,11 +274,10 @@ export function applyEvents(
   const cancelled: string[] = [];
   const unknown: string[] = [];
   const unresolved: string[] = [];
-  const applied: string[] = [];
+  const applied = new Set<string>();
   const notes: string[] = [];
   const steps: TransitionStep[] = [];
-  for (const e of effectiveEvents(events, opts.known_as_of)) {
-    if (e.effective_date > as_of) continue;
+  for (const e of effectiveEvents(events, opts.known_as_of, as_of)) {
     for (const src of e.inputs) {
       const source = held.get(src.bw_sym_id!);
       if (!source) continue;
@@ -292,7 +300,7 @@ export function applyEvents(
         outs = outs.filter((o) => o.package === choice);
       }
       held.delete(src.bw_sym_id!);
-      applied.push(e.event_id);
+      applied.add(e.event_id);
       for (const o of outs) {
         const step: TransitionStep = {
           event_id: e.event_id,
@@ -342,17 +350,22 @@ export function applyEvents(
     .sort((a, b) => Number(a.bw_sym_id !== bw_sym_id) - Number(b.bw_sym_id !== bw_sym_id) || cmp(a.bw_sym_id, b.bw_sym_id));
   const status =
     unknown.length || unresolved.length ? "unknown" : holdings.length ? "held" : cash.length ? "cashed_out" : cancelled.length ? "cancelled" : "none";
-  return { holdings, cash, cancelled_by: cancelled, unknown_by: unknown, applied_event_ids: applied, fractional_notes: notes, unresolved, status, steps };
+  return { holdings, cash, cancelled_by: cancelled, unknown_by: unknown, applied_event_ids: [...applied], fractional_notes: notes, unresolved, status, steps };
 }
 
 export type TickerWindow = { ticker: string; bw_sym_id: string; start: string | null; end: string | null };
 
-export function tickerWindows(events: SecurityEvent[], knownAsOf?: string | null): TickerWindow[] {
+export function tickerWindows(
+  events: SecurityEvent[],
+  knownAsOf?: string | null,
+): TickerWindow[] {
   const opened = new Map<string, string | null>();
   const seen = new Set<string>();
   const out: TickerWindow[] = [];
   const key = (t: string, bw: string) => `${t}|${bw}`;
-  for (const e of effectiveEvents(events, knownAsOf)) {
+  // A visible future event still establishes the input ticker's pre-event window. Applying an
+  // effective-date cutoff here would erase that window and make earlier holdings ambiguous.
+  for (const e of visibleEvents(events, knownAsOf)) {
     const d = e.effective_date;
     for (const i of e.inputs) {
       const k = key(i.ticker, i.bw_sym_id!);

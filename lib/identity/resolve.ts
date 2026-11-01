@@ -15,12 +15,12 @@ import { resolveSymbolByTicker } from "@/lib/dal/risk-engine-v3";
 import {
   applyEvents,
   buildEvents,
-  effectiveEvents,
   fracToString,
   historicalTickerOwner,
   isExact,
   tickerWindows,
   parseDecimal,
+  visibleEvents,
   type EventResolution,
   type EventRow,
   type LegRow,
@@ -267,7 +267,8 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
   const heldOn = req.acquired_on ?? req.as_of;
   const identity = await resolveIdentity(req, events, heldOn);
   const reviewedIds = new Set(
-    effectiveEvents(events, req.known_as_of).flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.bw_sym_id).filter(Boolean) as string[]),
+    visibleEvents(events, req.known_as_of)
+      .flatMap((e) => [...e.inputs, ...e.outputs].map((l) => l.bw_sym_id).filter(Boolean) as string[]),
   );
 
   let carry: EventResolution | null = null;
@@ -296,11 +297,23 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
     return l.listed_on ? { listed_on: l.listed_on, listed_on_basis: "first_trading_date" } : { listed_on_or_before: l.listed_on_or_before };
   };
   const reviewedSpans: TickerSpan[] = tickerWindows(events, req.known_as_of);
-  // The ticker a security traded under on a date, falling back to today's; current_ticker only when it differs.
+  const knownAsOf = req.known_as_of;
+  const visibleAliases = knownAsOf === null
+    ? aliases
+    : aliases.filter((alias) => alias.start !== null && alias.start <= knownAsOf);
+  const requestTicker = req.known_as_of !== null && req.identifier_type === "ticker" ? req.identifier.trim().toUpperCase() : null;
+  // Label on the requested date from visible reviewed events. At a knowledge cutoff, an alias is
+  // usable only if its dated span had already started; a carried/requested ticker remains the
+  // authoritative fallback when the alias rows conflict.
   const tick = (id: string, on: string, fallback: string | null = null) => {
     const current = names.get(id)?.ticker ?? fallback;
-    const d = tickerOn(reviewedSpans, aliases, id, on);
-    return { ticker: d ?? current, ...(d && current && d !== current ? { current_ticker: current } : {}) };
+    const reviewed = tickerOn(reviewedSpans, [], id, on);
+    const aliased = tickerOn([], visibleAliases, id, on);
+    const knownFallback = fallback?.trim() || null;
+    const ticker = req.known_as_of === null
+      ? reviewed ?? aliased ?? current
+      : reviewed ?? knownFallback ?? aliased ?? (req.identifier_type === "bw_sym_id" ? null : current);
+    return { ticker, ...(ticker && current && ticker !== current ? { current_ticker: current } : {}) };
   };
   // The name a security carried on a date, falling back to today's name; current_name only when it differs.
   const label = (id: string, on: string) => {
@@ -334,7 +347,7 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
         quantity_exact: isExact(h.quantity),
       }))
     : identity.bw_sym_id
-      ? [{ bw_sym_id: identity.bw_sym_id, ...tick(identity.bw_sym_id, req.as_of), ...label(identity.bw_sym_id, req.as_of), quantity: req.quantity, quantity_exact: true }]
+      ? [{ bw_sym_id: identity.bw_sym_id, ...tick(identity.bw_sym_id, req.as_of, requestTicker), ...label(identity.bw_sym_id, req.as_of), quantity: req.quantity, quantity_exact: true }]
       : [];
 
   const status =
@@ -351,7 +364,11 @@ export async function resolveSecurityIdentity(req: ResolveRequest) {
       bw_sym_id: identity.bw_sym_id,
       ...(identity.bw_sym_id ? label(identity.bw_sym_id, heldOn) : {}),
       held_on: heldOn,
-      candidates: identity.candidates.map((id) => ({ bw_sym_id: id, ...tick(id, heldOn), ...label(id, heldOn) })),
+      candidates: identity.candidates.map((id) => ({
+        bw_sym_id: id,
+        ...tick(id, heldOn, identity.status === "resolved" ? requestTicker : null),
+        ...label(id, heldOn),
+      })),
       duplicate_records: identity.duplicate_records,
       excluded_candidates: identity.excluded_candidates,
     },

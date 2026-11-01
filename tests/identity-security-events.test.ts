@@ -10,10 +10,13 @@ import {
   applyEvents,
   buildEvents,
   div,
+  effectiveEvents,
   floor,
   fracToString,
   historicalTickerOwner,
   parseDecimal,
+  tickerWindows,
+  visibleEvents,
   type EventRow,
   type LegRow,
 } from "@/lib/identity/security-events";
@@ -73,6 +76,35 @@ describe("identity events: parity with the Python resolver", () => {
       expect(historicalTickerOwner(events, c.query.ticker, c.query.held_on)).toEqual(c.expected);
     });
   }
+});
+
+describe("identity events: knowledge and effective cutoffs", () => {
+  it("exposes reviewed events only after their knowledge date", () => {
+    const hidden = visibleEvents(events, "2022-06-01");
+    const visible = visibleEvents(events, "2026-10-18");
+
+    expect(hidden.map((event) => event.event_id)).not.toContain("META-FB-20220609");
+    expect(visible.map((event) => event.event_id)).toContain("META-FB-20220609");
+  });
+
+  it("does not expose a known reviewed rename before its effective bound", () => {
+    const beforeRename = effectiveEvents(events, "2026-10-18", "2020-06-30");
+    const onRename = effectiveEvents(events, "2026-10-18", "2022-06-09");
+
+    expect(beforeRename.map((event) => event.event_id)).not.toContain("META-FB-20220609");
+    expect(onRename.map((event) => event.event_id)).toContain("META-FB-20220609");
+  });
+
+  it("keeps the input ticker window from a visible event before that event applies", () => {
+    const windows = tickerWindows(events, "2026-10-18");
+
+    expect(windows).toContainEqual({
+      ticker: "FB",
+      bw_sym_id: "BW-BBG000MM2P62",
+      start: null,
+      end: "2022-06-09",
+    });
+  });
 });
 
 describe("exact fractions", () => {
