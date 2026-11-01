@@ -87,7 +87,7 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
       <span className="text-sm font-semibold text-zinc-100">Gemini — depends on surface</span>
       <p className="text-xs text-zinc-400 mt-1">
         <strong className="font-normal text-zinc-300">gemini.google.com (consumer chat):</strong> no custom MCP UI — use the in-chat prompt above (<code className="text-zinc-500">/llms.txt</code> + REST).
-        <strong className="font-normal text-zinc-300"> Gemini CLI / Antigravity:</strong> terminal MCP with OAuth (<code className="text-zinc-500">gemini mcp add …</code>).
+        <strong className="font-normal text-zinc-300"> Gemini CLI / Antigravity:</strong> <code className="text-zinc-500">gemini extensions install https://github.com/BlueWaterCorp/riskmodels-gemini</code>, then <code className="text-zinc-500">/mcp auth riskmodels</code>.
         <strong className="font-normal text-zinc-300"> Gemini Enterprise:</strong> admin registers this server as a Custom MCP data store in Google Cloud (Streamable HTTP + OAuth).
       </p>
       <p className="text-xs text-zinc-600 mt-2">Details: <a href="#gemini" className="text-primary hover:underline">Gemini setup ↓</a></p>
@@ -155,7 +155,7 @@ Use the RiskModels API with your AI assistant of choice to perform quant researc
         <img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="Gemini" width="28" height="28" className="rounded flex-shrink-0" />
         <div>
           <span className="text-sm font-semibold text-zinc-100">Gemini</span>
-          <p className="text-xs text-zinc-500 mt-0.5">Consumer web chat: use <code className="text-zinc-400">/llms.txt</code> in-session. Persistent MCP: Gemini CLI or Gemini Enterprise admin setup. <a href="#gemini" className="text-primary hover:underline">See Gemini setup ↓</a></p>
+          <p className="text-xs text-zinc-500 mt-0.5">Consumer web chat: use <code className="text-zinc-400">/llms.txt</code> in-session. Gemini CLI: install <a href="https://github.com/BlueWaterCorp/riskmodels-gemini" className="text-primary hover:underline">BlueWaterCorp/riskmodels-gemini</a>. <a href="#gemini" className="text-primary hover:underline">See Gemini setup ↓</a></p>
         </div>
       </div>
     </div>
@@ -272,13 +272,21 @@ Google exposes **three different surfaces** — pick the one you actually use:
 
 **Consumer chat (`gemini.google.com`)** — no Settings → Connectors flow for custom MCP today. Use the in-chat prompt at the top of this page (`/llms.txt` + REST) for one-session analysis, or paste holdings and ask Gemini to call the API with a key from [/get-key](/get-key).
 
-**Gemini CLI / Antigravity (terminal)** — MCP lives in the CLI, not the consumer web app:
+**Gemini CLI / Antigravity (terminal)** — install the extension, then sign in. The extension uses `https://riskmodels.app/api/mcp/openai` (same tools and sign-in as the other hosted routes):
+
+```bash
+gemini extensions install https://github.com/BlueWaterCorp/riskmodels-gemini --consent
+```
+
+Start Gemini CLI and run `/mcp auth riskmodels`. The password form is the first screen. Repo: [BlueWaterCorp/riskmodels-gemini](https://github.com/BlueWaterCorp/riskmodels-gemini).
+
+To add the server without the extension:
 
 ```bash
 gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp
 ```
 
-Start a session and run `/mcp auth riskmodels` to complete OAuth in the browser. Alternatively add to `~/.gemini/settings.json` under `mcpServers` with `httpUrl` pointing at the URL above. Google is migrating free-tier CLI users toward **Antigravity** — the same Streamable HTTP URL and OAuth pattern apply there.
+Google is migrating free-tier CLI users toward **Antigravity**. The same install and OAuth sign-in apply there.
 
 **Gemini Enterprise (Google Cloud admin)** — register RiskModels as a **Custom MCP Server** data store in the Google Cloud console ([setup guide](https://cloud.google.com/gemini/enterprise/docs/connectors/custom-mcp-server/set-up-custom-mcp-server)). Requirements:
 

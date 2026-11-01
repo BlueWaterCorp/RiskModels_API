@@ -59,7 +59,7 @@ export async function GET() {
       gemini_spark:
         "Connected Apps → Custom apps for Spark → Add a custom app → https://riskmodels.app/api/mcp → OAuth sign-in",
       gemini_cli:
-        "gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp then /mcp auth riskmodels; the RiskModels Gemini extension configures the same route",
+        "gemini extensions install https://github.com/BlueWaterCorp/riskmodels-gemini --consent, then /mcp auth riskmodels (extension uses https://riskmodels.app/api/mcp/openai)",
       gemini_enterprise:
         "Google Cloud admin: Custom MCP Server data store at https://riskmodels.app/api/mcp; Streamable HTTP + OAuth (Client ID/Secret may need POST /api/oauth/register)",
       cli: "RISKMODELS_API_KEY=… npx -y riskmodels@latest install (MCP plus five skills; --no-skills for the server only)",

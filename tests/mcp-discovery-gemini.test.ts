@@ -28,7 +28,8 @@ describe("Gemini MCP discovery", () => {
     const llms = buildLlmsTxt("https://riskmodels.app");
 
     expect(llms).toContain("| Gemini Spark custom apps | `https://riskmodels.app/api/mcp`");
-    expect(llms).toContain("| Gemini CLI | `https://riskmodels.app/api/mcp`");
+    expect(llms).toContain("| Gemini CLI | `https://riskmodels.app/api/mcp/openai`");
+    expect(llms).toContain("https://github.com/BlueWaterCorp/riskmodels-gemini");
     expect(llms).toContain("| Gemini Enterprise | `https://riskmodels.app/api/mcp`");
   });
 });

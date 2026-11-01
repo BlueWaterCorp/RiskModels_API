@@ -38,7 +38,7 @@ Three Streamable HTTP routes serve the same 26 tools, prompts and billing. \`/ap
 | Grok (web, iOS, Android) | \`https://riskmodels.app/api/mcp/sse\` | grok.com/connectors → New Connector → Custom |
 | ChatGPT (Plus and above, web, Developer Mode) | \`https://riskmodels.app/api/mcp/openai\` | Settings → Apps & Connectors → Advanced settings → Developer mode, then Create; OAuth |
 | Gemini Spark custom apps | \`https://riskmodels.app/api/mcp\` | Connected Apps → Custom apps for Spark → Add a custom app; OAuth |
-| Gemini CLI | \`https://riskmodels.app/api/mcp\` | \`gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp\`, or install https://github.com/BlueWaterCorp/riskmodels-gemini-extension |
+| Gemini CLI | \`https://riskmodels.app/api/mcp/openai\` | \`gemini extensions install https://github.com/BlueWaterCorp/riskmodels-gemini --consent\`, then \`/mcp auth riskmodels\` |
 | Cursor Agent Plugin | \`https://riskmodels.app/api/mcp/openai\` | Cursor plugin marketplace |
 | Claude Code / Cowork plugin (skills, slash commands, analyst agent) | \`https://riskmodels.app/api/mcp/sse\` | \`claude plugin marketplace add BlueWaterCorp/riskmodels-plugin\` then \`claude plugin install riskmodels@riskmodels\` |
 | Gemini Enterprise | \`https://riskmodels.app/api/mcp\` | Admin registers a Custom MCP data store (Streamable HTTP + OAuth) |

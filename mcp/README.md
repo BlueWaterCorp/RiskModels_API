@@ -238,7 +238,7 @@ Guide: [Agent integration — Grok](https://riskmodels.app/docs/agent-integratio
 ### Gemini
 
 - **Consumer web (`gemini.google.com`):** no custom MCP connector UI — use `https://riskmodels.app/llms.txt` in chat or REST with a key.
-- **Gemini CLI / Antigravity:** `gemini mcp add --transport http riskmodels https://riskmodels.app/api/mcp/sse`, then `/mcp auth riskmodels`.
+- **Gemini CLI / Antigravity:** `gemini extensions install https://github.com/BlueWaterCorp/riskmodels-gemini --consent`, then `/mcp auth riskmodels`.
 - **Gemini Enterprise:** admin registers a Custom MCP Server data store in Google Cloud (Streamable HTTP + OAuth). See [Agent integration — Gemini](https://riskmodels.app/docs/agent-integration#gemini).
 
 `@riskmodels/sdk` powers in-tool SDK calls inside `@riskmodels/mcp`; published builds use Node ESM with `.js` import specifiers so `npx -y @riskmodels/mcp` loads under Node 18+.
