@@ -27,6 +27,7 @@ import { createClient } from "@/lib/supabase/server";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
 import { FEED_INTENDED_USE_VALUES, type FeedIntendedUse } from "@/lib/feed-waitlist";
 import { sendFeedEarlyAccessEmail, type FeedWaitlistRow } from "@/lib/feed-email";
+import { safeErrorCode } from "@/lib/safe-log";
 
 export const dynamic = "force-dynamic";
 
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
       .select("email, name, consent_feed_emails, unsubscribe_token, unsubscribed_at");
 
     if (error) {
-      console.error("[feed-waitlist] insert failed:", error.message);
+      console.error("[feed-waitlist] insert_failed", safeErrorCode(error));
       return NextResponse.json(
         { error: "Signup unavailable", message: "Could not record your signup. Please retry shortly." },
         { status: 503, headers: NO_STORE },
@@ -140,7 +141,7 @@ export async function POST(req: NextRequest) {
     }
     inserted = Array.isArray(data) && data.length > 0 ? (data[0] as FeedWaitlistRow) : null;
   } catch (err) {
-    console.error("[feed-waitlist] unexpected error:", err);
+    console.error("[feed-waitlist] unexpected_error", safeErrorCode(err));
     return NextResponse.json(
       { error: "Signup unavailable", message: "Could not record your signup. Please retry shortly." },
       { status: 503, headers: NO_STORE },
@@ -151,7 +152,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendFeedEarlyAccessEmail(inserted);
     } catch (err) {
-      console.error("[feed-waitlist] confirmation email failed:", err instanceof Error ? err.message : err);
+      console.error("[feed-waitlist] confirmation_email_failed", safeErrorCode(err));
     }
   }
 

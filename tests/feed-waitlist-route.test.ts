@@ -173,4 +173,42 @@ describe("POST /api/feed-waitlist", () => {
     expect((await res.json()).ok).toBe(true);
     errSpy.mockRestore();
   });
+  describe("logs carry no email addresses or tokens", () => {
+    const SENTINEL_EMAIL = "sentinel.leak@example.com";
+    const SENTINEL_TOKEN = "deadbeef-dead-4bee-8eef-deadbeefdead";
+    const logged = (spy: ReturnType<typeof vi.spyOn>) => JSON.stringify(spy.mock.calls);
+
+    it("on an insert error that quotes the row", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      select.mockResolvedValue({
+        data: null,
+        error: { code: "23505", message: `duplicate key: Key (email)=(${SENTINEL_EMAIL})` },
+      });
+      expect((await POST(request({ email: SENTINEL_EMAIL }))).status).toBe(503);
+      expect(logged(spy)).not.toContain(SENTINEL_EMAIL);
+      expect(logged(spy)).toContain("23505");
+      spy.mockRestore();
+    });
+
+    it("on an unexpected exception that quotes the row", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      select.mockRejectedValue(new Error(`socket closed while writing ${SENTINEL_EMAIL}`));
+      expect((await POST(request({ email: SENTINEL_EMAIL }))).status).toBe(503);
+      expect(logged(spy)).not.toContain(SENTINEL_EMAIL);
+      spy.mockRestore();
+    });
+
+    it("on a confirmation-email failure that quotes the recipient and unsubscribe URL", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      select.mockResolvedValue({ data: [newRow({ email: SENTINEL_EMAIL, unsubscribe_token: SENTINEL_TOKEN })], error: null });
+      sendFeedEarlyAccessEmail.mockRejectedValue(
+        new Error(`validation_error: invalid to ${SENTINEL_EMAIL} for https://riskmodels.app/x?token=${SENTINEL_TOKEN}`),
+      );
+      expect((await POST(request({ email: SENTINEL_EMAIL, consent_feed_emails: true }))).status).toBe(200);
+      expect(logged(spy)).not.toContain(SENTINEL_EMAIL);
+      expect(logged(spy)).not.toContain(SENTINEL_TOKEN);
+      expect(logged(spy)).toContain("validation_error");
+      spy.mockRestore();
+    });
+  });
 });

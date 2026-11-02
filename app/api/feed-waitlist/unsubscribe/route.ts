@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
+import { safeErrorCode } from "@/lib/safe-log";
 
 export const dynamic = "force-dynamic";
 
@@ -62,14 +63,14 @@ export async function POST(req: NextRequest) {
       .eq("unsubscribe_token", token.toLowerCase())
       .is("unsubscribed_at", null);
     if (error) {
-      console.error("[feed-waitlist/unsubscribe] update failed:", error.message);
+      console.error("[feed-waitlist/unsubscribe] update_failed", safeErrorCode(error));
       return NextResponse.json(
         { error: "Could not save. Please reply to the email to unsubscribe." },
         { status: 503, headers: NO_STORE },
       );
     }
   } catch (err) {
-    console.error("[feed-waitlist/unsubscribe] unexpected error:", err);
+    console.error("[feed-waitlist/unsubscribe] unexpected_error", safeErrorCode(err));
     return NextResponse.json(
       { error: "Could not save. Please reply to the email to unsubscribe." },
       { status: 503, headers: NO_STORE },

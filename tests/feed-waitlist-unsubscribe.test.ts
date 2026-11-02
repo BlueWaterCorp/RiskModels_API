@@ -76,4 +76,15 @@ describe("POST /api/feed-waitlist/unsubscribe", () => {
     expect(res.status).toBe(429);
     expect(update).not.toHaveBeenCalled();
   });
+  it("logs no token on update errors or exceptions that quote it", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    is.mockResolvedValueOnce({ error: { code: "PGRST116", message: `no row for token ${TOKEN.toLowerCase()}` } });
+    expect((await POST(new NextRequest(`${BASE}?token=${TOKEN}`, { method: "POST" }))).status).toBe(503);
+    is.mockRejectedValueOnce(new Error(`fetch failed for ?token=${TOKEN.toLowerCase()}`));
+    expect((await POST(new NextRequest(`${BASE}?token=${TOKEN}`, { method: "POST" }))).status).toBe(503);
+    const logged = JSON.stringify(spy.mock.calls).toLowerCase();
+    expect(logged).not.toContain(TOKEN.toLowerCase());
+    expect(logged).toContain("pgrst116");
+    spy.mockRestore();
+  });
 });
