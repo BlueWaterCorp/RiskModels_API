@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const upsert = vi.fn();
+// upsert(...) returns a builder whose .select() resolves to { data, error }.
+const select = vi.fn();
+const upsert = vi.fn((_row: Record<string, unknown>, _opts?: Record<string, unknown>) => ({ select }));
 const from = vi.fn(() => ({ upsert }));
+const sendFeedEarlyAccessEmail = vi.fn();
 const getUser = vi.fn();
 const rateLimit = vi.fn();
 
@@ -11,6 +14,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser } }),
+}));
+vi.mock("@/lib/feed-email", () => ({
+  sendFeedEarlyAccessEmail: (...args: unknown[]) => sendFeedEarlyAccessEmail(...args),
 }));
 vi.mock("@/lib/oauth/rate-limit", () => ({
   clientIp: () => "203.0.113.7",
@@ -31,7 +37,9 @@ function request(body: unknown): NextRequest {
 
 describe("POST /api/feed-waitlist", () => {
   beforeEach(() => {
-    upsert.mockReset().mockResolvedValue({ error: null });
+    select.mockReset().mockResolvedValue({ data: [], error: null });
+    upsert.mockClear();
+    sendFeedEarlyAccessEmail.mockReset().mockResolvedValue({ id: "email-1" });
     from.mockClear();
     getUser.mockReset().mockResolvedValue({ data: { user: null } });
     rateLimit.mockReset().mockResolvedValue({ ok: true, remaining: 9, retryAfter: 3600 });
@@ -52,7 +60,7 @@ describe("POST /api/feed-waitlist", () => {
     expect((await res.json()).ok).toBe(true);
     expect(from).toHaveBeenCalledWith("feed_waitlist");
     const [row, opts] = upsert.mock.calls[0];
-    expect(row).toMatchObject({
+    expect(row!).toMatchObject({
       email: "analyst@example.com",
       name: "A. Analyst",
       company: "Example Capital",
@@ -62,7 +70,7 @@ describe("POST /api/feed-waitlist", () => {
       user_id: null,
       source: "security-master-feed",
     });
-    expect(typeof row.consented_at).toBe("string");
+    expect(typeof row!.consented_at).toBe("string");
     expect(opts).toEqual({ onConflict: "email", ignoreDuplicates: true });
   });
 
@@ -120,8 +128,49 @@ describe("POST /api/feed-waitlist", () => {
   });
 
   it("returns 503 when the store write fails", async () => {
-    upsert.mockResolvedValue({ error: { message: 'relation "feed_waitlist" does not exist' } });
+    select.mockResolvedValue({ data: null, error: { message: 'relation "feed_waitlist" does not exist' } });
     const res = await POST(request({ email: "a@example.com" }));
     expect(res.status).toBe(503);
+  });
+  const newRow = (over: Record<string, unknown> = {}) => ({
+    email: "new@example.com",
+    name: "N. Ew",
+    consent_feed_emails: true,
+    unsubscribe_token: "3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f",
+    unsubscribed_at: null,
+    ...over,
+  });
+
+  it("sends one confirmation email for a new signup with consent", async () => {
+    select.mockResolvedValue({ data: [newRow()], error: null });
+    const res = await POST(request({ email: "new@example.com", name: "N. Ew", consent_feed_emails: true }));
+    expect(res.status).toBe(200);
+    expect(select).toHaveBeenCalledWith("email, name, consent_feed_emails, unsubscribe_token, unsubscribed_at");
+    expect(sendFeedEarlyAccessEmail).toHaveBeenCalledTimes(1);
+    expect(sendFeedEarlyAccessEmail.mock.calls[0][0]).toMatchObject({ email: "new@example.com" });
+  });
+
+  it("sends nothing for a new signup without consent", async () => {
+    select.mockResolvedValue({ data: [newRow({ consent_feed_emails: false })], error: null });
+    const res = await POST(request({ email: "new@example.com" }));
+    expect(res.status).toBe(200);
+    expect(sendFeedEarlyAccessEmail).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing for a repeat signup (no row inserted)", async () => {
+    select.mockResolvedValue({ data: [], error: null });
+    const res = await POST(request({ email: "dup@example.com", consent_feed_emails: true }));
+    expect(res.status).toBe(200);
+    expect(sendFeedEarlyAccessEmail).not.toHaveBeenCalled();
+  });
+
+  it("still succeeds when the confirmation email fails", async () => {
+    select.mockResolvedValue({ data: [newRow()], error: null });
+    sendFeedEarlyAccessEmail.mockRejectedValue(new Error("resend_error: domain not verified"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await POST(request({ email: "new@example.com", consent_feed_emails: true }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).ok).toBe(true);
+    errSpy.mockRestore();
   });
 });

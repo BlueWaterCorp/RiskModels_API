@@ -16,6 +16,9 @@
  *   repeat signup returns the same success reply and does not overwrite the
  *   first row. The reply never says whether the email was already listed.
  * - If the visitor has a RiskModels session, its user id is attached.
+ * - A NEW row with consent_feed_emails = true gets one early-access
+ *   confirmation email (lib/feed-email.ts). A repeat signup inserts nothing and
+ *   sends nothing. A failed send is logged and never fails the signup.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
 import { FEED_INTENDED_USE_VALUES, type FeedIntendedUse } from "@/lib/feed-waitlist";
+import { sendFeedEarlyAccessEmail, type FeedWaitlistRow } from "@/lib/feed-email";
 
 export const dynamic = "force-dynamic";
 
@@ -103,9 +107,10 @@ export async function POST(req: NextRequest) {
   const consent = body.consent_feed_emails === true;
   const userId = await sessionUserId();
 
+  let inserted: FeedWaitlistRow | null = null;
   try {
     const admin = createAdminClient();
-    const { error } = await admin.from("feed_waitlist").upsert(
+    const { data, error } = await admin.from("feed_waitlist").upsert(
       {
         email,
         name: optionalText(body.name),
@@ -122,7 +127,9 @@ export async function POST(req: NextRequest) {
         },
       },
       { onConflict: "email", ignoreDuplicates: true },
-    );
+    )
+      // With ignoreDuplicates, only a newly inserted row comes back; a repeat signup returns none.
+      .select("email, name, consent_feed_emails, unsubscribe_token, unsubscribed_at");
 
     if (error) {
       console.error("[feed-waitlist] insert failed:", error.message);
@@ -131,12 +138,21 @@ export async function POST(req: NextRequest) {
         { status: 503, headers: NO_STORE },
       );
     }
+    inserted = Array.isArray(data) && data.length > 0 ? (data[0] as FeedWaitlistRow) : null;
   } catch (err) {
     console.error("[feed-waitlist] unexpected error:", err);
     return NextResponse.json(
       { error: "Signup unavailable", message: "Could not record your signup. Please retry shortly." },
       { status: 503, headers: NO_STORE },
     );
+  }
+
+  if (inserted && inserted.consent_feed_emails) {
+    try {
+      await sendFeedEarlyAccessEmail(inserted);
+    } catch (err) {
+      console.error("[feed-waitlist] confirmation email failed:", err instanceof Error ? err.message : err);
+    }
   }
 
   return NextResponse.json({ ok: true, message: SUCCESS_MESSAGE }, { headers: NO_STORE });
