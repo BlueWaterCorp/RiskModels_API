@@ -151,6 +151,44 @@ describe("lib/feed-email", () => {
     }
   });
 
+  it("carries the machine-readable descriptor in EVERY feed email, HTML and plain text", async () => {
+    await sendFeedEarlyAccessEmail(row());
+    await sendFeedConfirmation(
+      { email: "c@example.com", name: null, unsubscribe_token: TOKEN },
+      CONFIRM_TOKEN,
+      { requestedFeedEmail: "ops@example.com" },
+    );
+    await sendFeedDeliveryConfirmation(
+      { email: "ops@example.com", name: null, unsubscribe_token: TOKEN },
+      CONFIRM_TOKEN,
+      { email: "c@example.com", name: "C. Ontact" },
+    );
+    await sendFeedInvite(
+      { id: "row-9", email: "g@example.com", name: null, unsubscribe_token: TOKEN, unsubscribed_at: null },
+      { inviterName: "Conrad Gann" },
+    );
+    await sendFeedLaunchNotice(row(), {
+      firstEditionDate: "November 16, 2026",
+      editionUrl: "https://riskmodels.app/security-master-feed",
+      specUrl: "https://riskmodels.app/security-master-feed",
+    });
+    expect(send).toHaveBeenCalledTimes(5);
+    for (const [payload] of send.mock.calls) {
+      for (const body of [payload.html, payload.text]) {
+        expect(body, String(payload.subject)).toContain("For agents and automation");
+        expect(body, String(payload.subject)).toContain("https://riskmodels.app/security-master-feed/descriptor.json");
+        const d = descriptorFrom(body) as Record<string, any>;
+        expect(d.schema).toBe("riskmodels.feed-descriptor/1");
+        expect(d.contact).toBe("service@riskmodels.app");
+        // Static and the same for everyone: no recipient data may appear inside the block.
+        const block = JSON.stringify(d);
+        for (const private_ of ["c@example.com", "ops@example.com", "g@example.com", CONFIRM_TOKEN, TOKEN]) {
+          expect(block).not.toContain(private_);
+        }
+      }
+    }
+  });
+
   it("does not send to a row without consent or after unsubscribe", async () => {
     expect(await sendFeedEarlyAccessEmail(row({ consent_feed_emails: false }))).toBeNull();
     expect(await sendFeedEarlyAccessEmail(row({ unsubscribed_at: "2026-11-03T00:00:00Z" }))).toBeNull();
@@ -252,7 +290,8 @@ describe("lib/feed-email", () => {
 
     it("says nothing about a delivery address when none was requested", async () => {
       await sendFeedConfirmation(pending, CONFIRM_TOKEN);
-      expect(send.mock.calls[0][0].html).not.toMatch(/separate address/);
+      // The banner, not the static descriptor (which describes the two-address option for everyone).
+      expect(send.mock.calls[0][0].html).not.toMatch(/also asks for the feed to be delivered to a separate address/);
     });
 
     it("is not an idempotent invitation: no idempotency key, so a legitimate resend after the interval goes out", async () => {

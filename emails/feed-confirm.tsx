@@ -1,7 +1,7 @@
 import { Body, Button, Container, Head, Heading, Html, Preview, Section, Text } from "@react-email/components";
 import * as React from "react";
 import { BASE_URL } from "./constants";
-import { FeedFooter, FeedHeader, FEED_LOGO_URL, styles } from "./feed-shared";
+import { FeedAgentBlock, FeedFooter, FeedHeader, FEED_LOGO_URL, styles } from "./feed-shared";
 
 /**
  * Double opt-in. Sent right after someone asks to join the early-access list,
@@ -71,6 +71,8 @@ export const FeedConfirmEmail = ({
           If you did not ask to join, ignore this email. You will not be added, and we will not email you about
           the feed. The link works once and expires in seven days.
         </Text>
+
+        <FeedAgentBlock />
 
         <FeedFooter
           reason="You are receiving this because this address was entered on the early-access form at riskmodels.app."
