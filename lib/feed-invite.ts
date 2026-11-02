@@ -10,12 +10,16 @@
  *
  * Exactly once. Two runs for the same address cannot both send:
  *   1. feed_waitlist_claim_invite() is one atomic UPDATE that sets
- *      invite_claimed_at and matches nothing if the row is consented,
- *      unsubscribed, already invited, or claimed in the last 15 minutes.
+ *      invite_claimed_at and a fresh invite_claim_id, and matches nothing if the
+ *      row is consented, unsubscribed, already invited, or claimed in the last
+ *      15 minutes. The claim id comes back to this run.
  *   2. The send carries an idempotency key built from the row id, so a retry
  *      after a crash between the send and step 3 is deduplicated by the provider.
  *   3. invited_at is set only after the provider accepts the message. A failed
- *      send releases the claim (invite_claimed_at = null) so it can be retried.
+ *      send releases the claim so it can be retried.
+ * Both the release and the mark match THIS run's claim id. A run whose claim went
+ * stale and was retaken by another run therefore cannot clear or complete the
+ * newer run's claim; its updates match no row.
  *
  * Outcomes:
  *   sent             the invitation was sent
@@ -83,6 +87,8 @@ interface ClaimedRow {
   email: string;
   name: string | null;
   unsubscribe_token: string;
+  /** Identifies this run's claim; the release and the mark must match it. */
+  claim_id: string;
 }
 
 function text(v: string | null | undefined): string | null {
@@ -143,20 +149,28 @@ export async function inviteToFeedWaitlist(input: InviteToFeedInput): Promise<Fe
       { inviterName: input.inviterName, inviterRole: input.inviterRole, note: input.note },
     );
   } catch {
-    // Release the claim so the invitation can be retried.
+    // Release THIS run's claim so the invitation can be retried. If the claim went stale and another
+    // run retook it, the claim id no longer matches, nothing is updated, and the newer claim is untouched.
     const { error } = await admin
       .from("feed_waitlist")
-      .update({ invite_claimed_at: null })
+      .update({ invite_claimed_at: null, invite_claim_id: null })
       .eq("email", email)
-      .is("invited_at", null);
+      .eq("invite_claim_id", claimed.claim_id)
+      .is("invited_at", null)
+      .select("email");
     throw new FeedInviteError(error ? "release_failed" : "send_failed");
   }
 
+  // Mark THIS run's claim sent. If another run retook a stale claim, nothing matches here: the provider
+  // accepted this message under the row's idempotency key, so it is delivered once, and the run that
+  // holds the claim records it.
   const { error: markError } = await admin
     .from("feed_waitlist")
-    .update({ invited_at: new Date().toISOString(), invite_claimed_at: null })
+    .update({ invited_at: new Date().toISOString(), invite_claimed_at: null, invite_claim_id: null })
     .eq("email", email)
-    .is("invited_at", null);
+    .eq("invite_claim_id", claimed.claim_id)
+    .is("invited_at", null)
+    .select("email");
   if (markError) throw new FeedInviteError("mark_failed");
 
   return "sent";

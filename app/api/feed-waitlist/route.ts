@@ -24,8 +24,8 @@
  * - Abuse controls: per-IP fixed-window rate limit (lib/oauth/rate-limit), a
  *   hidden `website` honeypot field, and a per-address cap on confirmation
  *   emails enforced atomically in the database
- *   (feed_waitlist_claim_confirmation: at most CONFIRM_MAX_SENDS in total, at
- *   least CONFIRM_MIN_INTERVAL_SEC apart, never for a consented or unsubscribed
+ *   (feed_waitlist_claim_confirmation: at most CONFIRM_MAX_SENDS per rolling
+ *   CONFIRM_WINDOW_SEC, at least CONFIRM_MIN_INTERVAL_SEC apart, never for a consented or unsubscribed
  *   row). A filled honeypot gets the normal reply and writes nothing.
  * - Idempotent: emails are stored lowercased under a unique constraint; the
  *   first row is never overwritten.
@@ -46,6 +46,7 @@ import { sendFeedConfirmation, type FeedConfirmRow } from "@/lib/feed-email";
 import {
   CONFIRM_MAX_SENDS,
   CONFIRM_MIN_INTERVAL_SEC,
+  CONFIRM_WINDOW_SEC,
   CONFIRM_TOKEN_TTL_MS,
   newConfirmToken,
 } from "@/lib/feed-token";
@@ -198,6 +199,7 @@ export async function POST(req: NextRequest) {
         p_expires_at: new Date(Date.now() + CONFIRM_TOKEN_TTL_MS).toISOString(),
         p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
         p_max_sends: CONFIRM_MAX_SENDS,
+        p_window_seconds: CONFIRM_WINDOW_SEC,
       });
       if (claimError) {
         console.error("[feed-waitlist] claim_failed", safeErrorCode(claimError));

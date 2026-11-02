@@ -13,8 +13,13 @@ import { createHash, randomBytes } from "node:crypto";
 export const CONFIRM_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** A new confirmation email for the same address waits at least this long. */
 export const CONFIRM_MIN_INTERVAL_SEC = 15 * 60;
-/** At most this many confirmation emails are ever queued for one address. */
+/** At most this many confirmation emails are queued for one address per rolling window. */
 export const CONFIRM_MAX_SENDS = 3;
+/**
+ * The count restarts once the last send is older than this, so a real owner whose earlier
+ * mails failed or were abused is never locked out for good. Recovery takes at most one window.
+ */
+export const CONFIRM_WINDOW_SEC = 24 * 60 * 60;
 
 export const CONFIRM_TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 

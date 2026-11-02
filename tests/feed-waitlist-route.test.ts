@@ -112,7 +112,12 @@ describe("POST /api/feed-waitlist", () => {
       expect(rpc).toHaveBeenCalledTimes(1);
       const [fn, args] = rpc.mock.calls[0]!;
       expect(fn).toBe("feed_waitlist_claim_confirmation");
-      expect(args).toMatchObject({ p_email: "new@example.com", p_min_interval_seconds: 900, p_max_sends: 3 });
+      expect(args).toMatchObject({
+        p_email: "new@example.com",
+        p_min_interval_seconds: 900,
+        p_max_sends: 3,
+        p_window_seconds: 86400, // rolling window: an owner is never locked out for good
+      });
       expect(args.p_token_hash).toMatch(TOKEN_HASH_RE);
       expect(new Date(args.p_expires_at as string).getTime()).toBeGreaterThan(Date.now() + 6 * 24 * 3600 * 1000);
 

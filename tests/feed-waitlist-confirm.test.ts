@@ -117,7 +117,12 @@ describe("POST /api/feed-waitlist/confirm", () => {
       await POST(jsonRequest(TOKEN));
       await runAfter();
       const claim = rpc.mock.calls.find(([fn]) => fn === "feed_waitlist_claim_confirmation")!;
-      expect(claim[1]).toMatchObject({ p_email: "ops@example.com", p_min_interval_seconds: 900, p_max_sends: 3 });
+      expect(claim[1]).toMatchObject({
+        p_email: "ops@example.com",
+        p_min_interval_seconds: 900,
+        p_max_sends: 3,
+        p_window_seconds: 86400,
+      });
       expect(claim[1].p_token_hash).toMatch(/^[0-9a-f]{64}$/);
       expect(sendFeedDeliveryConfirmation).toHaveBeenCalledTimes(1);
       const [target, token, requestedBy] = sendFeedDeliveryConfirmation.mock.calls[0]!;

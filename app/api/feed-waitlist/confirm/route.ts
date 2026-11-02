@@ -34,6 +34,7 @@ import {
 import {
   CONFIRM_MAX_SENDS,
   CONFIRM_MIN_INTERVAL_SEC,
+  CONFIRM_WINDOW_SEC,
   CONFIRM_TOKEN_RE,
   CONFIRM_TOKEN_TTL_MS,
   hashConfirmToken,
@@ -145,6 +146,7 @@ export async function POST(req: NextRequest) {
           p_expires_at: new Date(Date.now() + CONFIRM_TOKEN_TTL_MS).toISOString(),
           p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
           p_max_sends: CONFIRM_MAX_SENDS,
+          p_window_seconds: CONFIRM_WINDOW_SEC,
         });
         if (error) {
           console.error("[feed-waitlist/confirm] delivery_claim_failed", safeErrorCode(error));
