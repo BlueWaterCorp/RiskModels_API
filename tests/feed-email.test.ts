@@ -7,8 +7,10 @@ vi.mock("resend", () => ({
 
 import {
   feedEmailRecipient,
+  feedConfirmPageUrl,
   feedUnsubscribeHeaders,
   feedUnsubscribePageUrl,
+  sendFeedConfirmation,
   sendFeedEarlyAccessEmail,
   sendFeedInvite,
   sendFeedLaunchNotice,
@@ -16,6 +18,7 @@ import {
 } from "@/lib/feed-email";
 
 const TOKEN = "3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f";
+const CONFIRM_TOKEN = "B".repeat(43);
 const row = (over: Partial<FeedWaitlistRow> = {}): FeedWaitlistRow => ({
   email: "analyst@example.com",
   name: "A. Analyst",
@@ -96,8 +99,9 @@ describe("lib/feed-email", () => {
 
   it("prints the mailing address in the footer of every feed email", async () => {
     await sendFeedEarlyAccessEmail(row());
+    await sendFeedConfirmation({ email: "c@example.com", name: null, unsubscribe_token: TOKEN }, CONFIRM_TOKEN);
     await sendFeedInvite(
-      { email: "g@example.com", name: null, unsubscribe_token: TOKEN, unsubscribed_at: null },
+      { id: "row-9", email: "g@example.com", name: null, unsubscribe_token: TOKEN, unsubscribed_at: null },
       { inviterName: "Conrad Gann" },
     );
     await sendFeedLaunchNotice(row(), {
@@ -105,7 +109,7 @@ describe("lib/feed-email", () => {
       editionUrl: "https://riskmodels.app/security-master-feed",
       specUrl: "https://riskmodels.app/security-master-feed",
     });
-    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenCalledTimes(4);
     for (const [payload] of send.mock.calls) {
       for (const body of [payload.html, payload.text]) {
         expect(body).toContain("1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965");
@@ -171,7 +175,7 @@ describe("lib/feed-email", () => {
   });
 
   describe("personal invitation", () => {
-    const invitee = { email: "guest@example.com", name: "G. Uest", unsubscribe_token: TOKEN, unsubscribed_at: null };
+    const invitee = { id: "row-1", email: "guest@example.com", name: "G. Uest", unsubscribe_token: TOKEN, unsubscribed_at: null };
 
     it("says who invited the recipient and promises no further email unless they join", async () => {
       const out = await sendFeedInvite(invitee, { inviterName: "Conrad Gann", inviterRole: "founder of RiskModels" });
@@ -193,6 +197,11 @@ describe("lib/feed-email", () => {
       }
     });
 
+    it("sends with an idempotency key built from the row id, so a retry cannot deliver twice", async () => {
+      await sendFeedInvite(invitee, { inviterName: "Conrad Gann" });
+      expect(send.mock.calls[0][1]).toEqual({ idempotencyKey: "feed-invite/row-1" });
+    });
+
     it("includes a personal note when given", async () => {
       await sendFeedInvite(invitee, { inviterName: "Conrad Gann", note: "You asked about ticker history last week." });
       expect(send.mock.calls[0][0].html).toContain("You asked about ticker history last week.");
@@ -203,6 +212,36 @@ describe("lib/feed-email", () => {
         await sendFeedInvite({ ...invitee, unsubscribed_at: "2026-11-03T00:00:00Z" }, { inviterName: "Conrad Gann" }),
       ).toBeNull();
       expect(send).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("confirmation request (double opt-in)", () => {
+    const pending = { email: "owner@example.com", name: "O. Wner", unsubscribe_token: TOKEN };
+
+    it("links to the confirm page with the token and says the address is not on the list until then", async () => {
+      const out = await sendFeedConfirmation(pending, CONFIRM_TOKEN);
+      expect(out).toEqual({ id: "email-1" });
+      const payload = send.mock.calls[0][0];
+      expect(payload.to).toBe("owner@example.com");
+      expect(payload.subject).toBe("Confirm your email for the RiskModels security master feed");
+      expect(feedConfirmPageUrl(CONFIRM_TOKEN)).toBe(
+        `https://riskmodels.app/security-master-feed/confirm?token=${CONFIRM_TOKEN}`,
+      );
+      for (const body of [payload.html, payload.text]) {
+        expect(body).toContain(`/security-master-feed/confirm?token=${CONFIRM_TOKEN}`);
+        expect(body).toMatch(/not on the list until you do/);
+        expect(body).toMatch(/If you did not ask to join, ignore this email/);
+      }
+      expect(payload.headers).toEqual(feedUnsubscribeHeaders(TOKEN));
+      for (const re of FORBIDDEN) {
+        expect(payload.html).not.toMatch(re);
+        expect(payload.text).not.toMatch(re);
+      }
+    });
+
+    it("is not an idempotent invitation: no idempotency key, so a legitimate resend after the interval goes out", async () => {
+      await sendFeedConfirmation(pending, CONFIRM_TOKEN);
+      expect(send.mock.calls[0][1]).toBeUndefined();
     });
   });
 

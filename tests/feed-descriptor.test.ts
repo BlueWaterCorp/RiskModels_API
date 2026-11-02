@@ -17,6 +17,16 @@ describe("feed descriptor", () => {
     expect(d.caveats.join(" ")).toMatch(/No coverage, latency or quality figures/);
   });
 
+  it("promises only what the page and the scope document say", () => {
+    // Per-edition status of contained open issues comes from a plan that has not merged; it stays out
+    // of the descriptor until the page says it too.
+    expect(feedDescriptorJson()).not.toMatch(/contained open issue/i);
+    expect(buildFeedDescriptor().edition_contents).toEqual([
+      "events learned that day",
+      "corrections to earlier editions: old value, new value, first edition, reason",
+    ]);
+  });
+
   it("limits keys to FIGI, CIK, the RiskModels id and ticker", () => {
     expect(buildFeedDescriptor().scope.keys).toEqual(["figi", "cik", "riskmodels_id", "ticker"]);
   });

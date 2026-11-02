@@ -39,7 +39,7 @@ export default function FeedWaitlistForm() {
         return;
       }
       setStatus('done');
-      setMessage(json.message ?? 'You are on the early-access list.');
+      setMessage(json.message ?? 'Thank you. Check your email to confirm.');
     } catch {
       setStatus('error');
       setMessage('Could not reach the server. Please retry shortly.');
@@ -118,7 +118,7 @@ export default function FeedWaitlistForm() {
         />
         <span>
           Email me about the security master feed: launch notice, the spec and sample, and editions
-          once delivery starts. Unsubscribe at any time.
+          once delivery starts. We will send a link to confirm your address first. Unsubscribe at any time.
         </span>
       </label>
 

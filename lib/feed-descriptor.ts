@@ -57,7 +57,6 @@ export function buildFeedDescriptor(opts: FeedDescriptorOptions = {}) {
     edition_contents: [
       "events learned that day",
       "corrections to earlier editions: old value, new value, first edition, reason",
-      "ids with a contained open issue: id and issue class only",
     ],
     complements:
       "Commercial risk platforms, data terminals and in-house security master processes. The feed is an independent record to reconcile against, not a replacement.",

@@ -6,10 +6,14 @@
  *
  * Needs NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and RESEND_API_KEY
  * in the environment (run it under the secrets manager). Prints one line:
- * the outcome. It never prints the unsubscribe token or any key.
+ * the outcome (sent, already_on_list, already_invited, in_progress,
+ * unsubscribed, invalid_email or dry_run). On failure it prints a fixed event
+ * name or a safe error code, never an upstream message, the address, an
+ * unsubscribe token or any key.
  */
 
-import { inviteToFeedWaitlist } from "../lib/feed-invite";
+import { FeedInviteError, inviteToFeedWaitlist } from "../lib/feed-invite";
+import { safeErrorCode } from "../lib/safe-log";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -35,7 +39,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  // Fixed text only: upstream messages can quote the address or a token.
-  console.error("feed-invite failed:", err instanceof Error ? err.message.split(":")[0] : "unknown");
+  // A fixed event name or a safe code only: upstream messages can quote the address or a token.
+  console.error("feed-invite failed:", err instanceof FeedInviteError ? err.event : safeErrorCode(err));
   process.exit(1);
 });

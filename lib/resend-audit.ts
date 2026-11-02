@@ -1,4 +1,9 @@
-import type { CreateEmailOptions, CreateEmailResponseSuccess, Resend } from "resend";
+import type {
+  CreateEmailOptions,
+  CreateEmailRequestOptions,
+  CreateEmailResponseSuccess,
+  Resend,
+} from "resend";
 
 /**
  * Audit BCC for transactional `resend.emails.send` / `create` (not broadcasts/batch).
@@ -62,8 +67,9 @@ export function withResendAuditBcc(payload: CreateEmailOptions): CreateEmailOpti
 export async function sendResendEmail(
   resend: Resend,
   payload: CreateEmailOptions,
+  options?: CreateEmailRequestOptions,
 ): Promise<CreateEmailResponseSuccess> {
-  const result = await resend.emails.send(withResendAuditBcc(payload));
+  const result = await resend.emails.send(withResendAuditBcc(payload), options);
   if (result.error) {
     const code = result.error.name ?? "resend_error";
     const msg = result.error.message || code;

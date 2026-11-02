@@ -1,9 +1,11 @@
 /**
  * Email for the security master feed early-access list (public.feed_waitlist).
  *
- * - sendFeedEarlyAccessEmail: called by POST /api/feed-waitlist when a signup
- *   becomes a consented row (new, or an invited row that now agrees). Never for
- *   a repeat signup.
+ * - sendFeedConfirmation: double opt-in. Sent to the address given on the
+ *   early-access form; consent is recorded only when its link is confirmed
+ *   (POST /api/feed-waitlist/confirm).
+ * - sendFeedEarlyAccessEmail: sent once, after the owner confirms. Never for a
+ *   repeat signup.
  * - sendFeedLaunchNotice: for an operator-run batch when the first edition is
  *   published. Callers must select only rows with consent_feed_emails = true and
  *   unsubscribed_at is null; feedEmailRecipient() applies that filter.
@@ -24,6 +26,7 @@ import { CANONICAL_SITE_URL } from "@/lib/constants";
 import { FEED_PAGE_URL } from "@/lib/feed-descriptor";
 import { DEFAULT_RESEND_FROM, SUPPORT_EMAIL } from "@/emails/constants";
 import { FeedEarlyAccessEmail, FEED_EARLY_ACCESS_SUBJECT } from "@/emails/feed-early-access";
+import { FeedConfirmEmail, FEED_CONFIRM_SUBJECT } from "@/emails/feed-confirm";
 import {
   FeedLaunchNoticeEmail,
   feedLaunchNoticeSubject,
@@ -74,6 +77,38 @@ function resendClient(): Resend {
 async function renderBoth(element: React.ReactElement): Promise<{ html: string; text: string }> {
   const [html, text] = await Promise.all([render(element), render(element, { plainText: true })]);
   return { html, text };
+}
+
+/** A row that may receive a confirmation request: not unsubscribed, has an unsubscribe token. */
+export interface FeedConfirmRow {
+  email: string;
+  name: string | null;
+  unsubscribe_token: string;
+}
+
+export function feedConfirmPageUrl(token: string): string {
+  return `${FEED_PAGE_URL}/confirm?token=${encodeURIComponent(token)}`;
+}
+
+export async function sendFeedConfirmation(row: FeedConfirmRow, token: string): Promise<{ id: string }> {
+  const { html, text } = await renderBoth(
+    FeedConfirmEmail({
+      name: row.name,
+      confirmUrl: feedConfirmPageUrl(token),
+      unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+    }),
+  );
+  const sent = await sendResendEmail(resendClient(), {
+    from: fromAddress(),
+    to: row.email,
+    replyTo: SUPPORT_EMAIL,
+    subject: FEED_CONFIRM_SUBJECT,
+    html,
+    text,
+    headers: feedUnsubscribeHeaders(row.unsubscribe_token),
+    tags: [{ name: "category", value: "feed_confirm" }],
+  });
+  return { id: sent.id };
 }
 
 export async function sendFeedEarlyAccessEmail(row: FeedWaitlistRow): Promise<{ id: string } | null> {
@@ -127,6 +162,8 @@ export async function sendFeedLaunchNotice(
 
 /** A row that may receive the one-time invitation: not unsubscribed, has a token. */
 export interface FeedInviteRow {
+  /** Row id; keys the provider idempotency key so a retry cannot deliver a second invitation. */
+  id: string;
   email: string;
   name: string | null;
   unsubscribe_token: string;
@@ -155,15 +192,19 @@ export async function sendFeedInvite(
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
     }),
   );
-  const sent = await sendResendEmail(resendClient(), {
-    from: fromAddress(),
-    to: row.email,
-    replyTo: SUPPORT_EMAIL,
-    subject: feedInviteSubject(input.inviterName),
-    html,
-    text,
-    headers: feedUnsubscribeHeaders(row.unsubscribe_token),
-    tags: [{ name: "category", value: "feed_invite" }],
-  });
+  const sent = await sendResendEmail(
+    resendClient(),
+    {
+      from: fromAddress(),
+      to: row.email,
+      replyTo: SUPPORT_EMAIL,
+      subject: feedInviteSubject(input.inviterName),
+      html,
+      text,
+      headers: feedUnsubscribeHeaders(row.unsubscribe_token),
+      tags: [{ name: "category", value: "feed_invite" }],
+    },
+    { idempotencyKey: `feed-invite/${row.id}` },
+  );
   return { id: sent.id };
 }
