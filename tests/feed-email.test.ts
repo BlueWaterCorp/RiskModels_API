@@ -11,6 +11,7 @@ import {
   feedUnsubscribeHeaders,
   feedUnsubscribePageUrl,
   sendFeedConfirmation,
+  sendFeedDeliveryConfirmation,
   sendFeedEarlyAccessEmail,
   sendFeedInvite,
   sendFeedLaunchNotice,
@@ -239,10 +240,71 @@ describe("lib/feed-email", () => {
       }
     });
 
+    it("names a requested delivery address so the contact can see it before confirming", async () => {
+      await sendFeedConfirmation(pending, CONFIRM_TOKEN, { requestedFeedEmail: "ops@example.com" });
+      const { html, text } = send.mock.calls[0][0];
+      for (const body of [html, text]) {
+        expect(body).toContain("ops@example.com");
+        expect(body).toMatch(/we will ask that address to confirm too/);
+        expect(body).toMatch(/do not confirm/);
+      }
+    });
+
+    it("says nothing about a delivery address when none was requested", async () => {
+      await sendFeedConfirmation(pending, CONFIRM_TOKEN);
+      expect(send.mock.calls[0][0].html).not.toMatch(/separate address/);
+    });
+
     it("is not an idempotent invitation: no idempotency key, so a legitimate resend after the interval goes out", async () => {
       await sendFeedConfirmation(pending, CONFIRM_TOKEN);
       expect(send.mock.calls[0][1]).toBeUndefined();
     });
+  });
+
+  describe("delivery-address confirmation (the second address)", () => {
+    const target = { email: "ops@example.com", name: null, unsubscribe_token: TOKEN };
+
+    it("says who asked, links to the confirm page, and carries the machine-readable block for an agent inbox", async () => {
+      const out = await sendFeedDeliveryConfirmation(target, CONFIRM_TOKEN, { email: "owner@example.com", name: "O. Wner" });
+      expect(out).toEqual({ id: "email-1" });
+      const payload = send.mock.calls[0][0];
+      expect(payload.to).toBe("ops@example.com");
+      expect(payload.subject).toBe("Confirm delivery of the RiskModels security master feed to this address");
+      for (const body of [payload.html, payload.text]) {
+        expect(body).toContain("O. Wner");
+        expect(body).toContain("owner@example.com");
+        expect(body).toContain(`/security-master-feed/confirm?token=${CONFIRM_TOKEN}`);
+        expect(body).toMatch(/editions only/);
+        expect(body).toMatch(/not on the delivery list until you confirm/);
+        expect(body).toContain("For agents and automation");
+        expect(body).toContain("1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965");
+      }
+      expect(payload.headers).toEqual(feedUnsubscribeHeaders(TOKEN));
+      for (const re of FORBIDDEN) {
+        expect(payload.html).not.toMatch(re);
+        expect(payload.text).not.toMatch(re);
+      }
+    });
+
+    it("falls back to the contact's address when they gave no name", async () => {
+      await sendFeedDeliveryConfirmation(target, CONFIRM_TOKEN, { email: "owner@example.com", name: null });
+      expect(send.mock.calls[0][0].html).toContain("owner@example.com");
+    });
+  });
+
+  it("relationship email goes to contact rows only: a delivery-address row never gets the welcome or launch notice", async () => {
+    const feedRow = row({ purpose: "feed" });
+    expect(feedEmailRecipient(feedRow)).toBe(false);
+    expect(feedEmailRecipient(row({ purpose: "contact" }))).toBe(true);
+    expect(await sendFeedEarlyAccessEmail(feedRow)).toBeNull();
+    expect(
+      await sendFeedLaunchNotice(feedRow, {
+        firstEditionDate: "November 16, 2026",
+        editionUrl: "https://riskmodels.app/security-master-feed",
+        specUrl: "https://riskmodels.app/security-master-feed",
+      }),
+    ).toBeNull();
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("throws when Resend reports an error", async () => {

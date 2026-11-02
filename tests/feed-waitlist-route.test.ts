@@ -174,6 +174,63 @@ describe("POST /api/feed-waitlist", () => {
     });
   });
 
+  describe("two addresses: a contact and a separate feed delivery address", () => {
+    it("stores the delivery address as a REQUEST on the new contact row, not as a row or a link", async () => {
+      rpc.mockResolvedValue({ data: [claimedRow()], error: null });
+      await POST(request({ email: "Analyst@Corp.com", feed_email: "  OPS@Corp.com ", consent_feed_emails: true }));
+      expect(upsert).toHaveBeenCalledTimes(1); // only the contact row is written at signup
+      expect(upsert.mock.calls[0]![0]).toMatchObject({
+        email: "analyst@corp.com",
+        requested_feed_email: "ops@corp.com",
+        consent_feed_emails: false,
+      });
+    });
+
+    it("asks only the contact to confirm at signup, and names the delivery address in that email", async () => {
+      rpc.mockResolvedValue({ data: [claimedRow({ email: "analyst@corp.com" })], error: null });
+      const res = await POST(request({ email: "analyst@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      expect((await res.json()).message).toMatch(/ask the feed delivery address to confirm too/);
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(rpc.mock.calls[0]![1]).toMatchObject({ p_email: "analyst@corp.com" });
+      await runAfter();
+      expect(sendFeedConfirmation).toHaveBeenCalledTimes(1);
+      expect(sendFeedConfirmation.mock.calls[0]![0]).toMatchObject({ email: "analyst@corp.com" });
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "ops@corp.com" });
+    });
+
+    it("treats a delivery address equal to the contact address as one address", async () => {
+      await POST(request({ email: "a@corp.com", feed_email: "A@Corp.com", consent_feed_emails: true }));
+      expect(upsert.mock.calls[0]![0]).toMatchObject({ requested_feed_email: null });
+    });
+
+    it("stores no delivery request when the box is not ticked", async () => {
+      await POST(request({ email: "a@corp.com", feed_email: "ops@corp.com" }));
+      expect(upsert.mock.calls[0]![0]).toMatchObject({ requested_feed_email: null });
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed delivery address, and writes nothing", async () => {
+      const res = await POST(request({ email: "a@corp.com", feed_email: "not-an-email", consent_feed_emails: true }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("Invalid feed_email");
+      expect(upsert).not.toHaveBeenCalled();
+    });
+
+    it("gives the same reply for a listed and a new contact when a delivery address is given", async () => {
+      rpc.mockResolvedValue({ data: [claimedRow()], error: null });
+      const first = await POST(request({ email: "x@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      rpc.mockResolvedValue({ data: [], error: null });
+      const repeat = await POST(request({ email: "x@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      expect(await repeat.json()).toEqual(await first.json());
+    });
+
+    it("never creates the delivery address row or a link from the signup (only a confirmed contact can)", async () => {
+      await POST(request({ email: "a@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      expect(from).toHaveBeenCalledTimes(1);
+      expect(rpc.mock.calls.every(([fn]) => fn === "feed_waitlist_claim_confirmation")).toBe(true);
+    });
+  });
+
   describe("validation and abuse controls", () => {
     it("rejects a missing or malformed email", async () => {
       expect((await POST(request({}))).status).toBe(400);

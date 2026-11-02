@@ -27,6 +27,7 @@ import { FEED_PAGE_URL } from "@/lib/feed-descriptor";
 import { DEFAULT_RESEND_FROM, SUPPORT_EMAIL } from "@/emails/constants";
 import { FeedEarlyAccessEmail, FEED_EARLY_ACCESS_SUBJECT } from "@/emails/feed-early-access";
 import { FeedConfirmEmail, FEED_CONFIRM_SUBJECT } from "@/emails/feed-confirm";
+import { FeedDeliveryConfirmEmail, FEED_DELIVERY_CONFIRM_SUBJECT } from "@/emails/feed-delivery-confirm";
 import {
   FeedLaunchNoticeEmail,
   feedLaunchNoticeSubject,
@@ -59,11 +60,21 @@ export interface FeedWaitlistRow {
   consent_feed_emails: boolean;
   unsubscribe_token: string;
   unsubscribed_at: string | null;
+  /** 'contact' (default) receives relationship email; 'feed' is a delivery address and receives editions only. */
+  purpose?: "contact" | "feed";
 }
 
-/** True when a row may receive feed email: consented and not unsubscribed. */
+/**
+ * True when a row may receive relationship feed email (welcome, launch notice): consented, not
+ * unsubscribed, and not a delivery-only address. Editions go to feed_waitlist_edition_recipients().
+ */
 export function feedEmailRecipient(row: FeedWaitlistRow): boolean {
-  return row.consent_feed_emails === true && !row.unsubscribed_at && Boolean(row.unsubscribe_token);
+  return (
+    row.consent_feed_emails === true &&
+    !row.unsubscribed_at &&
+    Boolean(row.unsubscribe_token) &&
+    row.purpose !== "feed"
+  );
 }
 
 function fromAddress(): string {
@@ -90,12 +101,17 @@ export function feedConfirmPageUrl(token: string): string {
   return `${FEED_PAGE_URL}/confirm?token=${encodeURIComponent(token)}`;
 }
 
-export async function sendFeedConfirmation(row: FeedConfirmRow, token: string): Promise<{ id: string }> {
+export async function sendFeedConfirmation(
+  row: FeedConfirmRow,
+  token: string,
+  opts: { requestedFeedEmail?: string | null } = {},
+): Promise<{ id: string }> {
   const { html, text } = await renderBoth(
     FeedConfirmEmail({
       name: row.name,
       confirmUrl: feedConfirmPageUrl(token),
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+      requestedFeedEmail: opts.requestedFeedEmail ?? null,
     }),
   );
   const sent = await sendResendEmail(resendClient(), {
@@ -107,6 +123,33 @@ export async function sendFeedConfirmation(row: FeedConfirmRow, token: string): 
     text,
     headers: feedUnsubscribeHeaders(row.unsubscribe_token),
     tags: [{ name: "category", value: "feed_confirm" }],
+  });
+  return { id: sent.id };
+}
+
+/** Double opt-in for a feed delivery address, sent after the contact who named it has confirmed. */
+export async function sendFeedDeliveryConfirmation(
+  row: FeedConfirmRow,
+  token: string,
+  requestedBy: { email: string; name: string | null },
+): Promise<{ id: string }> {
+  const label = requestedBy.name ? `${requestedBy.name} (${requestedBy.email})` : requestedBy.email;
+  const { html, text } = await renderBoth(
+    FeedDeliveryConfirmEmail({
+      requestedBy: label,
+      confirmUrl: feedConfirmPageUrl(token),
+      unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+    }),
+  );
+  const sent = await sendResendEmail(resendClient(), {
+    from: fromAddress(),
+    to: row.email,
+    replyTo: SUPPORT_EMAIL,
+    subject: FEED_DELIVERY_CONFIRM_SUBJECT,
+    html,
+    text,
+    headers: feedUnsubscribeHeaders(row.unsubscribe_token),
+    tags: [{ name: "category", value: "feed_delivery_confirm" }],
   });
   return { id: sent.id };
 }

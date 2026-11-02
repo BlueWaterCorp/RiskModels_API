@@ -24,6 +24,7 @@ export default function FeedWaitlistForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: form.get('email'),
+          feed_email: form.get('feed_email'),
           name: form.get('name'),
           company: form.get('company'),
           role: form.get('role'),
@@ -61,9 +62,19 @@ export default function FeedWaitlistForm() {
     <form onSubmit={onSubmit} className="space-y-3">
       <div>
         <label htmlFor="fw-email" className={labelClass}>
-          Work email <span className="text-blue-400">*</span>
+          Your email <span className="text-blue-400">*</span>
         </label>
         <Input id="fw-email" name="email" type="email" required autoComplete="email" maxLength={254} />
+      </div>
+      <div>
+        <label htmlFor="fw-feed-email" className={labelClass}>
+          Send the feed to a different address <span className="text-zinc-500">(optional)</span>
+        </label>
+        <Input id="fw-feed-email" name="feed_email" type="email" autoComplete="off" maxLength={254} />
+        <p className="mt-1 text-[11px] text-zinc-500 leading-snug">
+          Many teams use one address for the person and another for the feed, such as a team mailbox or an agent
+          inbox. We will ask that address to confirm too. Leave blank to receive everything at the address above.
+        </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>

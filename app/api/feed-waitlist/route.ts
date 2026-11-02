@@ -2,8 +2,15 @@
  * Security master feed early-access list
  *
  * POST /api/feed-waitlist
- *   { email, name?, company?, role?, intended_use?, consent_feed_emails?, website? }
+ *   { email, feed_email?, name?, company?, role?, intended_use?, consent_feed_emails?, website? }
  *
+ * Two addresses. `email` is the contact: the person, who gets the relationship
+ * email. `feed_email` is an optional separate DELIVERY address for the feed itself,
+ * such as a team mailbox or an agent inbox. It is stored on a NEW contact row as
+ * requested_feed_email and acted on only after the contact confirms their own
+ * address (POST /api/feed-waitlist/confirm), whose email names the delivery
+ * address, so nobody can point someone else's feed at an address of their own
+ * choosing. The delivery address then has to confirm for itself.
  * Public, unauthenticated signup behind the /security-master-feed landing page.
  * Writes one row per email to public.feed_waitlist with the service-role
  * client (migrations: BWMACRO/supabase/migrations/20261102120000_feed_waitlist.sql
@@ -56,6 +63,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NO_STORE = { "Cache-Control": "no-store" };
 const CONFIRM_MESSAGE =
   "Check your email. We sent a link to confirm your address; you join the early-access list when you click it.";
+const CONFIRM_MESSAGE_WITH_FEED =
+  "Check your email. We sent a link to confirm your contact address. When you confirm it, we will ask the feed delivery address to confirm too.";
 const INTEREST_MESSAGE =
   "Thank you. We have noted your interest. We will not email you about the feed unless you tick the email box.";
 
@@ -96,7 +105,11 @@ export async function POST(req: NextRequest) {
   }
 
   const wantsEmails = body.consent_feed_emails === true;
-  const reply = { ok: true, message: wantsEmails ? CONFIRM_MESSAGE : INTEREST_MESSAGE };
+  const feedRaw = typeof body.feed_email === "string" ? body.feed_email.trim().toLowerCase() : "";
+  const reply = {
+    ok: true,
+    message: !wantsEmails ? INTEREST_MESSAGE : feedRaw ? CONFIRM_MESSAGE_WITH_FEED : CONFIRM_MESSAGE,
+  };
 
   // Honeypot: real visitors never see or fill this field.
   if (typeof body.website === "string" && body.website.trim() !== "") {
@@ -109,6 +122,18 @@ export async function POST(req: NextRequest) {
       { error: "Invalid email", message: "Enter a valid email address." },
       { status: 400, headers: NO_STORE },
     );
+  }
+
+  // A delivery address equal to the contact address means one address, which is the default.
+  let feedEmail: string | null = null;
+  if (feedRaw) {
+    if (feedRaw.length > MAX_EMAIL || !EMAIL_RE.test(feedRaw)) {
+      return NextResponse.json(
+        { error: "Invalid feed_email", message: "Enter a valid feed delivery address, or leave it blank." },
+        { status: 400, headers: NO_STORE },
+      );
+    }
+    if (feedRaw !== email) feedEmail = feedRaw;
   }
 
   let intendedUse: FeedIntendedUse | null = null;
@@ -147,6 +172,8 @@ export async function POST(req: NextRequest) {
         intended_use: intendedUse,
         consent_feed_emails: false,
         consented_at: null,
+        // Only when the box is ticked, and only ever on a new row: an existing row is never changed.
+        requested_feed_email: wantsEmails ? feedEmail : null,
         user_id: userId,
         source: "security-master-feed",
         metadata: {
@@ -189,11 +216,13 @@ export async function POST(req: NextRequest) {
   if (claimed) {
     const row = claimed;
     const confirmToken = token;
+    // Shown in the contact's confirmation email so its owner can see the address before agreeing.
+    const pendingFeed = wantsEmails ? feedEmail : null;
     // Queued, not awaited: a provider round trip here would make a first signup slower than a
     // repeat one, and the difference would reveal who is already listed.
     after(async () => {
       try {
-        await sendFeedConfirmation(row, confirmToken);
+        await sendFeedConfirmation(row, confirmToken, { requestedFeedEmail: pendingFeed });
       } catch (err) {
         console.error("[feed-waitlist] confirmation_email_failed", safeErrorCode(err));
       }

@@ -15,6 +15,11 @@ export interface FeedConfirmEmailProps {
   /** Page with the confirm button; carries the single-use token. */
   confirmUrl: string;
   unsubscribeUrl: string;
+  /**
+   * A separate address the signup asked the feed to be delivered to. Named here so the owner of this
+   * address can see it before confirming: confirming also authorises that address to be asked.
+   */
+  requestedFeedEmail?: string | null;
   /** Override for previews and test sends (e.g. a cid: image). */
   logoSrc?: string;
 }
@@ -25,6 +30,7 @@ export const FeedConfirmEmail = ({
   name = null,
   confirmUrl = `${BASE_URL}/security-master-feed/confirm`,
   unsubscribeUrl = `${BASE_URL}/security-master-feed/unsubscribe`,
+  requestedFeedEmail = null,
   logoSrc = FEED_LOGO_URL,
 }: FeedConfirmEmailProps) => (
   <Html>
@@ -46,6 +52,14 @@ export const FeedConfirmEmail = ({
         <Text style={styles.paragraph}>
           To join, confirm that this is your address. You are not on the list until you do.
         </Text>
+
+        {requestedFeedEmail ? (
+          <Text style={styles.banner}>
+            The request also asks for the feed to be delivered to a separate address:{" "}
+            <strong>{requestedFeedEmail}</strong>. If you confirm, we will ask that address to confirm too. If
+            that address is wrong, do not confirm.
+          </Text>
+        ) : null}
 
         <Section style={styles.buttonWrap}>
           <Button style={styles.button} href={confirmUrl}>

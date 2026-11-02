@@ -27,6 +27,13 @@ describe("feed descriptor", () => {
     ]);
   });
 
+  it("describes the two-address pattern: a contact and an optional delivery address that confirm separately", () => {
+    const d = buildFeedDescriptor();
+    expect(d.addresses.contact).toMatch(/notices/);
+    expect(d.addresses.delivery).toMatch(/team mailbox or an agent inbox/);
+    expect(d.addresses.delivery).toMatch(/confirms for itself/);
+  });
+
   it("limits keys to FIGI, CIK, the RiskModels id and ticker", () => {
     expect(buildFeedDescriptor().scope.keys).toEqual(["figi", "cik", "riskmodels_id", "ticker"]);
   });

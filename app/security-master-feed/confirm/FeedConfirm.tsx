@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-type State = "ready" | "saving" | "done" | "invalid" | "error";
+type State = "ready" | "saving" | "done" | "doneFeed" | "invalid" | "error";
 
 export function FeedConfirm() {
   const token = useSearchParams().get("token");
@@ -18,7 +18,12 @@ export function FeedConfirm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      setState(r.ok ? "done" : r.status === 400 ? "invalid" : "error");
+      if (!r.ok) {
+        setState(r.status === 400 ? "invalid" : "error");
+        return;
+      }
+      const json = (await r.json().catch(() => ({}))) as { purpose?: string };
+      setState(json.purpose === "feed" ? "doneFeed" : "done");
     } catch {
       setState("error");
     }
@@ -27,10 +32,16 @@ export function FeedConfirm() {
   return (
     <main className="mx-auto max-w-xl px-6 py-20 text-zinc-200">
       <h1 className="text-2xl font-semibold text-white mb-4">Confirm your email</h1>
-      {state === "done" ? (
+      {state === "doneFeed" ? (
+        <p>
+          This address is confirmed as a delivery address for the security master change feed. It will receive
+          editions once delivery starts.
+        </p>
+      ) : state === "done" ? (
         <p>
           You are on the early-access list for the security master change feed. We will email you the specification
-          and a sample before the first edition.
+          and a sample before the first edition. If you asked for the feed to go to a separate address, we are asking
+          that address to confirm too.
         </p>
       ) : state === "invalid" ? (
         <p role="alert">

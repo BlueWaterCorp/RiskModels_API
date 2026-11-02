@@ -77,6 +77,11 @@ export function buildFeedDescriptor(opts: FeedDescriptorOptions = {}) {
       "Note any event your master lacks, or has on a different date.",
       "Reply to the sender with what you find.",
     ],
+    addresses: {
+      contact: "the person; receives notices about the feed, such as the launch notice and the specification",
+      delivery:
+        "optional separate address, such as a team mailbox or an agent inbox; receives the editions. Each address confirms for itself.",
+    },
     cost: "free to early clients for about the first year",
     delivery_formats_under_consideration: ["email digest", "api", "webhook"],
     caveats: [
