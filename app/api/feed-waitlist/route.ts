@@ -16,9 +16,12 @@
  *   repeat signup returns the same success reply and does not overwrite the
  *   first row. The reply never says whether the email was already listed.
  * - If the visitor has a RiskModels session, its user id is attached.
- * - A NEW row with consent_feed_emails = true gets one early-access
- *   confirmation email (lib/feed-email.ts). A repeat signup inserts nothing and
- *   sends nothing. A failed send is logged and never fails the signup.
+ * - A row that becomes consented gets one early-access confirmation email
+ *   (lib/feed-email.ts): a new row with consent_feed_emails = true, or an
+ *   existing row that had not consented (a personal invitation, or an earlier
+ *   signup without the box ticked) whose owner now agrees. A repeat signup for
+ *   a row that already consented, and an unsubscribed row, send nothing and
+ *   change nothing. A failed send is logged and never fails the signup.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -140,6 +143,40 @@ export async function POST(req: NextRequest) {
       );
     }
     inserted = Array.isArray(data) && data.length > 0 ? (data[0] as FeedWaitlistRow) : null;
+
+    if (!inserted && consent) {
+      // The address was already on the table. If it had not consented (invited by hand, or an
+      // earlier signup without the box ticked), record the consent now and send the confirmation.
+      // Rows that already consented or unsubscribed match nothing, so a repeat signup stays a no-op.
+      const patch: Record<string, unknown> = {
+        consent_feed_emails: true,
+        consented_at: new Date().toISOString(),
+      };
+      for (const [key, value] of [
+        ["name", optionalText(body.name)],
+        ["company", optionalText(body.company)],
+        ["role", optionalText(body.role)],
+        ["intended_use", intendedUse],
+        ["user_id", userId],
+      ] as const) {
+        if (value) patch[key] = value;
+      }
+      const { data: upgraded, error: upgradeError } = await admin
+        .from("feed_waitlist")
+        .update(patch)
+        .eq("email", email)
+        .eq("consent_feed_emails", false)
+        .is("unsubscribed_at", null)
+        .select("email, name, consent_feed_emails, unsubscribe_token, unsubscribed_at");
+      if (upgradeError) {
+        console.error("[feed-waitlist] consent_update_failed", safeErrorCode(upgradeError));
+        return NextResponse.json(
+          { error: "Signup unavailable", message: "Could not record your signup. Please retry shortly." },
+          { status: 503, headers: NO_STORE },
+        );
+      }
+      inserted = Array.isArray(upgraded) && upgraded.length > 0 ? (upgraded[0] as FeedWaitlistRow) : null;
+    }
   } catch (err) {
     console.error("[feed-waitlist] unexpected_error", safeErrorCode(err));
     return NextResponse.json(

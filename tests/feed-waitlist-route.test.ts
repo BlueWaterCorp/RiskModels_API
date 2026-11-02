@@ -4,7 +4,13 @@ import { NextRequest } from "next/server";
 // upsert(...) returns a builder whose .select() resolves to { data, error }.
 const select = vi.fn();
 const upsert = vi.fn((_row: Record<string, unknown>, _opts?: Record<string, unknown>) => ({ select }));
-const from = vi.fn(() => ({ upsert }));
+// update(...).eq(email).eq(consent=false).is(unsubscribed_at, null).select() resolves to { data, error }.
+const updateSelect = vi.fn();
+const is = vi.fn(() => ({ select: updateSelect }));
+const eqConsent = vi.fn(() => ({ is }));
+const eqEmail = vi.fn(() => ({ eq: eqConsent }));
+const update = vi.fn((_patch: Record<string, unknown>) => ({ eq: eqEmail }));
+const from = vi.fn(() => ({ upsert, update }));
 const sendFeedEarlyAccessEmail = vi.fn();
 const getUser = vi.fn();
 const rateLimit = vi.fn();
@@ -38,7 +44,12 @@ function request(body: unknown): NextRequest {
 describe("POST /api/feed-waitlist", () => {
   beforeEach(() => {
     select.mockReset().mockResolvedValue({ data: [], error: null });
+    updateSelect.mockReset().mockResolvedValue({ data: [], error: null });
     upsert.mockClear();
+    update.mockClear();
+    eqEmail.mockClear();
+    eqConsent.mockClear();
+    is.mockClear();
     sendFeedEarlyAccessEmail.mockReset().mockResolvedValue({ id: "email-1" });
     from.mockClear();
     getUser.mockReset().mockResolvedValue({ data: { user: null } });
@@ -173,6 +184,57 @@ describe("POST /api/feed-waitlist", () => {
     expect((await res.json()).ok).toBe(true);
     errSpy.mockRestore();
   });
+  describe("existing rows that had not consented (invited by hand, or an earlier signup)", () => {
+    it("records the consent and sends one confirmation", async () => {
+      select.mockResolvedValue({ data: [], error: null });
+      updateSelect.mockResolvedValue({ data: [newRow()], error: null });
+      const res = await POST(
+        request({ email: "New@Example.com", name: "N. Ew", company: "Example Capital", consent_feed_emails: true }),
+      );
+      expect(res.status).toBe(200);
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0]![0]).toMatchObject({
+        consent_feed_emails: true,
+        name: "N. Ew",
+        company: "Example Capital",
+      });
+      expect(typeof update.mock.calls[0]![0].consented_at).toBe("string");
+      expect(eqEmail).toHaveBeenCalledWith("email", "new@example.com");
+      expect(eqConsent).toHaveBeenCalledWith("consent_feed_emails", false);
+      expect(is).toHaveBeenCalledWith("unsubscribed_at", null);
+      expect(sendFeedEarlyAccessEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not overwrite stored fields with blanks", async () => {
+      updateSelect.mockResolvedValue({ data: [newRow()], error: null });
+      await POST(request({ email: "new@example.com", consent_feed_emails: true }));
+      const patch = update.mock.calls[0]![0];
+      expect(Object.keys(patch).sort()).toEqual(["consent_feed_emails", "consented_at"]);
+    });
+
+    it("sends nothing when the row already consented or unsubscribed (the update matches no row)", async () => {
+      updateSelect.mockResolvedValue({ data: [], error: null });
+      const res = await POST(request({ email: "old@example.com", consent_feed_emails: true }));
+      expect(res.status).toBe(200);
+      expect(sendFeedEarlyAccessEmail).not.toHaveBeenCalled();
+    });
+
+    it("does not touch the row when the signup does not tick consent", async () => {
+      const res = await POST(request({ email: "old@example.com" }));
+      expect(res.status).toBe(200);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("returns 503 when the consent update fails", async () => {
+      updateSelect.mockResolvedValue({ data: null, error: { code: "42501", message: "denied" } });
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const res = await POST(request({ email: "old@example.com", consent_feed_emails: true }));
+      expect(res.status).toBe(503);
+      expect(sendFeedEarlyAccessEmail).not.toHaveBeenCalled();
+      errSpy.mockRestore();
+    });
+  });
+
   describe("logs carry no email addresses or tokens", () => {
     const SENTINEL_EMAIL = "sentinel.leak@example.com";
     const SENTINEL_TOKEN = "deadbeef-dead-4bee-8eef-deadbeefdead";
