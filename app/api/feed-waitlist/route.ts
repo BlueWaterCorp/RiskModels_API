@@ -218,8 +218,10 @@ export async function POST(req: NextRequest) {
   if (claimed) {
     const row = claimed;
     const confirmToken = token;
-    // Shown in the contact's confirmation email so its owner can see the address before agreeing.
-    const pendingFeed = wantsEmails ? feedEmail : null;
+    // Shown in the contact's confirmation email so its owner can see the address before agreeing. It is the
+    // address STORED on the row (returned by the claim), never this request's: a repeat signup that omits or
+    // changes feed_email must not hide the address that confirming would actually act on.
+    const pendingFeed = row.requested_feed_email ?? null;
     // Queued, not awaited: a provider round trip here would make a first signup slower than a
     // repeat one, and the difference would reveal who is already listed.
     after(async () => {

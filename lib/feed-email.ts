@@ -95,6 +95,8 @@ export interface FeedConfirmRow {
   email: string;
   name: string | null;
   unsubscribe_token: string;
+  /** The delivery address STORED on the row, if any. The confirmation email names this one, never a request's. */
+  requested_feed_email?: string | null;
 }
 
 export function feedConfirmPageUrl(token: string): string {

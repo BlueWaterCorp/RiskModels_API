@@ -192,7 +192,7 @@ describe("POST /api/feed-waitlist", () => {
     });
 
     it("asks only the contact to confirm at signup, and names the delivery address in that email", async () => {
-      rpc.mockResolvedValue({ data: [claimedRow({ email: "analyst@corp.com" })], error: null });
+      rpc.mockResolvedValue({ data: [claimedRow({ email: "analyst@corp.com", requested_feed_email: "ops@corp.com" })], error: null });
       const res = await POST(request({ email: "analyst@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
       expect((await res.json()).message).toMatch(/ask the feed delivery address to confirm too/);
       expect(rpc).toHaveBeenCalledTimes(1);
@@ -201,6 +201,28 @@ describe("POST /api/feed-waitlist", () => {
       expect(sendFeedConfirmation).toHaveBeenCalledTimes(1);
       expect(sendFeedConfirmation.mock.calls[0]![0]).toMatchObject({ email: "analyst@corp.com" });
       expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "ops@corp.com" });
+    });
+
+    it("names the STORED delivery address even when a repeat signup omits it, so the warning cannot be hidden", async () => {
+      // The row was registered earlier with the attacker's address; this request carries no feed_email.
+      rpc.mockResolvedValue({ data: [claimedRow({ email: "victim@corp.com", requested_feed_email: "attacker@evil.com" })], error: null });
+      await POST(request({ email: "victim@corp.com", consent_feed_emails: true }));
+      await runAfter();
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com" });
+    });
+
+    it("names the stored address, not a different one submitted by a repeat signup", async () => {
+      rpc.mockResolvedValue({ data: [claimedRow({ email: "victim@corp.com", requested_feed_email: "attacker@evil.com" })], error: null });
+      await POST(request({ email: "victim@corp.com", feed_email: "friendly@corp.com", consent_feed_emails: true }));
+      await runAfter();
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com" });
+    });
+
+    it("names no delivery address when none is stored, even if this request submitted one", async () => {
+      rpc.mockResolvedValue({ data: [claimedRow({ requested_feed_email: null })], error: null });
+      await POST(request({ email: "new@example.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      await runAfter();
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: null });
     });
 
     it("treats a delivery address equal to the contact address as one address", async () => {
