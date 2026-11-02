@@ -40,6 +40,12 @@ export default function Footer() {
               vs Barra / Axioma
             </Link>
             <Link
+              href="/security-master-feed"
+              className="hover:text-zinc-100 transition-colors"
+            >
+              Security master feed
+            </Link>
+            <Link
               href="/llms.txt"
               className="hover:text-zinc-100 transition-colors"
               prefetch={false}
