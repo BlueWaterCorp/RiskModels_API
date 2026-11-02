@@ -23,6 +23,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ['/for-agents', 0.7],
     ['/cli', 0.6],
     ['/snapshots', 0.6],
+    ['/security-master-feed', 0.6],
     ['/legal', 0.3],
   ];
 

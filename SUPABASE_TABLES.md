@@ -84,6 +84,7 @@ The metric keys below are the same ones the API exposes in range-history respons
 | Table | Purpose |
 |-------|---------|
 | `ticker_request_logs` | Request logging / analytics |
+| `feed_waitlist` | Early-access signups for the security master change feed (`/security-master-feed`, `POST /api/feed-waitlist`). One row per lowercased email; optional `user_id` when signed in. RLS on, no client policies; service role only. Migration: `BWMACRO/supabase/migrations/20261102120000_feed_waitlist.sql`. |
 
 ---
 
