@@ -16,6 +16,8 @@ export const LOGO_PNG_URL = `${BASE_URL}/logo.png`;
 export const RISKMODELS_WORDMARK_URL = `${BASE_URL}/riskmodels-wordmark.png`;
 /** Operating entity named on receipts, terms and the legal page. */
 export const LEGAL_ENTITY = "Blue Water Macro Corp.";
+/** Mailing address printed in the footer of commercial email (feed emails). */
+export const LEGAL_MAILING_ADDRESS = "1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965";
 /** Jurisdiction line under the entity on documents (Delaware C-Corp; API Terms governing law). */
 export const LEGAL_ENTITY_JURISDICTION = "A Delaware corporation";
 /** Canonical API Terms (matches README / API_TERMS.md). */

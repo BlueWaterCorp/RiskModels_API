@@ -1,6 +1,6 @@
 import { Hr, Img, Link, Section, Text } from "@react-email/components";
 import * as React from "react";
-import { BASE_URL, SUPPORT_EMAIL } from "./constants";
+import { BASE_URL, LEGAL_ENTITY, LEGAL_MAILING_ADDRESS, SUPPORT_EMAIL } from "./constants";
 import { FEED_DESCRIPTOR_URL, feedDescriptorJson, type FeedDescriptorOptions } from "../lib/feed-descriptor";
 
 /**
@@ -97,8 +97,8 @@ export const FeedFooter = ({ reason, unsubscribeUrl }: { reason: string; unsubsc
       </Link>
     </Text>
     <Text style={styles.small}>
-      RiskModels is a registered DBA of Blue Water Macro Corp. Historical, end-of-day data. Not investment
-      advice.
+      RiskModels is a registered DBA of {LEGAL_ENTITY}, {LEGAL_MAILING_ADDRESS}. Historical, end-of-day
+      data. Not investment advice.
     </Text>
   </>
 );

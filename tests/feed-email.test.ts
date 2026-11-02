@@ -94,6 +94,25 @@ describe("lib/feed-email", () => {
     }
   });
 
+  it("prints the mailing address in the footer of every feed email", async () => {
+    await sendFeedEarlyAccessEmail(row());
+    await sendFeedInvite(
+      { email: "g@example.com", name: null, unsubscribe_token: TOKEN, unsubscribed_at: null },
+      { inviterName: "Conrad Gann" },
+    );
+    await sendFeedLaunchNotice(row(), {
+      firstEditionDate: "November 16, 2026",
+      editionUrl: "https://riskmodels.app/security-master-feed",
+      specUrl: "https://riskmodels.app/security-master-feed",
+    });
+    expect(send).toHaveBeenCalledTimes(3);
+    for (const [payload] of send.mock.calls) {
+      for (const body of [payload.html, payload.text]) {
+        expect(body).toContain("1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965");
+      }
+    }
+  });
+
   it("uses the horizontal logo, not the stacked mark", async () => {
     await sendFeedEarlyAccessEmail(row());
     const { html } = send.mock.calls[0][0];
