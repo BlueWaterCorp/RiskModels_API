@@ -66,7 +66,7 @@ export interface CohortDisclosures {
   coverage: string;
   dispersion_use: string;
   er_sign: string;
-  /** H.147: what link_fit_resid_sd is (and is not); linked_beta_se is its deprecated alias. */
+  /** ERM3-10: what link_fit_resid_sd is (the OLS SE of linked_beta) and what it leaves out. */
   link_fit_resid_sd: string;
   thin_cohorts: string;
 }
@@ -80,7 +80,7 @@ function buildDisclosures(meta: CohortStoreMeta | null): CohortDisclosures {
     dispersion_use:
       "residual_sd measures how much cross-sectional opportunity exists within a cohort. It is a conditioning and allocation variable, not an alpha source — it multiplies skill and cannot create it. Read it alongside mean_pairwise_corr, which separates idiosyncratic dispersion from common movement.",
     link_fit_resid_sd:
-      "link_fit_resid_sd is the residual standard deviation of the 252-day link regression (cohort factor on its parent): a fit-quality and dispersion measure, not a standard error of linked_beta and not a total-uncertainty measure. Do not build confidence intervals from it. The former name linked_beta_se was removed on 2026-08-25.",
+      "link_fit_resid_sd is the classical OLS standard error of linked_beta: the slope SE of the rolling 252-day link regression of the cohort factor on its orthogonalized parent (min_periods 126), sqrt(SSE / ((n - 2) * Sxx)), with n, SSE and Sxx taken on the window's common sample of dates where both series are observed (n - 2 residual degrees of freedom, n between 126 and 252). It is homoskedastic and conditional on the realized parent series, so it does not include parent-construction or beta-drift uncertainty; like linked_beta it is held at the prior week-end fit within each week. The field name is unchanged; the former name linked_beta_se was removed on 2026-08-25.",
     er_sign:
       "cohort_ER is an incremental attribution (er_level minus er_prev), not an R-squared share. It can be slightly negative and does not sum to 1. It is the mean member's explained risk at this level, which is a different quantity from linked_beta_r2 (the cohort factor's fit on its parent).",
     thin_cohorts:
