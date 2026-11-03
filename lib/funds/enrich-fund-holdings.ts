@@ -38,7 +38,14 @@ export async function enrichFundHoldingsWithL3(
     const patch = m ? undefined : patches.get(h.bw_sym_id);
     return {
       ...h,
-      ...(label ? { ticker: label.ticker, name: label.name } : {}),
+      ...(label
+        ? {
+            ticker: label.ticker,
+            name: label.name,
+            sector_etf: label.sector_etf ?? null,
+            subsector_etf: label.subsector_etf ?? label.sector_etf ?? null,
+          }
+        : {}),
       ...(m
         ? {
             l3_market_er: m.l3_mkt_er ?? null,

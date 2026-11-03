@@ -840,6 +840,9 @@ export interface FundHolding {
   // security_history_latest (L3 ER) + symbols (display labels). Absent on a miss.
   ticker?: string | null;
   name?: string | null;
+  /** ETF identities behind the orthogonal industry sleeves. */
+  sector_etf?: string | null;
+  subsector_etf?: string | null;
   l3_market_er?: number | null;
   l3_sector_er?: number | null;
   l3_subsector_er?: number | null;

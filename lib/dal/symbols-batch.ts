@@ -133,6 +133,8 @@ export async function applyScrubToFilerHoldings<
 export interface SymbolDisplayLabel {
   ticker: string | null;
   name: string | null;
+  sector_etf?: string | null;
+  subsector_etf?: string | null;
 }
 
 export async function resolveDisplayLabels(
@@ -146,7 +148,7 @@ export async function resolveDisplayLabels(
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("symbols")
-      .select("symbol, ticker, name")
+      .select("symbol, ticker, name, sector_etf, subsector_etf")
       .in("symbol", unique);
 
     if (error) {
@@ -155,11 +157,19 @@ export async function resolveDisplayLabels(
     }
 
     for (const row of data ?? []) {
-      const r = row as { symbol?: string; ticker?: string | null; name?: string | null };
+      const r = row as {
+        symbol?: string;
+        ticker?: string | null;
+        name?: string | null;
+        sector_etf?: string | null;
+        subsector_etf?: string | null;
+      };
       if (!r.symbol) continue;
       out.set(r.symbol, {
         ticker: r.ticker?.trim() || null,
         name: r.name?.trim() || null,
+        sector_etf: r.sector_etf?.trim().toUpperCase() || null,
+        subsector_etf: r.subsector_etf?.trim().toUpperCase() || null,
       });
     }
   } catch (e) {

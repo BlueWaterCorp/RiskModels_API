@@ -101,6 +101,11 @@ export interface FundVarianceShares {
   subsector: number | null;
   style?: number | null;
   residual: number | null;
+  /** Annualized modeled volatility for this exact variance window. */
+  total_vol_ann?: number | null;
+  n_obs?: number | null;
+  window_start?: string | null;
+  window_end?: string | null;
 }
 
 export interface FundWithLatest {

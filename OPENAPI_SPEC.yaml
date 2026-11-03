@@ -1188,6 +1188,20 @@ components:
         ticker:
           type: string
           example: AAPL
+        name:
+          type: string
+          nullable: true
+          description: Public company/security display name from the symbol registry.
+        sector_etf:
+          type: string
+          nullable: true
+          description: ETF identity used for the orthogonal sector factor sleeve.
+          example: XLK
+        subsector_etf:
+          type: string
+          nullable: true
+          description: ETF identity used for the orthogonal subsector factor sleeve.
+          example: RSPT
         as_of:
           type: string
           format: date
