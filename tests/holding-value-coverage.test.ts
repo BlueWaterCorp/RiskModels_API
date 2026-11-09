@@ -1,7 +1,7 @@
 /** Values are copied from the real filed-book row pinned in funds-holdings-route.test.ts. */
 import { describe, expect, it } from "vitest";
-import { summarizeHoldingValues } from "@/app/api/plaid/holdings/route";
 import { normalizeFallbackHoldingRows } from "@/lib/dal/funds-zarr-reader";
+import { summarizeHoldingValues } from "@/lib/plaid/holding-values";
 
 describe("holding-value aggregate coverage", () => {
   it("preserves the complete-input sum", () => {

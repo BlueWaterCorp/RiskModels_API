@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { buildWorkbook } from "@/app/api/fundamentals/[ticker]/model-scaffold/route";
+import { buildWorkbook } from "@/lib/fundamentals/model-scaffold-defaults";
 
 const fixture = JSON.parse(
   readFileSync(join(process.cwd(), "tests/fixtures/fundamentals/aapl-row-2026-06-30.json"), "utf8"),
