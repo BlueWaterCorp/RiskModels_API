@@ -1,9 +1,10 @@
 /**
  * GET /api/hedge-basket/[ticker]
  *
- * Structured hedge-basket payload — the chat-rendered 4-row table with a
- * net-market-β subtotal, plus a `decision_trace` explaining why
- * `recommended_hedge_level` was chosen.
+ * Structured hedge-basket payload — the recommended level's legs (stock + SPY,
+ * plus the sector ETF at L2 and the subsector ETF at L3) with a net-market-β
+ * subtotal, plus a `decision_trace` explaining why `recommended_hedge_level`
+ * was chosen.
  *
  * Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas
  * from the cohort store (`ds_erm3_cohorts_{factor_set}.zarr`, via
@@ -117,9 +118,16 @@ export const GET = withBilling(
       const sectorEtf = symbolRecord.sector_etf || null;
       const subsectorEtf = symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
 
-      // Link-betas from the cohort store. Null when unreadable: the basket keeps
-      // the leg, reports beta_to_spy and net market β as null, and flags it.
-      const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, market_factor_etf);
+      // Link-betas from the cohort store, at the latest date on or before the
+      // metric snapshot's date. Null when unreadable or when no such date exists:
+      // the basket keeps the leg, reports beta_to_spy and net market β as null,
+      // and flags it.
+      const linkBetas = await readLatestLinkBetas(
+        sectorEtf,
+        subsectorEtf,
+        market_factor_etf,
+        latestData.teo ?? null,
+      );
 
       const basket = buildHedgeBasket({
         lstar_level: m.lstar_level,

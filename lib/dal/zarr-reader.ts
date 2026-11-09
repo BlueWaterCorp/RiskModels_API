@@ -1688,8 +1688,9 @@ async function readFloatCell(
 }
 
 /**
- * Read the latest-teo link-betas for a given (sector_etf, subsector_etf) pair
- * from the cohort store.
+ * Read the link-betas for a given (sector_etf, subsector_etf) pair from the
+ * cohort store, at the latest teo on or before `asOf` (the final teo when
+ * `asOf` is null).
  *
  * - Ticker matching is case-insensitive against the cohort roster's `ticker` coord.
  * - The coefficient is `linked_beta_policy` at link_policy="hedge" when the store
@@ -1706,23 +1707,44 @@ export async function readLatestLinkBetas(
   sectorEtfTicker: string | null,
   subsectorEtfTicker: string | null,
   marketFactorEtf = "SPY",
+  asOf: string | null = null,
 ): Promise<LatestLinkBetas | null> {
   const factorSet = getZarrFactorSetId();
   if (!isServedMarketFactorEtf(marketFactorEtf, factorSet)) return null;
   const grp = await openZarrGroup(zarrCohortsBasename(factorSet));
   if (!grp) return null;
-  return readLinkBetasFromGroup(grp, sectorEtfTicker, subsectorEtfTicker);
+  return readLinkBetasFromGroup(grp, sectorEtfTicker, subsectorEtfTicker, asOf);
 }
 
-/** The latest-teo link-beta read on an already-open cohort group (exported for tests). */
+/**
+ * Index of the latest teo on or before `asOf` (ISO dates compare as strings);
+ * the final teo when `asOf` is null; -1 when every teo is after `asOf`.
+ */
+export function linkTeoIndexOnOrBefore(teos: string[], asOf: string | null): number {
+  if (asOf === null) return teos.length - 1;
+  const cutoff = asOf.slice(0, 10);
+  for (let i = teos.length - 1; i >= 0; i--) {
+    const t = teos[i];
+    if (t && t <= cutoff) return i;
+  }
+  return -1;
+}
+
+/**
+ * The link-beta read on an already-open cohort group (exported for tests), at
+ * the latest teo on or before `asOf`. Returns null when no teo qualifies, so a
+ * basket never uses link betas dated after its own snapshot.
+ */
 export async function readLinkBetasFromGroup(
   grp: Group<Readable>,
   sectorEtfTicker: string | null,
   subsectorEtfTicker: string | null,
+  asOf: string | null = null,
 ): Promise<LatestLinkBetas | null> {
   const teos = await readTeoStrings(grp);
   if (!teos?.length) return null;
-  const teoIdx = teos.length - 1;
+  const teoIdx = linkTeoIndexOnOrBefore(teos, asOf);
+  if (teoIdx < 0) return null;
   const teoStr = teos[teoIdx]!;
 
   const [tickerMap, levels, policies] = await Promise.all([

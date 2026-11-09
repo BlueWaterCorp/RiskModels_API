@@ -585,7 +585,7 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
   const sectorEtf = symbolRecord.sector_etf || null;
   const subsectorEtf = symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
 
-  const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, "SPY");
+  const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, "SPY", latestData.teo ?? null);
 
   const segment = isValidUserSegment(user_segment) ? user_segment : DEFAULT_USER_SEGMENT;
 
@@ -1168,7 +1168,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_hedge_basket",
     openaiTool: fnTool(
       "get_hedge_basket",
-      "Structured hedge basket for a ticker: the four legs (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution and a net market β subtotal, plus the L1/L2/L3 marginal ER and a `decision_trace` narration of why `recommended_hedge_level` was chosen. PREFER this over get_risk_metrics when answering 'how should I hedge X?' — it surfaces the legs that compose the L3 market HR and prevents readers from mis-reading 'Market HR (L3) = −2.00' as a beta of 2.0. The narrative answer should walk through `legs[]` as a table (one row per leg returned), show `recommended_hedge_level` (and flag the divergence from `lstar` if any), and quote the `decision_trace` lines verbatim. Null values are unavailable data: show a null `position`, `beta_to_spy` or `market_beta_contribution` as 'n/a', never as 0, and never compute a subtotal or any other number from it yourself. If `net_market_beta_after_hedge` is null, say the net market β is unavailable. If `data_quality_flags` is non-empty, state each flag in plain words (e.g. sector_link_beta_unavailable = the sector ETF's beta to SPY could not be read; sector_link_beta_weak = that beta is weakly identified, low r²; link_betas_stale = the link betas are older than the basket date, see `link_betas_as_of`).",
+      "Structured hedge basket for a ticker: the legs of the recommended level (stock + SPY at L1, plus the sector ETF at L2 and the subsector ETF at L3) with per-leg β-to-SPY contribution and a net market β subtotal, plus the L1/L2/L3 marginal ER and a `decision_trace` narration of why `recommended_hedge_level` was chosen. PREFER this over get_risk_metrics when answering 'how should I hedge X?' — it surfaces the legs that compose the L3 market HR and prevents readers from mis-reading 'Market HR (L3) = −2.00' as a beta of 2.0. The narrative answer should walk through `legs[]` as a table (one row per leg returned), show `recommended_hedge_level` (and flag the divergence from `lstar` if any), and quote the `decision_trace` lines verbatim. Null values are unavailable data: show a null `position`, `beta_to_spy` or `market_beta_contribution` as 'n/a', never as 0, and never compute a subtotal or any other number from it yourself. If `net_market_beta_after_hedge` is null, say the net market β is unavailable. If `data_quality_flags` is non-empty, state each flag in plain words (e.g. sector_link_beta_unavailable = the sector ETF's beta to SPY could not be read; sector_link_beta_weak = that beta is weakly identified, low r²; link_betas_stale = the link betas are older than the basket date, see `link_betas_as_of`; link_betas_unavailable = no link betas exist on or before the basket date; hedge_level_inputs_incomplete = a higher hedge level was not recommended because some of its inputs are missing).",
       {
         ticker: {
           type: "string",

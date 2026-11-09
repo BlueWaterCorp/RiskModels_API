@@ -10,7 +10,7 @@
  *
  * Every number below is a real cell copied from the cohort store in the
  * 2026-11-05 release, for cohorts SPY, XLK, XLE and SOXX at teo indexes -22
- * (2026-09-23, day 9761) and -1 (2026-10-23, day 9790). In the real store the
+ * (2026-09-24, day 9761) and -1 (2026-10-23, day 9790). In the real store the
  * "attribution" and "hedge" policy slots hold identical values ("hedge" is an
  * alias today), so the policy test checks that the 3-D cell is read correctly;
  * the name lookup itself is tested on `hedgeLinkPolicyIndex`.
@@ -23,6 +23,7 @@ import type { AbsolutePath, Readable } from "@zarrita/storage";
 import {
   hedgeLinkPolicyIndex,
   isServedMarketFactorEtf,
+  linkTeoIndexOnOrBefore,
   readLatestLinkBetas,
   readLinkBetasFromGroup,
 } from "@/lib/dal/zarr-reader";
@@ -155,10 +156,37 @@ describe("readLinkBetasFromGroup — in-memory cohort store (real cells)", () =>
     expect(lb.lambda_u_to_s).toBeNull();
   });
 
+  it("with as_of, reads the latest teo on or before it — never a later one", async () => {
+    const grp = await openStore(buildStore({ withPolicyAxis: true }));
+    const between = (await readLinkBetasFromGroup(grp, "XLK", "SOXX", "2026-10-01"))!;
+    expect(between.teo).toBe("2026-09-24");
+    expect(between.lambda_s_to_m).toBeCloseTo(1.7455346584320068, 6);
+    expect(between.lambda_u_to_m).toBeCloseTo(2.6041665077209473, 6);
+    const onDate = (await readLinkBetasFromGroup(grp, "XLK", null, "2026-10-23"))!;
+    expect(onDate.teo).toBe("2026-10-23");
+    expect(onDate.lambda_s_to_m).toBeCloseTo(1.7590864896774292, 6);
+  });
+
+  it("with as_of before every teo, returns null (no link betas from the future)", async () => {
+    const grp = await openStore(buildStore({ withPolicyAxis: true }));
+    await expect(readLinkBetasFromGroup(grp, "XLK", "SOXX", "2026-09-01")).resolves.toBeNull();
+  });
+
   it("ticker matching is case-insensitive", async () => {
     const grp = await openStore(buildStore({ withPolicyAxis: true }));
     const lb = (await readLinkBetasFromGroup(grp, "xlk", null))!;
     expect(lb.lambda_s_to_m).toBeCloseTo(1.7590864896774292, 6);
+  });
+});
+
+describe("linkTeoIndexOnOrBefore", () => {
+  const teos = ["2026-09-24", "2026-10-23"];
+  it("picks the latest date on or before as_of", () => {
+    expect(linkTeoIndexOnOrBefore(teos, "2026-10-23")).toBe(1);
+    expect(linkTeoIndexOnOrBefore(teos, "2026-10-22")).toBe(0);
+    expect(linkTeoIndexOnOrBefore(teos, "2026-11-06")).toBe(1);
+    expect(linkTeoIndexOnOrBefore(teos, "2026-09-01")).toBe(-1);
+    expect(linkTeoIndexOnOrBefore(teos, null)).toBe(1);
   });
 });
 

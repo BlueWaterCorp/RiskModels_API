@@ -897,7 +897,7 @@ export const CAPABILITIES: Capability[] = [
   {
     id: "hedge-basket",
     name: "Hedge Basket",
-    description: "Structured 4-leg hedge basket (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution, net market β subtotal, marginal ERs, recommended_hedge_level, and a human-readable decision_trace narration. A beta that cannot be read is null (with the net subtotal) and named in data_quality_flags; it is never reported as 0. Replaces the easy-to-misread single 'Market HR (L3)' row in chat/SDK surfaces.",
+    description: "Structured hedge basket for the recommended level — stock + SPY at L1, plus the sector ETF at L2 and the subsector ETF at L3 — with per-leg β-to-SPY contribution, net market β subtotal, marginal ERs, recommended_hedge_level, and a human-readable decision_trace narration. A beta, hedge ratio or ER that cannot be read is null (with the net subtotal) and named in data_quality_flags; it is never reported as 0. Replaces the easy-to-misread single 'Market HR (L3)' row in chat/SDK surfaces.",
     endpoint: "/api/hedge-basket",
     method: "GET",
     parameters: {

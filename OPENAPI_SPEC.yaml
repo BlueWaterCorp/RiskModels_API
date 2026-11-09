@@ -5968,6 +5968,13 @@ paths:
                       `sector_link_beta_weak`: the sector link r² is below 0.1.
                       `link_betas_stale`: the link betas are more than 10
                       trading days behind `as_of`.
+                      `link_betas_unavailable`: no link betas exist on or
+                      before `as_of`; link betas dated after `as_of` are never
+                      used.
+                      `hedge_level_inputs_incomplete`: a level at or below
+                      `lstar` was not recommended because one of its hedge
+                      ratios or its marginal ER is missing; selection steps
+                      down only on real values.
                     items:
                       type: string
                       enum:
@@ -5979,19 +5986,28 @@ paths:
                         - subsector_link_beta_unavailable
                         - sector_link_beta_weak
                         - link_betas_stale
+                        - link_betas_unavailable
+                        - hedge_level_inputs_incomplete
                   hedge_gross:
                     type: object
+                    description: Σ|HR| per level; null for a level whose inputs are incomplete.
                     properties:
-                      L1: { type: number }
-                      L2: { type: number }
-                      L3: { type: number }
+                      L1: { type: number, nullable: true }
+                      L2: { type: number, nullable: true }
+                      L3: { type: number, nullable: true }
                   marginal_er:
                     type: object
                     properties:
                       L2_sector_raw: { type: number, nullable: true }
-                      L2_sector_haircut: { type: number }
+                      L2_sector_haircut:
+                        type: number
+                        nullable: true
+                        description: Null when L2_sector_raw is null.
                       L3_subsector_raw: { type: number, nullable: true }
-                      L3_subsector_haircut: { type: number }
+                      L3_subsector_haircut:
+                        type: number
+                        nullable: true
+                        description: Null when L3_subsector_raw is null.
                   decision_trace:
                     type: array
                     items: { type: string }

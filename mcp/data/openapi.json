@@ -8188,7 +8188,7 @@
                     },
                     "data_quality_flags": {
                       "type": "array",
-                      "description": "Empty when every input was available and current. The `*_unavailable` codes mean the corresponding numbers are null; link betas more than 60 calendar days behind `as_of` are not used and are reported unavailable. `sector_link_beta_weak`: the sector link r² is below 0.1. `link_betas_stale`: the link betas are more than 10 trading days behind `as_of`.\n",
+                      "description": "Empty when every input was available and current. The `*_unavailable` codes mean the corresponding numbers are null; link betas more than 60 calendar days behind `as_of` are not used and are reported unavailable. `sector_link_beta_weak`: the sector link r² is below 0.1. `link_betas_stale`: the link betas are more than 10 trading days behind `as_of`. `link_betas_unavailable`: no link betas exist on or before `as_of`; link betas dated after `as_of` are never used. `hedge_level_inputs_incomplete`: a level at or below `lstar` was not recommended because one of its hedge ratios or its marginal ER is missing; selection steps down only on real values.\n",
                       "items": {
                         "type": "string",
                         "enum": [
@@ -8199,21 +8199,27 @@
                           "sector_link_beta_unavailable",
                           "subsector_link_beta_unavailable",
                           "sector_link_beta_weak",
-                          "link_betas_stale"
+                          "link_betas_stale",
+                          "link_betas_unavailable",
+                          "hedge_level_inputs_incomplete"
                         ]
                       }
                     },
                     "hedge_gross": {
                       "type": "object",
+                      "description": "Σ|HR| per level; null for a level whose inputs are incomplete.",
                       "properties": {
                         "L1": {
-                          "type": "number"
+                          "type": "number",
+                          "nullable": true
                         },
                         "L2": {
-                          "type": "number"
+                          "type": "number",
+                          "nullable": true
                         },
                         "L3": {
-                          "type": "number"
+                          "type": "number",
+                          "nullable": true
                         }
                       }
                     },
@@ -8225,14 +8231,18 @@
                           "nullable": true
                         },
                         "L2_sector_haircut": {
-                          "type": "number"
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Null when L2_sector_raw is null."
                         },
                         "L3_subsector_raw": {
                           "type": "number",
                           "nullable": true
                         },
                         "L3_subsector_haircut": {
-                          "type": "number"
+                          "type": "number",
+                          "nullable": true,
+                          "description": "Null when L3_subsector_raw is null."
                         }
                       }
                     },
