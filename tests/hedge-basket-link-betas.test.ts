@@ -19,7 +19,19 @@ import { buildHedgeBasket } from "@/lib/risk/hedge-recommendation-service";
 
 const COHORT_TEO = "2026-10-23";
 // cohort_level 2 (sector; parent = market): linked_beta is the slope on SPY.
-const XLK = { level: 2, linked_beta: 1.7590864896774292, linked_beta_mkt: 1.7590864896774292 };
+const XLK = {
+  level: 2,
+  linked_beta: 1.7590864896774292,
+  linked_beta_mkt: 1.7590864896774292,
+  linked_beta_r2: 0.7183336615562439,
+};
+// XLE at the same teo: a weakly identified market link (r² 0.053).
+const XLE = {
+  level: 2,
+  linked_beta: -0.39969542622566223,
+  linked_beta_mkt: -0.39969542622566223,
+  linked_beta_r2: 0.05323369801044464,
+};
 // cohort_level 3 (subsector): linked_beta on its sector, linked_beta_mkt on SPY.
 const SOXX = { level: 3, linked_beta: 2.2708287239074707, linked_beta_mkt: 2.6149649620056152 };
 // cohort_level 1 (the market root): no link coefficient.
@@ -132,6 +144,107 @@ describe("buildHedgeBasket — sector leg beta_to_spy (RMAPI-30)", () => {
     expect(basket.legs[0]!.beta_to_spy).toBeNull();
     expect(basket.net_market_beta_after_hedge).toBeNull();
     expect(basket.data_quality_flags).toEqual(["stock_market_beta_unavailable"]);
+  });
+
+  it("exposes the sector link r² on the sector leg only", () => {
+    const lb = mapCohortLinkBetas(COHORT_TEO, XLK, SOXX);
+    const basket = buildHedgeBasket({
+      ...aaplL3,
+      lambda_s_to_m: lb.lambda_s_to_m,
+      lambda_u_to_m: lb.lambda_u_to_m,
+      lambda_s_to_m_r2: lb.lambda_s_to_m_r2,
+      link_betas_as_of: lb.teo,
+    });
+    expect(basket.legs.map((l) => l.beta_to_spy_r2)).toEqual([null, null, lb.lambda_s_to_m_r2, null]);
+    expect(basket.legs[2]!.beta_to_spy_r2).toBeCloseTo(0.718334, 6);
+    expect(basket.data_quality_flags).toEqual([]);
+  });
+
+  it("a weakly identified sector link (XLE, r² 0.053) is used and flagged", () => {
+    const lb = mapCohortLinkBetas(COHORT_TEO, XLE, SOXX);
+    const basket = buildHedgeBasket({
+      ...aaplL3,
+      sector_etf_ticker: "XLE",
+      lambda_s_to_m: lb.lambda_s_to_m,
+      lambda_u_to_m: lb.lambda_u_to_m,
+      lambda_s_to_m_r2: lb.lambda_s_to_m_r2,
+      link_betas_as_of: lb.teo,
+    });
+    const xle = basket.legs.find((l) => l.leg === "XLE")!;
+    expect(xle.beta_to_spy).toBeCloseTo(-0.399695, 6);
+    expect(basket.data_quality_flags).toEqual(["sector_link_beta_weak"]);
+    expect(basket.net_market_beta_after_hedge).not.toBeNull();
+  });
+
+  it("link betas more than 10 trading days behind as_of are used and flagged stale", () => {
+    const lb = mapCohortLinkBetas(COHORT_TEO, XLK, SOXX);
+    const at = (as_of: string) =>
+      buildHedgeBasket({
+        ...aaplL3,
+        as_of,
+        lambda_s_to_m: lb.lambda_s_to_m,
+        lambda_u_to_m: lb.lambda_u_to_m,
+        lambda_s_to_m_r2: lb.lambda_s_to_m_r2,
+        link_betas_as_of: lb.teo,
+      });
+    // 2026-10-23 → 2026-11-06 is 10 weekdays: not yet stale.
+    expect(at("2026-11-06").data_quality_flags).toEqual([]);
+    // → 2026-11-09 is 11 weekdays: stale, still used.
+    const stale = at("2026-11-09");
+    expect(stale.data_quality_flags).toEqual(["link_betas_stale"]);
+    expect(stale.legs[2]!.beta_to_spy).toBeCloseTo(1.759086, 6);
+    expect(stale.net_market_beta_after_hedge).not.toBeNull();
+  });
+
+  it("link betas more than 60 calendar days behind as_of are not used", () => {
+    const lb = mapCohortLinkBetas(COHORT_TEO, XLK, SOXX);
+    const basket = buildHedgeBasket({
+      ...aaplL3,
+      as_of: "2026-12-23", // 61 calendar days after 2026-10-23
+      lambda_s_to_m: lb.lambda_s_to_m,
+      lambda_u_to_m: lb.lambda_u_to_m,
+      lambda_s_to_m_r2: lb.lambda_s_to_m_r2,
+      link_betas_as_of: lb.teo,
+    });
+    expect(basket.legs[2]!.beta_to_spy).toBeNull();
+    expect(basket.legs[3]!.beta_to_spy).toBeNull();
+    expect(basket.net_market_beta_after_hedge).toBeNull();
+    expect(basket.data_quality_flags).toEqual([
+      "sector_link_beta_unavailable",
+      "subsector_link_beta_unavailable",
+    ]);
+  });
+
+  it("a null hedge ratio is a null position with a flag, not a 0 leg", () => {
+    const lb = mapCohortLinkBetas(COHORT_TEO, XLK, SOXX);
+    const basket = buildHedgeBasket({
+      ...aaplL3,
+      l3_sec_hr: null,
+      lambda_s_to_m: lb.lambda_s_to_m,
+      lambda_u_to_m: lb.lambda_u_to_m,
+      link_betas_as_of: lb.teo,
+    });
+    const xlk = basket.legs.find((l) => l.leg === "XLK")!;
+    expect(xlk.position).toBeNull();
+    expect(xlk.side).toBeNull();
+    expect(xlk.market_beta_contribution).toBeNull();
+    expect(xlk.beta_to_spy).toBeCloseTo(1.759086, 6);
+    expect(basket.net_market_beta_after_hedge).toBeNull();
+    expect(basket.data_quality_flags).toEqual(["sector_hedge_ratio_unavailable"]);
+  });
+
+  it("a null market hedge ratio is flagged too", () => {
+    const basket = buildHedgeBasket({
+      ...aaplL3,
+      user_segment: "family_office",
+      l1_mkt_hr: null,
+      lambda_s_to_m: null,
+      lambda_u_to_m: null,
+    });
+    expect(basket.recommended_hedge_level).toBe("L1");
+    expect(basket.legs[1]!.position).toBeNull();
+    expect(basket.net_market_beta_after_hedge).toBeNull();
+    expect(basket.data_quality_flags).toEqual(["market_hedge_ratio_unavailable"]);
   });
 
   it("an L1 basket needs no link betas and stays fully computed", () => {

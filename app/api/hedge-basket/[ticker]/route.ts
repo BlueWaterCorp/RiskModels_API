@@ -23,7 +23,7 @@ import {
   resolveSymbolByTicker,
   fetchLatestMetricsWithFallback,
 } from "@/lib/dal/risk-engine-v3";
-import { readLatestLinkBetas } from "@/lib/dal/zarr-reader";
+import { isServedMarketFactorEtf, readLatestLinkBetas } from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { buildHedgeBasket } from "@/lib/risk/hedge-recommendation-service";
@@ -53,6 +53,18 @@ export const GET = withBilling(
     }
 
     const { ticker, user_segment, market_factor_etf } = validation.data;
+
+    // Hedge ratios and link betas exist only for the market factor the model is
+    // rooted on. Labelling them with another ETF would misstate every leg.
+    if (!isServedMarketFactorEtf(market_factor_etf)) {
+      return NextResponse.json(
+        {
+          error: "Invalid request",
+          message: `market_factor_etf=${market_factor_etf.toUpperCase()} is not served; hedge baskets are computed against SPY. Omit the parameter or pass SPY.`,
+        },
+        { status: 400, headers: getCorsHeaders(origin) },
+      );
+    }
 
     try {
       const fetchStart = performance.now();
@@ -127,6 +139,7 @@ export const GET = withBilling(
         market_etf_ticker: market_factor_etf,
         lambda_s_to_m: linkBetas?.lambda_s_to_m ?? null,
         lambda_u_to_m: linkBetas?.lambda_u_to_m ?? null,
+        lambda_s_to_m_r2: linkBetas?.lambda_s_to_m_r2 ?? null,
         link_betas_as_of: linkBetas?.teo ?? null,
         user_segment,
       });

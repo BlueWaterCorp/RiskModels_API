@@ -3,7 +3,10 @@
 ## 2026-11-08 — Hedge basket: sector and subsector `beta_to_spy` from the cohort store (RMAPI-30)
 
 - `GET /hedge-basket/{ticker}` reported the sector ETF leg's `beta_to_spy` as 0 and left it out of `net_market_beta_after_hedge`. The route read a retired link-beta store that is no longer published. It now reads the sector and subsector link betas from the cohort store (`ds_erm3_cohorts`).
-- A beta that cannot be read is returned as `null`, and `net_market_beta_after_hedge` is then `null`. The response adds `data_quality_flags` (`stock_market_beta_unavailable`, `sector_link_beta_unavailable`, `subsector_link_beta_unavailable`) and `link_betas_as_of`. Leg positions (the hedge ratios) are unchanged.
+- A beta or hedge ratio that cannot be read is returned as `null` (with the leg's `side` and `market_beta_contribution`), and `net_market_beta_after_hedge` is then `null`. The response adds `data_quality_flags` and `link_betas_as_of`. The `*_unavailable` flags name the missing input. Link betas more than 60 calendar days behind `as_of` are not used. More than 10 trading days behind, they are used and flagged `link_betas_stale`.
+- The sector leg carries `beta_to_spy_r2`, the r² of its link regression. Below 0.1 the basket adds `sector_link_beta_weak`; XLE was 0.053 at 2026-10-23.
+- `market_factor_etf` other than SPY now returns 400. The basket had labelled SPY hedge ratios with the requested ETF.
+- The OpenAPI response schema now matches the response: fields at the top level, `lstar` as a level string.
 
 ## 2026-11-03 — Fund snapshots expose factor ETF identities and risk-window scale
 

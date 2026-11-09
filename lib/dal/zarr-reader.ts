@@ -1543,9 +1543,10 @@ export async function readLatestRankSnapshot(
 // =====================================================================
 //
 // Source: the cohort store `ds_erm3_cohorts_{factor_set}.zarr` (teo × cohort),
-// the SSOT that superseded `ds_erm3_link_betas_{mkt}.zarr`. The old store froze
-// at 2026-01-22 when its writer was retired and is no longer published, so
-// reading it returned null on every call and the basket wrote 0 (RMAPI-30).
+// the SSOT that superseded `ds_erm3_link_betas_{mkt}.zarr`. The old store stopped
+// updating when its writer was retired (the copy in the 2026-11-05 release ends
+// 2026-08-14) and is no longer published, so reading it returned null on every
+// call and the basket wrote 0 (RMAPI-30).
 // The mapping mirrors ERM3 `erm3.core.cohort_store.read_link_betas`:
 //   λ_s→m = linked_beta (hedge policy) at a level-2 cohort (sector; parent = market)
 //   λ_u→s = linked_beta (hedge policy) at a level-3 cohort (subsector on its sector)
@@ -1599,6 +1600,8 @@ export interface LatestLinkBetas {
   lambda_u_to_m: number | null;
   /** Subsector ETF's slope on the sector ETF. Null if absent. */
   lambda_u_to_s: number | null;
+  /** r² of the sector-on-market link regression behind λ_s→m. Null if absent. */
+  lambda_s_to_m_r2: number | null;
 }
 
 /** One cohort's latest cells, as read from the cohort store. */
@@ -1609,6 +1612,25 @@ export interface CohortLinkCells {
   linked_beta: number | null;
   /** `linked_beta_mkt`: the cohort's slope on the market (set at level 3). */
   linked_beta_mkt: number | null;
+  /** `linked_beta_r2`: r² of the cohort-on-parent link regression. */
+  linked_beta_r2?: number | null;
+}
+
+/**
+ * The cohort store is rooted on one market factor ETF (the prefix of
+ * ZARR_FACTOR_SET_ID, e.g. SPY in SPY_uni_mc_3000). Hedge ratios and link betas
+ * exist only for that root; any other market_factor_etf is not served.
+ */
+export function isServedMarketFactorEtf(
+  marketFactorEtf: string,
+  factorSet: string = getZarrFactorSetId(),
+): boolean {
+  return factorSet.toUpperCase().startsWith(`${marketFactorEtf.trim().toUpperCase()}_`);
+}
+
+/** Index of the "hedge" link policy, or -1 when the store carries no policy axis. */
+export function hedgeLinkPolicyIndex(policies: string[] | null): number {
+  return policies ? policies.map((p) => p.trim()).indexOf("hedge") : -1;
 }
 
 /**
@@ -1635,7 +1657,13 @@ export function mapCohortLinkBetas(
   } else if (subsector?.level === 2) {
     lambdaUM = fin(subsector.linked_beta);
   }
-  return { teo, lambda_s_to_m: lambdaSM, lambda_u_to_m: lambdaUM, lambda_u_to_s: lambdaUS };
+  return {
+    teo,
+    lambda_s_to_m: lambdaSM,
+    lambda_u_to_m: lambdaUM,
+    lambda_u_to_s: lambdaUS,
+    lambda_s_to_m_r2: sector?.level === 2 ? fin(sector.linked_beta_r2) : null,
+  };
 }
 
 async function readFloatCell(
@@ -1680,10 +1708,18 @@ export async function readLatestLinkBetas(
   marketFactorEtf = "SPY",
 ): Promise<LatestLinkBetas | null> {
   const factorSet = getZarrFactorSetId();
-  if (!factorSet.toUpperCase().startsWith(`${marketFactorEtf.toUpperCase()}_`)) return null;
+  if (!isServedMarketFactorEtf(marketFactorEtf, factorSet)) return null;
   const grp = await openZarrGroup(zarrCohortsBasename(factorSet));
   if (!grp) return null;
+  return readLinkBetasFromGroup(grp, sectorEtfTicker, subsectorEtfTicker);
+}
 
+/** The latest-teo link-beta read on an already-open cohort group (exported for tests). */
+export async function readLinkBetasFromGroup(
+  grp: Group<Readable>,
+  sectorEtfTicker: string | null,
+  subsectorEtfTicker: string | null,
+): Promise<LatestLinkBetas | null> {
   const teos = await readTeoStrings(grp);
   if (!teos?.length) return null;
   const teoIdx = teos.length - 1;
@@ -1695,20 +1731,21 @@ export async function readLatestLinkBetas(
     readStringCoord(grp, "link_policy"),
   ]);
   if (!tickerMap?.size || !levels?.length) return null;
-  const hedgePolicyIdx = policies ? policies.indexOf("hedge") : -1;
+  const hedgePolicyIdx = hedgeLinkPolicyIndex(policies);
 
   const readCohort = async (ticker: string | null): Promise<CohortLinkCells | null> => {
     if (!ticker) return null;
     const idx = tickerMap.get(ticker.toUpperCase());
     if (idx === undefined) return null;
     const teoSel = slice(teoIdx, teoIdx + 1);
-    const [beta, betaMkt] = await Promise.all([
+    const [beta, betaMkt, r2] = await Promise.all([
       hedgePolicyIdx >= 0
         ? readFloatCell(grp, "linked_beta_policy", [teoSel, idx, hedgePolicyIdx])
         : readFloatCell(grp, "linked_beta", [teoSel, idx]),
       readFloatCell(grp, "linked_beta_mkt", [teoSel, idx]),
+      readFloatCell(grp, "linked_beta_r2", [teoSel, idx]),
     ]);
-    return { level: levels[idx] ?? NaN, linked_beta: beta, linked_beta_mkt: betaMkt };
+    return { level: levels[idx] ?? NaN, linked_beta: beta, linked_beta_mkt: betaMkt, linked_beta_r2: r2 };
   };
 
   const [sector, subsector] = await Promise.all([

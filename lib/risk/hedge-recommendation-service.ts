@@ -113,29 +113,63 @@ export function computeHedgeRecommendationSnapshot(
  * Per-leg row in the hedge basket — what the chat renders.
  *
  *   leg                     — display label (ticker, "AAPL" / "SPY" / "XLK" / etc.)
- *   side                    — "long" | "short" (derived from sign of `position`)
- *   position                — signed HR (the +1 stock leg is +1.0; hedges are -HR)
+ *   side                    — "long" | "short" (derived from sign of `position`);
+ *                             null when position is null
+ *   position                — signed HR (the +1 stock leg is +1.0; hedges are -HR);
+ *                             null when the hedge ratio is unavailable (never 0)
  *   beta_to_spy             — leg's univariate slope on SPY (the market root);
  *                             null when the link beta is unavailable (never 0)
+ *   beta_to_spy_r2          — r² of the sector-on-market link regression (sector
+ *                             leg only; null on every other leg)
  *   market_beta_contribution — position × beta_to_spy (sums to net market β);
- *                             null when beta_to_spy is null
+ *                             null when either factor is null
  */
 export interface HedgeBasketLeg {
   leg: string;
-  side: "long" | "short";
-  position: number;
+  side: "long" | "short" | null;
+  position: number | null;
   beta_to_spy: number | null;
+  beta_to_spy_r2: number | null;
   market_beta_contribution: number | null;
 }
 
 /**
- * Data-quality codes on a hedge basket. A missing beta is reported here and
- * the affected numbers are null — a null beta is never treated as 0.
+ * Data-quality codes on a hedge basket. A missing input is reported here and
+ * the affected numbers are null — a null is never treated as 0.
  */
 export type HedgeBasketDataQualityFlag =
   | "stock_market_beta_unavailable"
+  | "market_hedge_ratio_unavailable"
+  | "sector_hedge_ratio_unavailable"
+  | "subsector_hedge_ratio_unavailable"
   | "sector_link_beta_unavailable"
-  | "subsector_link_beta_unavailable";
+  | "subsector_link_beta_unavailable"
+  | "sector_link_beta_weak"
+  | "link_betas_stale";
+
+/** Link betas older than this many trading days (weekdays) behind `as_of` are flagged stale. */
+export const LINK_BETA_STALE_TRADING_DAYS = 10;
+/** Link betas older than this many calendar days behind `as_of` are not used. */
+export const LINK_BETA_MAX_AGE_CALENDAR_DAYS = 60;
+/** A sector link with r² below this is flagged weakly identified. */
+export const LINK_BETA_WEAK_R2 = 0.1;
+
+/** Calendar and weekday gaps from `from` to `to` (ISO dates); null when either is unparseable. */
+function dateGap(from: string, to: string): { calendar: number; weekdays: number } | null {
+  const a = Date.parse(`${from.slice(0, 10)}T00:00:00Z`);
+  const b = Date.parse(`${to.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const DAY = 86_400_000;
+  const calendar = Math.round((b - a) / DAY);
+  let weekdays = 0;
+  // Weekdays after `from` up to and including `to`. Exchange holidays are not
+  // removed, so this can only overstate the trading-day gap (flags slightly early).
+  for (let t = a + DAY; t <= b; t += DAY) {
+    const dow = new Date(t).getUTCDay();
+    if (dow !== 0 && dow !== 6) weekdays += 1;
+  }
+  return { calendar, weekdays };
+}
 
 /**
  * Structured hedge-basket payload for `/api/hedge-basket/{ticker}` — what the
@@ -182,6 +216,8 @@ export interface BuildHedgeBasketInputs extends HedgeRecommendationSnapshotInput
   lambda_s_to_m: number | null;
   /** Subsector ETF's slope on SPY (λ_u→m). 1.0 when the subsector ETF IS SPY. */
   lambda_u_to_m: number | null;
+  /** r² of the sector-on-market link regression behind lambda_s_to_m. */
+  lambda_s_to_m_r2?: number | null;
   /** Date of the link betas above (latest teo of the cohort store). */
   link_betas_as_of?: string | null;
 }
@@ -197,9 +233,11 @@ function fmtPct(x: number): string {
  * the cohort store (`readLatestLinkBetas` in zarr-reader.ts) before calling
  * this. SPY-as-sector / SPY-as-subsector edge cases use λ=1.0 by convention.
  *
- * Fail-closed: a null beta is never read as 0. The leg keeps its position, its
- * beta_to_spy and market_beta_contribution are null, net_market_beta_after_hedge
- * is null, and the gap is named in data_quality_flags (RMAPI-30).
+ * Fail-closed: a null beta or hedge ratio is never read as 0. The affected
+ * leg's numbers are null, net_market_beta_after_hedge is null, and the gap is
+ * named in data_quality_flags (RMAPI-30). Link betas more than
+ * LINK_BETA_MAX_AGE_CALENDAR_DAYS behind `as_of` are not used; older than
+ * LINK_BETA_STALE_TRADING_DAYS they are used and flagged stale.
  */
 export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const snap = computeHedgeRecommendationSnapshot(inp);
@@ -210,20 +248,42 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const subsectorIsSpy = inp.subsector_etf_ticker?.toUpperCase() === marketEtf.toUpperCase();
   const finiteOrNull = (x: number | null | undefined): number | null =>
     x != null && Number.isFinite(x) ? x : null;
-  const lambdaSM = sectorIsSpy ? 1.0 : finiteOrNull(inp.lambda_s_to_m);
-  const lambdaUM = subsectorIsSpy ? 1.0 : finiteOrNull(inp.lambda_u_to_m);
 
-  const betaMAapl = finiteOrNull(inp.beta_m_aapl);
-  const flags: HedgeBasketDataQualityFlag[] = [];
-  if (betaMAapl === null) flags.push("stock_market_beta_unavailable");
-  const contribution = (position: number, beta: number | null): number | null =>
-    beta === null ? null : position * beta;
   // The basket implements the final recommendation, with that level's entire
   // hedge vector. In particular SPY must not retain its L3 correction at L1/L2.
   const chosen = snap.recommended_hedge_level;
-  const hrM = (chosen === "L1" ? inp.l1_mkt_hr : chosen === "L2" ? inp.l2_mkt_hr : inp.l3_mkt_hr) ?? 0;
-  const hrS = (chosen === "L1" ? 0 : chosen === "L2" ? inp.l2_sec_hr : inp.l3_sec_hr) ?? 0;
-  const hrU = chosen === "L3" ? (inp.l3_sub_hr ?? 0) : 0;
+  const usesSector = chosen !== "L1" && !!inp.sector_etf_ticker && !sectorIsSpy;
+  const usesSubsector = chosen === "L3" && !!inp.subsector_etf_ticker && !subsectorIsSpy;
+
+  const flags: HedgeBasketDataQualityFlag[] = [];
+  const flag = (f: HedgeBasketDataQualityFlag) => {
+    if (!flags.includes(f)) flags.push(f);
+  };
+
+  // Link-beta age against the basket date. Beyond the hard limit the betas are
+  // dropped (and reported unavailable below); within it but past the soft limit
+  // they are used and flagged.
+  let linkBetasTooOld = false;
+  if ((usesSector || usesSubsector) && inp.link_betas_as_of && inp.as_of) {
+    const gap = dateGap(inp.link_betas_as_of, inp.as_of);
+    if (gap && gap.calendar > LINK_BETA_MAX_AGE_CALENDAR_DAYS) linkBetasTooOld = true;
+    else if (gap && gap.weekdays > LINK_BETA_STALE_TRADING_DAYS) flag("link_betas_stale");
+  }
+  const lambdaSM = sectorIsSpy ? 1.0 : linkBetasTooOld ? null : finiteOrNull(inp.lambda_s_to_m);
+  const lambdaUM = subsectorIsSpy ? 1.0 : linkBetasTooOld ? null : finiteOrNull(inp.lambda_u_to_m);
+  const lambdaSMR2 = lambdaSM !== null && !sectorIsSpy ? finiteOrNull(inp.lambda_s_to_m_r2) : null;
+
+  const betaMAapl = finiteOrNull(inp.beta_m_aapl);
+  if (betaMAapl === null) flag("stock_market_beta_unavailable");
+  const product = (a: number | null, b: number | null): number | null =>
+    a === null || b === null ? null : a * b;
+  const sideOf = (p: number | null): "long" | "short" | null =>
+    p === null ? null : p <= 0 ? "short" : "long";
+
+  const hrM = finiteOrNull(chosen === "L1" ? inp.l1_mkt_hr : chosen === "L2" ? inp.l2_mkt_hr : inp.l3_mkt_hr);
+  const hrS = finiteOrNull(chosen === "L2" ? inp.l2_sec_hr : inp.l3_sec_hr);
+  const hrU = finiteOrNull(inp.l3_sub_hr);
+  if (hrM === null) flag("market_hedge_ratio_unavailable");
 
   const legs: HedgeBasketLeg[] = [
     {
@@ -231,34 +291,41 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
       side: "long",
       position: 1.0,
       beta_to_spy: betaMAapl,
-      market_beta_contribution: contribution(1.0, betaMAapl),
+      beta_to_spy_r2: null,
+      market_beta_contribution: product(1.0, betaMAapl),
     },
     {
       leg: marketEtf,
-      side: hrM <= 0 ? "short" : "long",
+      side: sideOf(hrM),
       position: hrM,
       beta_to_spy: 1.0,
-      market_beta_contribution: hrM * 1.0,
+      beta_to_spy_r2: null,
+      market_beta_contribution: product(hrM, 1.0),
     },
   ];
-  if (chosen !== "L1" && inp.sector_etf_ticker && !sectorIsSpy) {
-    if (lambdaSM === null) flags.push("sector_link_beta_unavailable");
+  if (usesSector) {
+    if (hrS === null) flag("sector_hedge_ratio_unavailable");
+    if (lambdaSM === null) flag("sector_link_beta_unavailable");
+    if (lambdaSMR2 !== null && lambdaSMR2 < LINK_BETA_WEAK_R2) flag("sector_link_beta_weak");
     legs.push({
-      leg: inp.sector_etf_ticker.toUpperCase(),
-      side: hrS <= 0 ? "short" : "long",
+      leg: inp.sector_etf_ticker!.toUpperCase(),
+      side: sideOf(hrS),
       position: hrS,
       beta_to_spy: lambdaSM,
-      market_beta_contribution: contribution(hrS, lambdaSM),
+      beta_to_spy_r2: lambdaSMR2,
+      market_beta_contribution: product(hrS, lambdaSM),
     });
   }
-  if (chosen === "L3" && inp.subsector_etf_ticker && !subsectorIsSpy) {
-    if (lambdaUM === null) flags.push("subsector_link_beta_unavailable");
+  if (usesSubsector) {
+    if (hrU === null) flag("subsector_hedge_ratio_unavailable");
+    if (lambdaUM === null) flag("subsector_link_beta_unavailable");
     legs.push({
-      leg: inp.subsector_etf_ticker.toUpperCase(),
-      side: hrU <= 0 ? "short" : "long",
+      leg: inp.subsector_etf_ticker!.toUpperCase(),
+      side: sideOf(hrU),
       position: hrU,
       beta_to_spy: lambdaUM,
-      market_beta_contribution: contribution(hrU, lambdaUM),
+      beta_to_spy_r2: null,
+      market_beta_contribution: product(hrU, lambdaUM),
     });
   }
 

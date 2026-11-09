@@ -5880,7 +5880,9 @@ paths:
           in: query
           required: false
           schema: { type: string, default: SPY }
-          description: Market factor ETF whose link-beta cube is read.
+          description: >
+            Market factor ETF. Only the model's market root (SPY) is served;
+            any other value returns 400.
       responses:
         "200":
           description: Hedge basket
@@ -5890,47 +5892,67 @@ paths:
                 type: object
                 properties:
                   ticker: { type: string }
-                  as_of: { type: string, format: date }
-                  inputs:
-                    type: object
-                    description: >
-                      Betas, layer ETF tickers, and the `lambda_s_to_m` /
-                      `lambda_u_to_m` link betas the basket was built from.
-                  basket:
-                    type: object
-                    properties:
-                      recommended_level: { type: string }
-                      statistical_lstar: { type: number, nullable: true }
-                  decision_trace:
-                    type: array
-                    items: { type: string }
-                    description: Ordered rationale for the recommended level.
+                  as_of:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: Date of the metric snapshot (hedge ratios, ERs, betas).
+                  lstar:
+                    type: string
+                    enum: [L1, L2, L3]
+                    nullable: true
+                    description: Statistical level selection.
+                  recommended_hedge_level:
+                    type: string
+                    enum: [L1, L2, L3]
+                    description: Level after the leverage cap and ER haircut checks.
+                  user_segment_applied:
+                    type: string
+                    enum: [retail, family_office, ls_equity, stat_arb]
+                  leverage_cap_applied: { type: number }
+                  haircut_applied: { type: number }
                   legs:
                     type: array
                     description: >
-                      Stock leg plus the ETF legs of the recommended level.
+                      Stock leg, market leg, and the sector / subsector ETF legs
+                      of the recommended level.
                     items:
                       type: object
                       properties:
                         leg: { type: string }
-                        side: { type: string, enum: [long, short] }
-                        position: { type: number }
+                        side:
+                          type: string
+                          enum: [long, short]
+                          nullable: true
+                          description: Null when position is null.
+                        position:
+                          type: number
+                          nullable: true
+                          description: >
+                            Signed hedge ratio (the stock leg is +1.0). Null when
+                            the hedge ratio is unavailable.
                         beta_to_spy:
                           type: number
                           nullable: true
                           description: >
                             The leg's slope on the market ETF (1.0 for the
                             market leg). Null when the link beta is unavailable.
+                        beta_to_spy_r2:
+                          type: number
+                          nullable: true
+                          description: >
+                            r² of the sector-on-market link regression. Set on
+                            the sector leg only; null on every other leg.
                         market_beta_contribution:
                           type: number
                           nullable: true
-                          description: position × beta_to_spy; null when beta_to_spy is null.
+                          description: position × beta_to_spy; null when either is null.
                   net_market_beta_after_hedge:
                     type: number
                     nullable: true
                     description: >
                       Sum of the legs' market_beta_contribution. Null when any
-                      leg's beta_to_spy is unavailable.
+                      leg's contribution is unavailable.
                   link_betas_as_of:
                     type: string
                     format: date
@@ -5939,18 +5961,52 @@ paths:
                   data_quality_flags:
                     type: array
                     description: >
-                      Empty when every beta was available. Codes:
-                      stock_market_beta_unavailable,
-                      sector_link_beta_unavailable,
-                      subsector_link_beta_unavailable.
+                      Empty when every input was available and current. The
+                      `*_unavailable` codes mean the corresponding numbers are
+                      null; link betas more than 60 calendar days behind `as_of`
+                      are not used and are reported unavailable.
+                      `sector_link_beta_weak`: the sector link r² is below 0.1.
+                      `link_betas_stale`: the link betas are more than 10
+                      trading days behind `as_of`.
                     items:
                       type: string
                       enum:
                         - stock_market_beta_unavailable
+                        - market_hedge_ratio_unavailable
+                        - sector_hedge_ratio_unavailable
+                        - subsector_hedge_ratio_unavailable
                         - sector_link_beta_unavailable
                         - subsector_link_beta_unavailable
+                        - sector_link_beta_weak
+                        - link_betas_stale
+                  hedge_gross:
+                    type: object
+                    properties:
+                      L1: { type: number }
+                      L2: { type: number }
+                      L3: { type: number }
+                  marginal_er:
+                    type: object
+                    properties:
+                      L2_sector_raw: { type: number, nullable: true }
+                      L2_sector_haircut: { type: number }
+                      L3_subsector_raw: { type: number, nullable: true }
+                      L3_subsector_haircut: { type: number }
+                  decision_trace:
+                    type: array
+                    items: { type: string }
+                    description: Ordered rationale for the recommended level.
+                  hedge_levels:
+                    type: object
+                    additionalProperties: true
+                    description: Per-level hedge ratios, explained risk and ETF identities.
+                  _metadata:
+                    type: object
+                    additionalProperties: true
         "400":
-          description: Invalid ticker or query parameter
+          description: >
+            Invalid ticker or query parameter, including a market_factor_etf
+            other than the served market root.
         "401":
           description: Authentication required
         "402":

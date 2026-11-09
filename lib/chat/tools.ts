@@ -607,6 +607,7 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
     market_etf_ticker: "SPY",
     lambda_s_to_m: linkBetas?.lambda_s_to_m ?? null,
     lambda_u_to_m: linkBetas?.lambda_u_to_m ?? null,
+    lambda_s_to_m_r2: linkBetas?.lambda_s_to_m_r2 ?? null,
     link_betas_as_of: linkBetas?.teo ?? null,
     user_segment: segment,
   });
@@ -1167,7 +1168,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_hedge_basket",
     openaiTool: fnTool(
       "get_hedge_basket",
-      "Structured hedge basket for a ticker: the four legs (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution and a net market β subtotal, plus the L1/L2/L3 marginal ER and a `decision_trace` narration of why `recommended_hedge_level` was chosen. PREFER this over get_risk_metrics when answering 'how should I hedge X?' — it surfaces the legs that compose the L3 market HR and prevents readers from mis-reading 'Market HR (L3) = −2.00' as a beta of 2.0. The narrative answer should walk through `legs[]` as a 4-row table, show `recommended_hedge_level` (and flag the divergence from `lstar` if any), and quote the `decision_trace` lines verbatim.",
+      "Structured hedge basket for a ticker: the four legs (stock + SPY + sector ETF + subsector ETF) with per-leg β-to-SPY contribution and a net market β subtotal, plus the L1/L2/L3 marginal ER and a `decision_trace` narration of why `recommended_hedge_level` was chosen. PREFER this over get_risk_metrics when answering 'how should I hedge X?' — it surfaces the legs that compose the L3 market HR and prevents readers from mis-reading 'Market HR (L3) = −2.00' as a beta of 2.0. The narrative answer should walk through `legs[]` as a table (one row per leg returned), show `recommended_hedge_level` (and flag the divergence from `lstar` if any), and quote the `decision_trace` lines verbatim. Null values are unavailable data: show a null `position`, `beta_to_spy` or `market_beta_contribution` as 'n/a', never as 0, and never compute a subtotal or any other number from it yourself. If `net_market_beta_after_hedge` is null, say the net market β is unavailable. If `data_quality_flags` is non-empty, state each flag in plain words (e.g. sector_link_beta_unavailable = the sector ETF's beta to SPY could not be read; sector_link_beta_weak = that beta is weakly identified, low r²; link_betas_stale = the link betas are older than the basket date, see `link_betas_as_of`).",
       {
         ticker: {
           type: "string",
