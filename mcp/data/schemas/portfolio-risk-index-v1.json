@@ -25,8 +25,18 @@
         "position_count": {
           "type": "integer"
         },
-        "er_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
-        "volatility_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "er_coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Ratio of covered absolute position weight to total absolute position weight for complete four-layer ER vectors."
+        },
+        "volatility_coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Ratio of covered absolute position weight to total absolute position weight for finite volatility inputs."
+        },
         "aggregation": { "const": "covered_weights_not_renormalized" }
       }
     },
@@ -38,11 +48,17 @@
         "type": "object",
         "properties": {
           "date": { "type": "string", "format": "date" },
-          "market": { "type": ["number", "null"] },
-          "sector": { "type": ["number", "null"] },
-          "subsector": { "type": ["number", "null"] },
-          "residual": { "type": ["number", "null"] },
-          "er_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+          "market_er": { "type": ["number", "null"] },
+          "sector_er": { "type": ["number", "null"] },
+          "subsector_er": { "type": ["number", "null"] },
+          "residual_er": { "type": ["number", "null"] },
+          "systematic_er": { "type": ["number", "null"] },
+          "er_coverage": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Ratio of covered absolute position weight to total absolute position weight for this date."
+          },
           "data_quality_flags": { "type": "array", "items": { "type": "string" } }
         }
       }

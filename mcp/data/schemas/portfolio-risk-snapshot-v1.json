@@ -37,11 +37,41 @@
           "type": "integer",
           "description": "Number of resolved positions"
         },
-        "er_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
-        "volatility_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "er_coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Ratio of covered absolute position weight to total absolute position weight for complete four-layer ER vectors."
+        },
+        "volatility_coverage": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Ratio of covered absolute position weight to total absolute position weight for finite volatility inputs."
+        },
         "aggregation": {
           "const": "covered_weights_not_renormalized",
           "description": "Missing names are excluded and covered weights retain their original scale."
+        },
+        "lstar_variance_decomposition": {
+          "type": "object",
+          "description": "Optional attribution using each name's selected cascade level. Missing levels or incomplete selected ER vectors are excluded without renormalizing covered weights.",
+          "properties": {
+            "market": { "type": ["number", "null"] },
+            "sector": { "type": ["number", "null"] },
+            "subsector": { "type": ["number", "null"] },
+            "residual": { "type": ["number", "null"] },
+            "systematic": { "type": ["number", "null"] },
+            "weight_covered": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Ratio of covered absolute position weight to total absolute position weight for names with a finite selected level and complete ER vector."
+            },
+            "dropped_count": { "type": "integer", "minimum": 0 },
+            "aggregation": { "const": "covered_weights_not_renormalized" },
+            "data_quality_flags": { "type": "array", "items": { "type": "string" } }
+          }
         },
         "diversification": {
           "type": "object",

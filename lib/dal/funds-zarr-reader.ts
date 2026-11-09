@@ -3442,8 +3442,8 @@ function fitWeightVectors(
   let activeAbs = 0, activeSq = 0, weightInBench = 0, benchCoverage = 0, nOverlap = 0;
   const active: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[] = [];
   for (const s of allSyms) {
-    const wp = subjectWeights.get(s) ?? 0; // allow-default: security absent from subject has zero portfolio weight
-    const wb = benchWeights.get(s) ?? 0; // allow-default: security absent from benchmark has zero benchmark weight
+    const wp = subjectWeights.get(s) ?? 0; // allow-default: exposure - absent subject member has zero portfolio weight
+    const wb = benchWeights.get(s) ?? 0; // allow-default: exposure - absent benchmark member has zero benchmark weight
     const a = wp - wb;
     activeAbs += Math.abs(a);
     activeSq += a * a;

@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       .from('agent_api_keys')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id);
-    name = `API Key ${(count ?? 0) + 1}`; // allow-default: unavailable key count starts display numbering at one
+    name = `API Key ${(count ?? 0) + 1}`; // allow-default: counter - unavailable key count starts display numbering at one
   }
 
   const { plainKey, hashedKey, prefix } = generateApiKey('live');

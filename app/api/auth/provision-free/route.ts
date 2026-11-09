@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         .eq("signup_attribution->>provisioned_via", "provision-free")
         .eq("signup_attribution->>ip", ip)
         .gte("created_at", since);
-      if ((count ?? 0) >= MAX_FREE_KEYS_PER_IP_PER_DAY) { // allow-default: unavailable provisioning count is treated as no prior keys
+      if ((count ?? 0) >= MAX_FREE_KEYS_PER_IP_PER_DAY) { // allow-default: counter - unavailable provisioning count means no prior keys
         return NextResponse.json(
           {
             error: "Rate limit exceeded",

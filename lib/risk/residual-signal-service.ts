@@ -121,13 +121,13 @@ export async function getResidualSignalLatest(
     a: { residual_z_5d: number | null },
     b: { residual_z_5d: number | null },
   ) => {
-    if (a.residual_z_5d == null) return b.residual_z_5d == null ? 0 : 1;
+    if (a.residual_z_5d == null) return b.residual_z_5d == null ? 0 : 1; // allow-default: ordering - equal missing sort keys compare equally
     if (b.residual_z_5d == null) return -1;
     return a.residual_z_5d - b.residual_z_5d;
   };
   const sorted = [...snap.rows].sort(byResidualZNullsLast);
   const limit = Math.min(2000, Math.max(1, Math.floor(opts.limit ?? 500)));
-  const offset = Math.max(0, Math.floor(opts.offset ?? 0)); // allow-default: omitted pagination offset starts at zero
+  const offset = Math.max(0, Math.floor(opts.offset ?? 0)); // allow-default: pagination - omitted offset starts at zero
   const page = sorted.slice(offset, offset + limit);
 
   return {
@@ -153,7 +153,7 @@ export async function getResidualSignalDecile(
   const rows = snap.rows
     .filter((r) => r.decile_rank != null && Math.round(r.decile_rank) === decile)
     .sort((a, b) => {
-      if (a.residual_z_5d == null) return b.residual_z_5d == null ? 0 : 1;
+      if (a.residual_z_5d == null) return b.residual_z_5d == null ? 0 : 1; // allow-default: ordering - equal missing sort keys compare equally
       if (b.residual_z_5d == null) return -1;
       return a.residual_z_5d - b.residual_z_5d;
     });

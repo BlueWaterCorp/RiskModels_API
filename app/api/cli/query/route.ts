@@ -58,7 +58,7 @@ export const POST = withBilling(
 
     return NextResponse.json({
       results: data || [],
-      count: data?.length || 0, // allow-default: missing result array has zero rows
+      count: data?.length || 0, // allow-default: length - missing result array has zero rows
       sql: query,
     });
   },

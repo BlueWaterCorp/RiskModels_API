@@ -347,7 +347,7 @@ export async function GET(request: NextRequest) {
         if (!row?.sector_etf || row.l3_sec_hr == null) continue;
         sectorBuckets.set(
           row.sector_etf,
-          (sectorBuckets.get(row.sector_etf) ?? 0) + weight * row.l3_sec_hr, // allow-default: absent bucket starts at zero
+          (sectorBuckets.get(row.sector_etf) ?? 0) + weight * row.l3_sec_hr, // allow-default: accumulator - first sector hedge contribution starts at zero
         );
       }
       for (const [etf, hr] of sectorBuckets) {
@@ -365,7 +365,7 @@ export async function GET(request: NextRequest) {
         if (!row?.subsector_etf || row.l3_sub_hr == null) continue;
         subsectorBuckets.set(
           row.subsector_etf,
-          (subsectorBuckets.get(row.subsector_etf) ?? 0) + weight * row.l3_sub_hr, // allow-default: absent bucket starts at zero
+          (subsectorBuckets.get(row.subsector_etf) ?? 0) + weight * row.l3_sub_hr, // allow-default: accumulator - first subsector hedge contribution starts at zero
         );
       }
       for (const [etf, hr] of subsectorBuckets) {

@@ -124,10 +124,9 @@ async function buildSnapshotResponse(
 
   // Parallel Lstar-dispatched attribution: same shape as the fixed-L3 block
   // above, but with each name's ER pulled at the cascade depth Lstar
-  // dispatched to (L1/L2/L3 per `lstar_level`). Names where Lstar has no
-  // recommendation (`lstar_level == null`) are dropped — `weight_covered`
-  // and `dropped_count` surface coverage. Only populated when the upstream
-  // compute pulled L1/L2 ERs (i.e. include_hedge_ratios=true).
+  // dispatched to (L1/L2/L3 per `lstar_level`). Names with a missing selected
+  // level or an incomplete ER vector are dropped; `weight_covered` (an
+  // absolute-weight ratio) and `dropped_count` surface that coverage.
   if (core.lstar_attribution) {
     portfolioRiskIndex.lstar_variance_decomposition = {
       market: core.lstar_attribution.market,

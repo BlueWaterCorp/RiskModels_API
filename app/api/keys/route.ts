@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     .eq('user_id', user.id)
     .is('revoked_at', null);
 
-  if ((count ?? 0) >= MAX_KEYS) { // allow-default: unavailable key count is a non-model counter
+  if ((count ?? 0) >= MAX_KEYS) { // allow-default: counter - unavailable key count is reported as zero
     return NextResponse.json(
       { error: `Maximum of ${MAX_KEYS} active keys reached. Revoke one first.` },
       { status: 429 },

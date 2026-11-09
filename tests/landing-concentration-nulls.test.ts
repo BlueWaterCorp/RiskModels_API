@@ -18,6 +18,14 @@ vi.mock("@/lib/dal/risk-metadata", () => ({
   getRiskMetadata: vi.fn(),
 }));
 
+vi.mock("@/lib/landing/walkthrough-chart-data", () => ({
+  WALKTHROUGH_MAG7_TICKERS: ["MDGL", "ACAD"],
+  WALKTHROUGH_MAG7_NAMES: {
+    MDGL: "Madrigal Pharmaceuticals",
+    ACAD: "Acadia Pharmaceuticals",
+  },
+}));
+
 import { NextRequest } from "next/server";
 import {
   fetchLatestMetricsWithFallback,
@@ -33,13 +41,13 @@ const mockCorrelations = vi.mocked(fetchEtfCorrelationMatrices);
 const mockMetadata = vi.mocked(getRiskMetadata);
 
 const REAL_ROWS = {
-  SYM_A: {
+  "MDGL-US": {
     l3_mkt_er: 0.00406,
     l3_sec_er: 0.01648,
     l3_sub_er: 0.11038,
     l3_res_er: 0.86908,
   },
-  SYM_B: {
+  "ACAD-US": {
     l3_mkt_er: 0.08137,
     l3_sec_er: 0.12097,
     l3_sub_er: 0.10262,
@@ -49,14 +57,14 @@ const REAL_ROWS = {
 
 beforeEach(() => {
   mockResolve.mockReset().mockResolvedValue(new Map([
-    ["AAPL", { symbol: "SYM_A", ticker: "AAPL", name: "Apple", sector_etf: null, subsector_etf: null }],
-    ["MSFT", { symbol: "SYM_B", ticker: "MSFT", name: "Microsoft", sector_etf: null, subsector_etf: null }],
+    ["MDGL", { symbol: "MDGL-US", ticker: "MDGL", name: "Madrigal Pharmaceuticals", sector_etf: null, subsector_etf: null }],
+    ["ACAD", { symbol: "ACAD-US", ticker: "ACAD", name: "Acadia Pharmaceuticals", sector_etf: null, subsector_etf: null }],
   ]) as never);
   mockFetch.mockReset().mockImplementation(async (symbol) => ({
     teo: "2026-08-06",
     metrics: {
       ...REAL_ROWS[symbol as keyof typeof REAL_ROWS],
-      ...(symbol === "SYM_B" ? { l3_res_er: null } : {}),
+      ...(symbol === "ACAD-US" ? { l3_res_er: null } : {}),
       l3_mkt_hr: null,
       l3_sec_hr: null,
       l3_sub_hr: null,
@@ -85,11 +93,11 @@ describe("GET /api/landing/concentration null semantics", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.per_ticker.AAPL.total_er).toBeCloseTo(1, 12);
-    expect(body.per_ticker.AAPL.sigma).toBeNull();
-    expect(body.per_ticker.MSFT.l3_res_er).toBeNull();
-    expect(body.per_ticker.MSFT.total_er).toBeNull();
-    expect(body.per_ticker.MSFT.data_quality_flags).toContain("er_inputs_incomplete");
+    expect(body.per_ticker.MDGL.total_er).toBeCloseTo(1, 12);
+    expect(body.per_ticker.MDGL.sigma).toBeNull();
+    expect(body.per_ticker.ACAD.l3_res_er).toBeNull();
+    expect(body.per_ticker.ACAD.total_er).toBeNull();
+    expect(body.per_ticker.ACAD.data_quality_flags).toContain("er_inputs_incomplete");
     expect(body.portfolios.equal_weight.er_coverage).toBe(0.5);
     expect(body.portfolios.equal_weight.vol_coverage).toBe(0);
     expect(body.portfolios.equal_weight.variance_naive).toBeNull();

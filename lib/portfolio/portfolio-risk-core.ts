@@ -116,8 +116,8 @@ export interface PortfolioLstarAttribution {
   sector: number | null;
   subsector: number | null;
   residual: number | null;
-  /** Absolute-weight coverage for names that contributed to the Lstar aggregate
-   *  (valid level plus its complete ER vector). */
+  /** Ratio of covered absolute position weight to total absolute position weight
+   *  for names that contributed (valid level plus its complete ER vector). */
   weight_covered: number;
   /** Count of names dropped due to a missing level or incomplete ER vector. */
   dropped_count: number;
@@ -181,7 +181,7 @@ export function netPositionsByTicker(
   const out = new Map<string, number>();
   for (const p of positions) {
     const t = p.ticker.trim().toUpperCase();
-    out.set(t, (out.get(t) ?? 0) + p.weight); // allow-default: absent accumulator starts at zero
+    out.set(t, (out.get(t) ?? 0) + p.weight); // allow-default: accumulator - first position for a ticker starts at zero
   }
   return [...out].map(([ticker, weight]) => ({ ticker, weight }));
 }

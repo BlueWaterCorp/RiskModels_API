@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
 
     // Amount actually paid (cents → USD). Source of truth is the PaymentIntent; fall back to metadata.
     const prepaidUsd = isPaymentMode
-      ? (paymentIntent?.amount_received ?? session.amount_total ?? 0) / 100 // allow-default: missing checkout amount is a non-model monetary total
+      ? (paymentIntent?.amount_received ?? session.amount_total ?? 0) / 100 // allow-default: billing - missing checkout amount is a non-model monetary total
       : 0;
     const paymentIntentId = paymentIntent?.id ?? null;
 
@@ -132,7 +132,7 @@ export async function GET(req: NextRequest) {
     }
 
     const currentBalance = existingAccount
-      ? parseFloat(String(existingAccount.balance_usd ?? 0)) // allow-default: missing billing balance is a non-model monetary total
+      ? parseFloat(String(existingAccount.balance_usd ?? 0)) // allow-default: billing - missing account balance is a non-model monetary total
       : 0;
 
     // ── Decide what to credit (each guard is independent and idempotent) ──────────

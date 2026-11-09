@@ -184,7 +184,7 @@ function isoMinusDays(iso: string, days: number): string {
 
 function mode(values: string[]): string | null {
   const counts = new Map<string, number>();
-  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1); // allow-default: absent frequency counter starts at zero
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1); // allow-default: counter - first occurrence starts at zero
   let best: string | null = null;
   let bestN = 0;
   for (const [v, n] of counts) {
@@ -289,7 +289,7 @@ export async function computePortfolioExposure(
   const valueByTicker = new Map<string, number>();
   for (const p of positions) {
     const t = p.ticker.toUpperCase();
-    valueByTicker.set(t, (valueByTicker.get(t) ?? 0) + p.value); // allow-default: absent accumulator starts at zero
+    valueByTicker.set(t, (valueByTicker.get(t) ?? 0) + p.value); // allow-default: accumulator - first position for a ticker starts at zero
   }
   const submittedValue = (ticker: string): number => {
     const value = valueByTicker.get(ticker);

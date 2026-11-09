@@ -82,7 +82,7 @@ export async function fetchBatchLstar(
 ): Promise<BatchLstarResponseBody> {
   const service = getLstarService();
   const marketFactorEtf = options.marketFactorEtf ?? "SPY";
-  const years = options.years ?? 1; // allow-default: omitted history-window parameter defaults to one year
+  const years = options.years ?? 1; // allow-default: parameter - omitted history window defaults to one year
   const threshold = options.threshold;
   const axis = options.axis ?? "industry";
 

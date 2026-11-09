@@ -297,7 +297,7 @@ export function notionalsFromLevelSnapshot(
 
   const acc = (ticker: string | null | undefined, hr: number | null) => {
     if (hr == null || !Number.isFinite(hr) || !ticker) return;
-    hrByEtf.set(ticker, (hrByEtf.get(ticker) ?? 0) + hr); // allow-default: absent ETF accumulator starts at zero
+    hrByEtf.set(ticker, (hrByEtf.get(ticker) ?? 0) + hr); // allow-default: accumulator - first ETF hedge contribution starts at zero
   };
 
   acc(mEtf, snapshot.market_hr);

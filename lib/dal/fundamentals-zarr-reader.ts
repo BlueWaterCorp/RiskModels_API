@@ -289,11 +289,13 @@ export function totalPayoutRatio(
   shareRepurchasesTtm: number,
   netIncomeTtm: number,
 ): number {
-  const div = finite(dividendsPaidTtm) ? dividendsPaidTtm : 0;
-  const buy = finite(shareRepurchasesTtm) ? shareRepurchasesTtm : 0;
-  if (!finite(netIncomeTtm) || netIncomeTtm <= 0) return NaN;
-  if (!finite(dividendsPaidTtm) && !finite(shareRepurchasesTtm)) return NaN; // nothing to sum
-  return (div + buy) / netIncomeTtm;
+  if (
+    !finite(dividendsPaidTtm) ||
+    !finite(shareRepurchasesTtm) ||
+    !finite(netIncomeTtm) ||
+    netIncomeTtm <= 0
+  ) return NaN;
+  return (dividendsPaidTtm + shareRepurchasesTtm) / netIncomeTtm;
 }
 
 /** Sustainable growth g = retention * ROE — the internally-funded equity growth rate. */

@@ -277,7 +277,7 @@ export class LstarService {
       throw new Error(LSTAR_STYLE_AXIS_REMOVED_MESSAGE);
     }
     const upperTicker = ticker.toUpperCase();
-    const years = options?.years ?? 1; // allow-default: omitted history-window parameter defaults to one year
+    const years = options?.years ?? 1; // allow-default: parameter - omitted history window defaults to one year
     const threshold = options?.threshold ?? LSTAR_DEFAULT_THRESHOLD;
     const axis: LstarAxis = options?.axis ?? "industry";
 

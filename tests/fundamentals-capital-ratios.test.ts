@@ -26,9 +26,9 @@ describe("capital-return ratios (Phase 2)", () => {
   });
 
   it("total-payout treats a missing leg as zero but needs at least one present", () => {
-    expect(totalPayoutRatio(30, NaN, 100)).toBeCloseTo(0.3); // dividends only
-    expect(totalPayoutRatio(NaN, 80, 100)).toBeCloseTo(0.8); // buybacks only
-    expect(totalPayoutRatio(NaN, NaN, 100)).toBeNaN(); // nothing to sum → null
+    expect(totalPayoutRatio(30, NaN, 100)).toBeNaN();
+    expect(totalPayoutRatio(NaN, 80, 100)).toBeNaN();
+    expect(totalPayoutRatio(NaN, NaN, 100)).toBeNaN();
   });
 
   it("sustainable growth g = retention * roe", () => {

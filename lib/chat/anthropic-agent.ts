@@ -179,8 +179,8 @@ export async function runAnthropicChatAgent(
     finalModel = response.model;
     totalUsage.prompt_tokens +=
       response.usage.input_tokens +
-      (response.usage.cache_read_input_tokens ?? 0) +
-      (response.usage.cache_creation_input_tokens ?? 0);
+      (response.usage.cache_read_input_tokens ?? 0) + // allow-default: counter - absent cache-read usage means no cached tokens
+      (response.usage.cache_creation_input_tokens ?? 0); // allow-default: counter - absent cache-write usage means no cached tokens
     totalUsage.completion_tokens += response.usage.output_tokens;
     totalUsage.total_tokens =
       totalUsage.prompt_tokens + totalUsage.completion_tokens;

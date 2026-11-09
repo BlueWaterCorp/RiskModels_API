@@ -34,7 +34,7 @@ function datedBookCoverage(
   const valueByTicker = new Map<string, number>();
   for (const p of submitted) {
     const ticker = p.ticker.trim().toUpperCase();
-    valueByTicker.set(ticker, (valueByTicker.get(ticker) ?? 0) + p.value); // allow-default: absent accumulator starts at zero
+    valueByTicker.set(ticker, (valueByTicker.get(ticker) ?? 0) + p.value); // allow-default: accumulator - first position for a ticker starts at zero
   }
   const submittedValue = (ticker: string): number => {
     const value = valueByTicker.get(ticker.trim().toUpperCase());

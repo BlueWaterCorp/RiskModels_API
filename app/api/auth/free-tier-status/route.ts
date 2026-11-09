@@ -161,15 +161,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate remaining queries
-    const remaining = Math.max(0, 100 - (usage.queries_today || 0)); // allow-default: missing usage counter means no queries recorded
+    const remaining = Math.max(0, 100 - (usage.queries_today || 0)); // allow-default: counter - missing usage means no queries recorded
 
     return NextResponse.json(
       {
         tier: "free",
         user_id: userId,
         usage: {
-          queries_today: usage.queries_today || 0, // allow-default: missing usage counter means no queries recorded
-          queries_this_month: usage.queries_this_month || 0, // allow-default: missing usage counter means no queries recorded
+          queries_today: usage.queries_today || 0, // allow-default: counter - missing daily usage means no queries recorded
+          queries_this_month: usage.queries_this_month || 0, // allow-default: counter - missing monthly usage means no queries recorded
           remaining_today: remaining,
         },
         limits: {

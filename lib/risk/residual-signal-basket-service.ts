@@ -189,12 +189,12 @@ export async function getResidualSignalBasket(
     // they describe what the basket contains, not what made the aggregate.
     const decileKey =
       row.decile_rank == null ? "null" : String(Math.round(row.decile_rank));
-    decileDist[decileKey] = (decileDist[decileKey] ?? 0) + 1; // allow-default: absent histogram bucket starts at zero
+    decileDist[decileKey] = (decileDist[decileKey] ?? 0) + 1; // allow-default: counter - first row in a decile bucket starts at zero
     const qKey =
       row.signal_quality_quintile == null
         ? "null"
         : String(Math.round(row.signal_quality_quintile));
-    qualityDist[qKey] = (qualityDist[qKey] ?? 0) + 1; // allow-default: absent histogram bucket starts at zero
+    qualityDist[qKey] = (qualityDist[qKey] ?? 0) + 1; // allow-default: counter - first row in a quality bucket starts at zero
 
     if (passesGate && weight > 0) {
       contributors.push({ row, weight });
