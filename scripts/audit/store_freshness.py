@@ -251,8 +251,25 @@ def _is_nyse_session(day: dt.date) -> bool:
     return day.weekday() < 5 and day not in nyse_holidays(day.year)
 
 
+def nyse_early_closes(year: int) -> set[dt.date]:
+    """13:00 ET closes: the day before Independence Day, the day after Thanksgiving, Christmas Eve."""
+    out: set[dt.date] = set()
+    july3 = dt.date(year, 7, 3)
+    if _is_nyse_session(july3) and _observed(dt.date(year, 7, 4)) != july3:
+        out.add(july3)
+    out.add(_nth_weekday(year, 11, 3, 4) + dt.timedelta(days=1))
+    dec24 = dt.date(year, 12, 24)
+    if _is_nyse_session(dec24):
+        out.add(dec24)
+    return out
+
+
+def _close_time(day: dt.date) -> dt.time:
+    return dt.time(13, 0) if day in nyse_early_closes(day.year) else dt.time(16, 0)
+
+
 def last_completed_nyse_session(now: dt.datetime | None = None) -> dt.date:
-    """Most recent regular NYSE session whose 16:00 ET close has passed."""
+    """Most recent NYSE session whose close (16:00 ET, or 13:00 ET on an early close) has passed."""
     eastern = ZoneInfo("America/New_York")
     if now is None:
         now = dt.datetime.now(eastern)
@@ -261,7 +278,7 @@ def last_completed_nyse_session(now: dt.datetime | None = None) -> dt.date:
     else:
         now = now.astimezone(eastern)
     day = now.date()
-    if not (_is_nyse_session(day) and now.time() >= dt.time(16, 0)):
+    if not (_is_nyse_session(day) and now.time() >= _close_time(day)):
         day -= dt.timedelta(days=1)
     while not _is_nyse_session(day):
         day -= dt.timedelta(days=1)

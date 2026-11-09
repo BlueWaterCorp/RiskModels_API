@@ -7,6 +7,7 @@ import fnmatch
 import json
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "audit"))
@@ -102,6 +103,17 @@ def test_expected_session_uses_manifest_and_completed_exchange_session():
     fs = FakeFS({path: json.dumps({"release_id": "2593c682", "session": FIXTURE["session"]})})
     observed = dt.datetime(2026, 11, 8, 12, tzinfo=dt.timezone.utc)
     assert sf.expected_session(fs, "bucket/base", observed) == dt.date(2026, 11, 6)
+
+
+def test_calendar_handles_holidays_and_early_closes():
+    et = ZoneInfo("America/New_York")
+    # Thanksgiving 2026-11-26 is a holiday; 11-27 closes at 13:00 ET.
+    assert sf.last_completed_nyse_session(dt.datetime(2026, 11, 27, 14, tzinfo=et)) == dt.date(2026, 11, 27)
+    assert sf.last_completed_nyse_session(dt.datetime(2026, 11, 27, 12, tzinfo=et)) == dt.date(2026, 11, 25)
+    # Christmas Eve 2026 (Thursday) closes early; Christmas is a holiday.
+    assert sf.last_completed_nyse_session(dt.datetime(2026, 12, 25, 10, tzinfo=et)) == dt.date(2026, 12, 24)
+    # Memorial Day 2026-05-25 is a holiday.
+    assert sf.last_completed_nyse_session(dt.datetime(2026, 5, 25, 17, tzinfo=et)) == dt.date(2026, 5, 22)
 
 
 def test_run_fails_when_daily_store_lags_independent_session(monkeypatch):
