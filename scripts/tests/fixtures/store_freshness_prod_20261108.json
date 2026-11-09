@@ -1,0 +1,13 @@
+{
+  "_source": "store_freshness.py run against gs://rm_api_data/eodhd on 2026-11-08 (release 2593c682, published 2026-11-05 session). Values copied from that run.",
+  "session": "2026-11-05",
+  "teo_units": "days since 2000-01-03 00:00:00",
+  "ds_daily_last_teo_raw": 9803,
+  "stores": [
+    {"name": "ds_daily.zarr", "cadence": "session", "latest": "2026-11-05", "expect": "OK"},
+    {"name": "ds_erm3_cohorts_SPY_uni_mc_3000.zarr", "cadence": "session", "latest": "2026-10-23", "expect": "FAIL"},
+    {"name": "ds_fundamentals.zarr", "cadence": ["days", 7], "latest": "2026-10-23", "expect": "FAIL"},
+    {"name": "ds_erm3_weekly_hedge_SPY_uni_mc_3000.zarr", "cadence": ["days", 10], "latest": "2026-10-30", "expect": "OK"},
+    {"name": "ds_exposure_month_end_SPY_uni_mc_3000.zarr", "cadence": ["days", 35], "latest": "2026-11-05", "expect": "OK"}
+  ]
+}
