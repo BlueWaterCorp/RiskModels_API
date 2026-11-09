@@ -60,7 +60,7 @@ export async function GET() {
     const c =
       typeof row.cost_usd === 'number'
         ? row.cost_usd
-        : parseFloat(String(row.cost_usd ?? 0));
+        : parseFloat(String(row.cost_usd ?? 0)); // allow-default: billing - missing usage cost is a non-model monetary total
     return sum + c;
   }, 0);
   const avgCostPerCall = totalCalls > 0 ? totalSpend / totalCalls : 0;
@@ -71,7 +71,7 @@ export async function GET() {
     const c =
       typeof row.cost_usd === 'number'
         ? row.cost_usd
-        : parseFloat(String(row.cost_usd ?? 0));
+        : parseFloat(String(row.cost_usd ?? 0)); // allow-default: billing - missing usage cost is a non-model monetary total
     if (!capabilityBreakdown[capId]) {
       capabilityBreakdown[capId] = { count: 0, cost: 0 };
     }
@@ -79,7 +79,7 @@ export async function GET() {
     capabilityBreakdown[capId].cost += c;
   }
 
-  const balance = account ? parseFloat(String(account.balance_usd ?? 0)) : 0;
+  const balance = account ? parseFloat(String(account.balance_usd ?? 0)) : 0; // allow-default: billing - missing account balance is a non-model monetary total
   const monthly_spend_cap =
     account?.monthly_spend_cap != null
       ? parseFloat(String(account.monthly_spend_cap))
@@ -87,7 +87,7 @@ export async function GET() {
   const monthly_spend_usd =
     account?.monthly_spend_usd != null
       ? parseFloat(String(account.monthly_spend_usd))
-      : 0;
+      : 0; // allow-default: billing - missing monthly spend is a non-model monetary total
 
   return NextResponse.json({
     balance,

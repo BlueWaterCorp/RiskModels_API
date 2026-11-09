@@ -105,7 +105,7 @@ export async function GET(
 
   // Scale bars relative to max absolute value
   const maxAbs = Math.max(
-    ...erValues.map((e) => Math.abs(e.value ?? 0)),
+    ...erValues.flatMap((e) => e.value == null ? [] : [Math.abs(e.value)]),
     0.001,
   );
 

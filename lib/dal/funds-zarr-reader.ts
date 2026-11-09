@@ -863,6 +863,39 @@ export interface FundHoldingsSnapshot {
   n_holdings_returned: number;
   n_total_holdings: number;
   holdings: FundHolding[];
+  /** Count share of returned database rows with a finite holding value. */
+  holding_value_coverage?: number;
+  data_quality_flags?: string[];
+}
+
+export function normalizeFallbackHoldingRows(rows: Array<{
+  symbol: unknown;
+  market_value_usd: unknown;
+  weight: unknown;
+}>): {
+  holdings: FundHolding[];
+  holding_value_coverage: number;
+  data_quality_flags: string[];
+} {
+  const holdings: FundHolding[] = rows.flatMap((row) => {
+    const rawMarketValue = row.market_value_usd;
+    if (rawMarketValue == null || rawMarketValue === "") return [];
+    const marketValue = Number(rawMarketValue);
+    if (!Number.isFinite(marketValue)) return [];
+    const rawWeight = row.weight;
+    const parsedWeight = rawWeight == null || rawWeight === "" ? null : Number(rawWeight);
+    return [{
+      bw_sym_id: String(row.symbol),
+      adj_mv: marketValue,
+      weight: parsedWeight != null && Number.isFinite(parsedWeight) ? parsedWeight : null,
+    }];
+  });
+  const holdingValueCoverage = rows.length > 0 ? holdings.length / rows.length : 0;
+  return {
+    holdings,
+    holding_value_coverage: holdingValueCoverage,
+    data_quality_flags: holdingValueCoverage < 1 ? ["holding_value_coverage_incomplete"] : [],
+  };
 }
 
 /**
@@ -908,11 +941,7 @@ export async function readFundHoldingsTopN(
         ? rows.filter((r) => String(r.report_date) === teo)
         : rows;
       const nTotal = Number(first.n_holdings_total ?? coherent.length);
-      const holdings: FundHolding[] = coherent.map((r) => ({
-        bw_sym_id: String(r.symbol),
-        adj_mv: Number(r.market_value_usd) || 0,
-        weight: r.weight != null ? Number(r.weight) : null,
-      }));
+      const normalized = normalizeFallbackHoldingRows(coherent);
 
       return {
         teo,
@@ -920,9 +949,11 @@ export async function readFundHoldingsTopN(
         // pre-computed, so the snapshot doesn't need aum echoed here.
         aum_reported: null,
         aum_erm3: null,
-        n_holdings_returned: holdings.length,
+        n_holdings_returned: normalized.holdings.length,
         n_total_holdings: nTotal,
-        holdings,
+        holdings: normalized.holdings,
+        holding_value_coverage: normalized.holding_value_coverage,
+        data_quality_flags: normalized.data_quality_flags,
       };
     },
     { emptyValue: null, cacheable: () => !torn },
@@ -3411,8 +3442,8 @@ function fitWeightVectors(
   let activeAbs = 0, activeSq = 0, weightInBench = 0, benchCoverage = 0, nOverlap = 0;
   const active: { bw_sym_id: string; subject_weight: number; benchmark_weight: number; active_weight: number }[] = [];
   for (const s of allSyms) {
-    const wp = subjectWeights.get(s) ?? 0;
-    const wb = benchWeights.get(s) ?? 0;
+    const wp = subjectWeights.get(s) ?? 0; // allow-default: exposure - absent subject member has zero portfolio weight
+    const wb = benchWeights.get(s) ?? 0; // allow-default: exposure - absent benchmark member has zero benchmark weight
     const a = wp - wb;
     activeAbs += Math.abs(a);
     activeSq += a * a;

@@ -72,10 +72,11 @@ export interface PnlCohortRow {
   cohort: string;
   net_weight: number;
   n_positions: number;
-  /** Cumulative drift earned on this cohort's net weight. */
-  drift: number;
-  /** Cumulative selection earned within this cohort. */
-  selection: number;
+  /** Cumulative drift earned on this cohort's net weight; null without a finite cohort mean. */
+  drift: number | null;
+  /** Cumulative selection earned within this cohort; null without finite residual/mean pairs. */
+  selection: number | null;
+  data_quality_flags?: string[];
 }
 
 export interface PnlSeriesPoint {
@@ -251,8 +252,8 @@ export class CohortPnlService {
     const netWeightByCohort = new Map<string, number>();
     const countByCohort = new Map<string, number>();
     for (const r of resolved) {
-      netWeightByCohort.set(r.cohort, (netWeightByCohort.get(r.cohort) ?? 0) + r.weight);
-      countByCohort.set(r.cohort, (countByCohort.get(r.cohort) ?? 0) + 1);
+      netWeightByCohort.set(r.cohort, (netWeightByCohort.get(r.cohort) ?? 0) + r.weight); // allow-default: accumulator - absent cohort accumulator starts at zero
+      countByCohort.set(r.cohort, (countByCohort.get(r.cohort) ?? 0) + 1); // allow-default: counter - absent cohort counter starts at zero
     }
 
     const dates = Array.from(
@@ -276,7 +277,7 @@ export class CohortPnlService {
         if (!finite(e) || !finite(m)) continue;
         const sel = r.weight * (e - m);
         daySelection += sel;
-        selectionByCohort.set(r.cohort, (selectionByCohort.get(r.cohort) ?? 0) + sel);
+        selectionByCohort.set(r.cohort, (selectionByCohort.get(r.cohort) ?? 0) + sel); // allow-default: accumulator - first finite selection contribution starts at zero
         contributed = true;
       }
 
@@ -287,7 +288,7 @@ export class CohortPnlService {
         if (!finite(m)) continue;
         const d = w * m;
         dayDrift += d;
-        driftByCohort.set(cohort, (driftByCohort.get(cohort) ?? 0) + d);
+        driftByCohort.set(cohort, (driftByCohort.get(cohort) ?? 0) + d); // allow-default: accumulator - first finite drift contribution starts at zero
         contributed = true;
       }
 
@@ -307,14 +308,27 @@ export class CohortPnlService {
     const grossWeight = resolved.reduce((a, r) => a + Math.abs(r.weight), 0);
 
     const byCohort: PnlCohortRow[] = Array.from(netWeightByCohort.keys())
-      .map((cohort) => ({
-        cohort,
-        net_weight: netWeightByCohort.get(cohort) ?? 0,
-        n_positions: countByCohort.get(cohort) ?? 0,
-        drift: driftByCohort.get(cohort) ?? 0,
-        selection: selectionByCohort.get(cohort) ?? 0,
-      }))
-      .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+      .map((cohort) => {
+        const drift = driftByCohort.get(cohort) ?? null;
+        const selection = selectionByCohort.get(cohort) ?? null;
+        const dataQualityFlags = [
+          ...(drift == null ? ["cohort_drift_coverage_incomplete"] : []),
+          ...(selection == null ? ["cohort_selection_coverage_incomplete"] : []),
+        ];
+        return {
+          cohort,
+          net_weight: netWeightByCohort.get(cohort) ?? 0, // allow-default: accumulator - cohort key is created from at least one position
+          n_positions: countByCohort.get(cohort) ?? 0, // allow-default: counter - cohort key is created from at least one position
+          drift,
+          selection,
+          ...(dataQualityFlags.length ? { data_quality_flags: dataQualityFlags } : {}),
+        };
+      })
+      .sort((a, b) => {
+        const aMagnitude = a.drift == null ? -1 : Math.abs(a.drift);
+        const bMagnitude = b.drift == null ? -1 : Math.abs(b.drift);
+        return bMagnitude - aMagnitude;
+      });
 
     return {
       level,

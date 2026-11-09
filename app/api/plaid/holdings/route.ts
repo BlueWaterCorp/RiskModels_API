@@ -11,6 +11,7 @@ import {
 import { canAccessPlaidHoldings, resolveApiKeyScopes } from "@/lib/plaid/scope";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
+import { summarizeHoldingValues } from "@/lib/plaid/holding-values";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,9 @@ export const GET = withBilling(
           total_value: 0,
           account_count: 0,
           position_count: 0,
+          value_coverage: 1,
         },
+        data_quality_flags: [] as string[],
         _metadata: buildMetadataBody(metadata),
         _agent: {
           cost_usd: context.costUsd,
@@ -145,10 +148,7 @@ export const GET = withBilling(
       }
     }
 
-    const total_value = holdingsOut.reduce(
-      (sum, h) => sum + (Number(h.institution_value) || 0),
-      0,
-    );
+    const valueSummary = summarizeHoldingValues(holdingsOut);
 
     const response = NextResponse.json(
       {
@@ -157,10 +157,12 @@ export const GET = withBilling(
         securities: securitiesOut,
         connections_count: rows.length,
         summary: {
-          total_value,
+          total_value: valueSummary.total_value,
           account_count: accountsOut.length,
           position_count: holdingsOut.length,
+          value_coverage: valueSummary.value_coverage,
         },
+        data_quality_flags: valueSummary.data_quality_flags,
         _metadata: buildMetadataBody(metadata),
         _agent: {
           cost_usd: context.costUsd,

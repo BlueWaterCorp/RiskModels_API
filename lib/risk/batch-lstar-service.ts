@@ -24,6 +24,7 @@ export interface BatchLstarTickerResult {
   market_factor_etf?: string;
   universe?: string;
   data_source?: string;
+  data_quality_flags?: string[];
   history_starts?: string;
 }
 
@@ -69,6 +70,7 @@ function successPayload(result: LstarResult): BatchLstarTickerResult {
     market_factor_etf: result.market_factor_etf,
     universe: result.universe,
     data_source: result.data_source,
+    data_quality_flags: result.data_quality_flags,
     ...(result.history_starts
       ? { history_starts: result.history_starts }
       : {}),
@@ -80,7 +82,7 @@ export async function fetchBatchLstar(
 ): Promise<BatchLstarResponseBody> {
   const service = getLstarService();
   const marketFactorEtf = options.marketFactorEtf ?? "SPY";
-  const years = options.years ?? 1;
+  const years = options.years ?? 1; // allow-default: parameter - omitted history window defaults to one year
   const threshold = options.threshold;
   const axis = options.axis ?? "industry";
 

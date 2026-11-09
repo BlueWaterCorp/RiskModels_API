@@ -31,9 +31,18 @@ function mockComputationOk(titleTicker = "NVDA"): PortfolioRiskComputationOk {
       sector: 0.2,
       subsector: 0.15,
       residual: 0.4,
+      er_coverage: 1,
+      names_covered: 1,
+      names_total: 1,
+      aggregation: "covered_weights_not_renormalized",
+      data_quality_flags: [],
     },
     systematic: 0.6,
     portfolioVol: 0.22,
+    erCoverage: 1,
+    volCoverage: 1,
+    aggregation: "covered_weights_not_renormalized",
+    data_quality_flags: [],
     perTicker: {
       [titleTicker]: {
         weight: 1,

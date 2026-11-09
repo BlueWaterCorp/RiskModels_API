@@ -111,6 +111,7 @@ describe("selection vs drift", () => {
     expect(xlk.n_positions).toBe(2);
     // Drift = net weight × Σ cohort means = 0.2 × (0.003 + 0.001).
     expect(xlk.drift).toBeCloseTo(0.2 * 0.004, 12);
+    expect(xlk).not.toHaveProperty("data_quality_flags");
   });
 
   it("earns no drift on a cohort-neutral book, but still scores selection", async () => {
@@ -170,6 +171,32 @@ describe("selection vs drift", () => {
     expect(r!.coverage.included).toBe(0);
     expect(r!.totals.selection_share).toBeNull();
     expect(r!.series).toEqual([]);
+  });
+
+  it("returns null and coverage flags when a cohort has no finite residual rows", async () => {
+    const symbol = SYMBOLS.get("CCC")!.symbol;
+    const saved = EPS[symbol];
+    delete EPS[symbol];
+    try {
+      const r = await getCohortPnlService().decompose([{ ticker: "CCC", weight: 0.2 }], {
+        level: "sector",
+      });
+      expect(r!.by_cohort).toEqual([
+        {
+          cohort: "XLE",
+          net_weight: 0.2,
+          n_positions: 1,
+          drift: null,
+          selection: null,
+          data_quality_flags: [
+            "cohort_drift_coverage_incomplete",
+            "cohort_selection_coverage_incomplete",
+          ],
+        },
+      ]);
+    } finally {
+      EPS[symbol] = saved!;
+    }
   });
 
   it("carries the no-intercept contract and a not-advice statement", async () => {

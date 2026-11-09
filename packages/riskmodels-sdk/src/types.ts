@@ -106,3 +106,72 @@ export type LayerExposure = Partial<Record<
     hedge_etf?: string | null;
   }
 >>;
+
+export type CoveredWeightAggregation = "covered_weights_not_renormalized";
+
+export interface PortfolioVarianceDecomposition {
+  market: number | null;
+  sector: number | null;
+  subsector: number | null;
+  residual: number | null;
+  systematic: number | null;
+}
+
+export interface PortfolioRiskIndexBlock {
+  variance_decomposition: PortfolioVarianceDecomposition;
+  portfolio_volatility_23d: number | null;
+  position_count: number;
+  /** Absolute-weight share of positions with a complete four-layer ER vector. */
+  er_coverage: number;
+  /** Absolute-weight share with a finite volatility. */
+  volatility_coverage: number;
+  /** Missing names are excluded; covered weights retain their original scale. */
+  aggregation: CoveredWeightAggregation;
+}
+
+export interface PortfolioRiskResponse {
+  portfolio_risk_index: PortfolioRiskIndexBlock;
+  data_quality_flags: string[];
+  per_ticker: Record<string, Record<string, unknown>>;
+  summary: {
+    total_positions: number;
+    resolved: number;
+    errors: number;
+  };
+}
+
+export interface PortfolioExposureAsOf {
+  covariance_start: string | null;
+  covariance_end: string | null;
+  covariance_requested_n: number;
+  covariance_effective_n: number | null;
+  vintage_aligned: boolean;
+  etf_mapping: string;
+}
+
+export interface PortfolioExposureScenarioInputs {
+  covariance_start: string | null;
+  covariance_end: string | null;
+  covariance_effective_n: number | null;
+  etfs: Array<Record<string, unknown>>;
+  positions_included: boolean;
+  positions?: Array<Record<string, unknown>>;
+  note: string;
+}
+
+/** Null covariance counts are unavailable observations, never zero observations. */
+export interface PortfolioExposureResponse {
+  as_of: PortfolioExposureAsOf;
+  scenario_inputs: PortfolioExposureScenarioInputs;
+  data_quality_flags: string[];
+  [key: string]: unknown;
+}
+
+export interface HoldingValueCoverage {
+  /** Count share of holdings whose finite value contributes to the aggregate. */
+  value_coverage: number;
+}
+
+export interface HoldingsAggregateQuality {
+  data_quality_flags: string[];
+}

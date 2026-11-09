@@ -191,7 +191,7 @@ export class ReturnsDecompositionService {
     options?: { years?: number; includeLstar?: boolean; threshold?: number },
   ): Promise<ReturnsDecompositionResult | null> {
     const upperTicker = ticker.toUpperCase();
-    const years = options?.years ?? 1;
+    const years = options?.years ?? 1; // allow-default: parameter - omitted history window defaults to one year
     const includeLstar = options?.includeLstar ?? false;
     const threshold = options?.threshold ?? LSTAR_DEFAULT_THRESHOLD;
 

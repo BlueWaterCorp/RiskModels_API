@@ -941,6 +941,8 @@ async function execGetFundHoldings(args: z.infer<typeof getFundHoldingsArgs>) {
     aum_erm3: holdings.aum_erm3,
     n_holdings_returned: holdings.n_holdings_returned,
     n_total_holdings: holdings.n_total_holdings,
+    holding_value_coverage: holdings.holding_value_coverage,
+    data_quality_flags: holdings.data_quality_flags ?? [],
     holdings: holdings.holdings,
   };
 }
@@ -1013,7 +1015,11 @@ async function execPortfolioRisk(args: z.infer<typeof portfolioRiskArgs>) {
       },
       portfolio_volatility_23d: core.portfolioVol,
       position_count: core.summary.resolved,
+      er_coverage: core.erCoverage,
+      volatility_coverage: core.volCoverage,
+      aggregation: core.aggregation,
     },
+    data_quality_flags: core.data_quality_flags,
     per_ticker: core.perTicker,
     summary: {
       total_positions: core.summary.total_positions,
@@ -1406,7 +1412,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "get_fund_holdings",
     openaiTool: fnTool(
       "get_fund_holdings",
-      "Top-N current holdings for a mutual fund or ETF at its latest report date (from the most recent N-PORT filing in the system). Use AFTER search_funds resolved a bw_fund_id. Returns per-holding bw_sym_id, market value, weight, plus fund identity (ticker, fund_name, category, style, as_of date, AUM).",
+      "Top-N current holdings for a mutual fund or ETF at its latest report date. Use AFTER search_funds resolved a bw_fund_id. Returns per-holding bw_sym_id, market value, weight, plus fund identity (ticker, fund_name, category, style, as_of date, AUM). If holding_value_coverage is below 1, state the data_quality_flags and do not treat excluded missing values as zero.",
       {
         bw_fund_id: {
           type: "string",
@@ -1538,7 +1544,7 @@ export const CHAT_TOOLS_REGISTRY: ChatToolDef[] = [
     name: "compute_portfolio_risk_index",
     openaiTool: fnTool(
       "compute_portfolio_risk_index",
-      "Portfolio Risk Index — weighted L3 explained risk and portfolio volatility. Use for multi-ticker portfolios.",
+      "Portfolio Risk Index — weighted L3 explained risk and portfolio volatility. Use for multi-ticker portfolios. Null model values are unavailable, never zero. State data_quality_flags and both coverage fields when incomplete; aggregates exclude missing names without renormalizing covered weights.",
       {
         positions: {
           type: "array",

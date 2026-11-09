@@ -39,7 +39,7 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
     .select("*", { count: "exact", head: true })
     .eq("asset_type", "stock");
 
-  const universeStock = universeHead ?? 0;
+  const universeStock = universeHead ?? 0; // allow-default: counter - unavailable health-check count is reported as zero
 
   if (latestErr) {
     return {
@@ -81,7 +81,7 @@ export async function getTeoCoverageHealth(): Promise<TeoCoverageHealth> {
     };
   }
 
-  const n = nonNullCount ?? 0;
+  const n = nonNullCount ?? 0; // allow-default: counter - unavailable health-check count is reported as zero
   const u = universeStock;
   const ratio = u > 0 ? n / u : 0;
   const latest_teo_coverage_pct =

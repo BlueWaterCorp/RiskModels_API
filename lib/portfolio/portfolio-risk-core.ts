@@ -72,47 +72,57 @@ function dispatchedERForLstar(
   subsector: number;
   residual: number;
 } | null {
+  const finite = (value: number | null | undefined): value is number =>
+    value != null && Number.isFinite(value);
   if (lstarLevel == null) return null;
   const lvl = Math.round(lstarLevel);
   if (lvl === 1) {
+    if (!finite(er.l1_mkt_er) || !finite(er.l1_res_er)) return null;
     return {
-      market: er.l1_mkt_er ?? 0,
+      market: er.l1_mkt_er,
       sector: 0,
       subsector: 0,
-      residual: er.l1_res_er ?? 0,
+      residual: er.l1_res_er,
     };
   }
   if (lvl === 2) {
+    if (!finite(er.l2_mkt_er) || !finite(er.l2_sec_er) || !finite(er.l2_res_er)) return null;
     return {
-      market: er.l2_mkt_er ?? 0,
-      sector: er.l2_sec_er ?? 0,
+      market: er.l2_mkt_er,
+      sector: er.l2_sec_er,
       subsector: 0,
-      residual: er.l2_res_er ?? 0,
+      residual: er.l2_res_er,
     };
   }
   if (lvl === 3) {
+    if (
+      !finite(er.l3_mkt_er) ||
+      !finite(er.l3_sec_er) ||
+      !finite(er.l3_sub_er) ||
+      !finite(er.l3_res_er)
+    ) return null;
     return {
-      market: er.l3_mkt_er ?? 0,
-      sector: er.l3_sec_er ?? 0,
-      subsector: er.l3_sub_er ?? 0,
-      residual: er.l3_res_er ?? 0,
+      market: er.l3_mkt_er,
+      sector: er.l3_sec_er,
+      subsector: er.l3_sub_er,
+      residual: er.l3_res_er,
     };
   }
   return null;
 }
 
 export interface PortfolioLstarAttribution {
-  market: number;
-  sector: number;
-  subsector: number;
-  residual: number;
-  /** Sum of weights for names that contributed to the Lstar aggregate (had a
-   *  non-null `lstar_level` AND `includeHedgeRatios` was true so L1/L2 ERs
-   *  were fetched). Compare against 1.0 to gauge how representative the
-   *  Lstar attribution is for the portfolio. */
+  market: number | null;
+  sector: number | null;
+  subsector: number | null;
+  residual: number | null;
+  /** Ratio of covered absolute position weight to total absolute position weight
+   *  for names that contributed (valid level plus its complete ER vector). */
   weight_covered: number;
-  /** Count of names dropped from the Lstar aggregate due to null lstar_level. */
+  /** Count of names dropped due to a missing level or incomplete ER vector. */
   dropped_count: number;
+  aggregation: "covered_weights_not_renormalized";
+  data_quality_flags: string[];
 }
 
 export function computePortfolioLstarAttribution(
@@ -123,8 +133,10 @@ export function computePortfolioLstarAttribution(
   let sector = 0;
   let subsector = 0;
   let residual = 0;
-  let weightCovered = 0;
   let droppedCount = 0;
+  let coveredCount = 0;
+  let coveredAbsWeight = 0;
+  const totalAbsWeight = [...weights.values()].reduce((sum, weight) => sum + Math.abs(weight), 0);
 
   for (const [ticker, w] of weights) {
     const er = tickerMetrics.get(ticker);
@@ -144,10 +156,22 @@ export function computePortfolioLstarAttribution(
     sector += w * dispatched.sector;
     subsector += w * dispatched.subsector;
     residual += w * dispatched.residual;
-    weightCovered += w;
+    coveredAbsWeight += Math.abs(w);
+    coveredCount += 1;
   }
 
-  return { market, sector, subsector, residual, weight_covered: weightCovered, dropped_count: droppedCount };
+  const hasCoverage = coveredCount > 0;
+  const coverage = totalAbsWeight > 0 ? coveredAbsWeight / totalAbsWeight : 0;
+  return {
+    market: hasCoverage ? market : null,
+    sector: hasCoverage ? sector : null,
+    subsector: hasCoverage ? subsector : null,
+    residual: hasCoverage ? residual : null,
+    weight_covered: coverage,
+    dropped_count: droppedCount,
+    aggregation: "covered_weights_not_renormalized",
+    data_quality_flags: coverage < 1 ? ["lstar_er_coverage_incomplete"] : [],
+  };
 }
 
 /** Sum weights of positions naming the same ticker (trimmed, upper-cased), keeping first-seen order. */
@@ -157,7 +181,7 @@ export function netPositionsByTicker(
   const out = new Map<string, number>();
   for (const p of positions) {
     const t = p.ticker.trim().toUpperCase();
-    out.set(t, (out.get(t) ?? 0) + p.weight);
+    out.set(t, (out.get(t) ?? 0) + p.weight); // allow-default: accumulator - first position for a ticker starts at zero
   }
   return [...out].map(([ticker, weight]) => ({ ticker, weight }));
 }
@@ -173,49 +197,100 @@ export function normalizeWeights(
 export function computePortfolioER(
   tickerERs: Map<string, Record<string, number | null>>,
   weights: Map<string, number>,
-): { market: number; sector: number; subsector: number; residual: number } {
+): {
+  market: number | null;
+  sector: number | null;
+  subsector: number | null;
+  residual: number | null;
+  er_coverage: number;
+  names_covered: number;
+  names_total: number;
+  aggregation: "covered_weights_not_renormalized";
+  data_quality_flags: string[];
+} {
   let market = 0;
   let sector = 0;
   let subsector = 0;
   let residual = 0;
+  let coveredAbsWeight = 0;
+  let namesCovered = 0;
+  const totalAbsWeight = [...weights.values()].reduce((sum, weight) => sum + Math.abs(weight), 0);
 
   for (const [ticker, w] of weights) {
     const er = tickerERs.get(ticker);
-    if (!er) continue;
-    market += w * (er.l3_mkt_er ?? 0);
-    sector += w * (er.l3_sec_er ?? 0);
-    subsector += w * (er.l3_sub_er ?? 0);
-    residual += w * (er.l3_res_er ?? 0);
+    if (
+      !er ||
+      er.l3_mkt_er == null || !Number.isFinite(er.l3_mkt_er) ||
+      er.l3_sec_er == null || !Number.isFinite(er.l3_sec_er) ||
+      er.l3_sub_er == null || !Number.isFinite(er.l3_sub_er) ||
+      er.l3_res_er == null || !Number.isFinite(er.l3_res_er)
+    ) continue;
+    market += w * er.l3_mkt_er;
+    sector += w * er.l3_sec_er;
+    subsector += w * er.l3_sub_er;
+    residual += w * er.l3_res_er;
+    coveredAbsWeight += Math.abs(w);
+    namesCovered += 1;
   }
 
-  return { market, sector, subsector, residual };
+  const coverage = totalAbsWeight > 0 ? coveredAbsWeight / totalAbsWeight : 0;
+  const hasCoverage = namesCovered > 0;
+  return {
+    market: hasCoverage ? market : null,
+    sector: hasCoverage ? sector : null,
+    subsector: hasCoverage ? subsector : null,
+    residual: hasCoverage ? residual : null,
+    er_coverage: coverage,
+    names_covered: namesCovered,
+    names_total: weights.size,
+    aggregation: "covered_weights_not_renormalized",
+    data_quality_flags: coverage < 1 ? ["portfolio_er_coverage_incomplete"] : [],
+  };
 }
 
 export function computePortfolioVolatility(
   tickerMetrics: Map<string, Record<string, number | null>>,
   weights: Map<string, number>,
-): number | null {
+): {
+  value: number | null;
+  coverage: number;
+  aggregation: "covered_weights_not_renormalized";
+  data_quality_flags: string[];
+} {
   let totalVol = 0;
   let hasAny = false;
+  let coveredAbsWeight = 0;
+  const totalAbsWeight = [...weights.values()].reduce((sum, weight) => sum + Math.abs(weight), 0);
 
   for (const [ticker, w] of weights) {
     const m = tickerMetrics.get(ticker);
     const vol = m?.vol_23d;
-    if (vol != null) {
+    if (vol != null && Number.isFinite(vol)) {
       totalVol += w * vol;
       hasAny = true;
+      coveredAbsWeight += Math.abs(w);
     }
   }
 
-  return hasAny ? totalVol : null;
+  const coverage = totalAbsWeight > 0 ? coveredAbsWeight / totalAbsWeight : 0;
+  return {
+    value: hasAny ? totalVol : null,
+    coverage,
+    aggregation: "covered_weights_not_renormalized",
+    data_quality_flags: coverage < 1 ? ["portfolio_volatility_coverage_incomplete"] : [],
+  };
 }
 
 export type PortfolioRiskComputationOk = {
   status: "ok";
   fetchLatencyMs: number;
   portfolioER: ReturnType<typeof computePortfolioER>;
-  systematic: number;
+  systematic: number | null;
   portfolioVol: number | null;
+  erCoverage: number;
+  volCoverage: number;
+  aggregation: "covered_weights_not_renormalized";
+  data_quality_flags: string[];
   /** Holdings-weighted mean HR/ER per L1/L2/L3 when `includeHedgeRatios` was true. */
   portfolio_hedge_levels?: HedgeLevelsBlock;
   /** Parallel Lstar-dispatched attribution — for each name, picks the ER at
@@ -235,11 +310,13 @@ export type PortfolioRiskComputationOk = {
   errorsList: { ticker: string; error: string }[];
   timeSeriesData?: Array<{
     date: string;
-    market_er: number;
-    sector_er: number;
-    subsector_er: number;
-    residual_er: number;
-    systematic_er: number;
+    market_er: number | null;
+    sector_er: number | null;
+    subsector_er: number | null;
+    residual_er: number | null;
+    systematic_er: number | null;
+    er_coverage: number;
+    data_quality_flags: string[];
   }>;
 };
 
@@ -307,8 +384,12 @@ export async function runPortfolioRiskComputation(
   );
 
   const portfolioER = computePortfolioER(tickerMetrics, weightMap);
-  const systematic = portfolioER.market + portfolioER.sector + portfolioER.subsector;
-  const portfolioVol = computePortfolioVolatility(tickerMetrics, weightMap);
+  const systematic =
+    portfolioER.market != null && portfolioER.sector != null && portfolioER.subsector != null
+      ? portfolioER.market + portfolioER.sector + portfolioER.subsector
+      : null;
+  const portfolioVolatility = computePortfolioVolatility(tickerMetrics, weightMap);
+  const portfolioVol = portfolioVolatility.value;
 
   const perTicker: Record<string, Record<string, unknown>> = {};
   for (const ticker of resolvedTickers) {
@@ -402,7 +483,12 @@ export async function runPortfolioRiskComputation(
         sector_er: dayER.sector,
         subsector_er: dayER.subsector,
         residual_er: dayER.residual,
-        systematic_er: dayER.market + dayER.sector + dayER.subsector,
+        systematic_er:
+          dayER.market != null && dayER.sector != null && dayER.subsector != null
+            ? dayER.market + dayER.sector + dayER.subsector
+            : null,
+        er_coverage: dayER.er_coverage,
+        data_quality_flags: dayER.data_quality_flags,
       });
     }
   }
@@ -433,6 +519,14 @@ export async function runPortfolioRiskComputation(
     portfolioER,
     systematic,
     portfolioVol,
+    erCoverage: portfolioER.er_coverage,
+    volCoverage: portfolioVolatility.coverage,
+    aggregation: "covered_weights_not_renormalized",
+    data_quality_flags: [
+      ...portfolioER.data_quality_flags,
+      ...portfolioVolatility.data_quality_flags,
+      ...(lstar_attribution?.data_quality_flags ?? []),
+    ],
     portfolio_hedge_levels,
     lstar_attribution,
     perTicker,

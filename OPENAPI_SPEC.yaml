@@ -858,6 +858,10 @@ components:
             hedgeable:
               type: boolean
               example: false
+        data_quality_flags:
+          type: array
+          items: { type: string }
+          description: Contains `er_inputs_incomplete` when the ER sanity sum cannot be computed; missing values remain null.
         _metadata:
           type: object
           description: Lineage, billing code, and freshness (same shape as `/metrics`).
@@ -865,6 +869,8 @@ components:
           type: object
           properties:
             er_populated:
+              type: boolean
+            er_complete:
               type: boolean
             er_sum:
               type: number
@@ -969,6 +975,31 @@ components:
         snapshot:
           type: object
           additionalProperties: true
+          properties:
+            portfolio_volatility_23d:
+              type: number
+              nullable: true
+            data_quality_flags:
+              type: array
+              items: { type: string }
+              description: Missing-input and partial-coverage flags for the snapshot.
+            diversification:
+              type: object
+              additionalProperties: true
+              properties:
+                er_coverage:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+                  description: Ratio of covered absolute position weight to total absolute position weight for complete four-layer ER vectors.
+                names_covered: { type: integer }
+                names_total: { type: integer }
+                aggregation:
+                  type: string
+                  enum: [covered_weights_not_renormalized]
+                data_quality_flags:
+                  type: array
+                  items: { type: string }
         time_behavior:
           type: object
           additionalProperties: true
@@ -2860,8 +2891,16 @@ components:
                 type: integer
               drift:
                 type: number
+                nullable: true
+                description: Null when the cohort has no finite cohort-mean rows in the window.
               selection:
                 type: number
+                nullable: true
+                description: Null when the cohort has no finite residual/cohort-mean pairs in the window.
+              data_quality_flags:
+                type: array
+                items: { type: string }
+                description: Flags missing drift or selection coverage instead of representing it as zero.
         series:
           type: array
           description: Daily contributions. Present only when include_series=true.
@@ -2972,6 +3011,7 @@ components:
         - market_factor_etf
         - universe
         - data_source
+        - data_quality_flags
       properties:
         ticker:
           type: string
@@ -3061,6 +3101,10 @@ components:
         data_source:
           type: string
           example: zarr
+        data_quality_flags:
+          type: array
+          items: { type: string }
+          description: Contains `total_er_inputs_incomplete` when a chosen row lacks an ER component required by `total_er`; the affected array value is null.
         history_starts:
           type: string
           format: date
@@ -3137,6 +3181,10 @@ components:
           type: string
         data_source:
           type: string
+        data_quality_flags:
+          type: array
+          items: { type: string }
+          description: Present on successful rows; has the same null semantics as `LstarResponse`.
         history_starts:
           type: string
           format: date
@@ -4523,6 +4571,14 @@ components:
               description: Net (signed) adj_mv of filed positions not matched to any security.
         n_holdings_returned: { type: integer, example: 25 }
         n_total_holdings: { type: integer, example: 605 }
+        holding_value_coverage:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Count share of returned source rows with a finite holding value; present on the fallback snapshot.
+        data_quality_flags:
+          type: array
+          items: { type: string }
         holdings:
           type: array
           items:
@@ -5374,10 +5430,19 @@ paths:
                     properties:
                       total_value:
                         type: number
+                        nullable: true
                       account_count:
                         type: integer
                       position_count:
                         type: integer
+                      value_coverage:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        description: Count share of returned holdings with a finite value included in total_value.
+                  data_quality_flags:
+                    type: array
+                    items: { type: string }
                   _metadata:
                     type: object
                     additionalProperties: true
@@ -5856,10 +5921,15 @@ paths:
                           explained_variance: { type: number, nullable: true }
                           sharpe_36m: { type: number, nullable: true }
                           rank_percentile: { type: number, nullable: true }
+                  data_quality_flags:
+                    type: array
+                    items: { type: string }
+                    description: Contains `er_inputs_incomplete` when the partition sanity sum cannot be computed; missing inputs remain null.
                   _data_health:
                     type: object
                     properties:
                       er_populated: { type: boolean }
+                      er_complete: { type: boolean }
                       er_sum: { type: number, nullable: true }
         "400":
           description: Invalid request body (ticker missing or malformed)
@@ -9535,7 +9605,7 @@ paths:
                       covariance_start: { type: string, format: date, nullable: true }
                       covariance_end: { type: string, format: date, nullable: true }
                       covariance_requested_n: { type: integer }
-                      covariance_effective_n: { type: integer }
+                      covariance_effective_n: { type: integer, nullable: true }
                       vintage_aligned: { type: boolean, description: True when the covariance window ends on snapshot_teo. }
                       etf_mapping: { type: string }
                   book:
@@ -9598,7 +9668,7 @@ paths:
                     properties:
                       covariance_start: { type: string, format: date, nullable: true }
                       covariance_end: { type: string, format: date, nullable: true }
-                      covariance_effective_n: { type: integer }
+                      covariance_effective_n: { type: integer, nullable: true }
                       etfs:
                         type: array
                         items:
@@ -9630,6 +9700,10 @@ paths:
                             residual_vol_annual: { type: number, nullable: true, description: "√(252 × stock_var × max(residual_share, 0)), as a fraction." }
                             residual_vol_annual_usd: { type: number, nullable: true }
                       note: { type: string }
+                  data_quality_flags:
+                    type: array
+                    items: { type: string }
+                    description: Contains `covariance_unavailable` when covariance-dependent model values are unavailable; covariance counts remain null rather than zero.
                   coverage:
                     type: object
                     properties:
@@ -9815,6 +9889,22 @@ paths:
                           systematic: { type: number, nullable: true }
                       portfolio_volatility_23d: { type: number, nullable: true }
                       position_count: { type: integer }
+                      er_coverage:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        description: Absolute-weight share with a complete four-layer ER vector.
+                      volatility_coverage:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                      aggregation:
+                        type: string
+                        enum: [covered_weights_not_renormalized]
+                        description: Missing names are excluded and covered weights retain their original scale.
+                  data_quality_flags:
+                    type: array
+                    items: { type: string }
                   per_ticker:
                     type: object
                     additionalProperties: true
@@ -9830,11 +9920,13 @@ paths:
                       type: object
                       properties:
                         date: { type: string, format: date }
-                        market_er: { type: number }
-                        sector_er: { type: number }
-                        subsector_er: { type: number }
-                        residual_er: { type: number }
-                        systematic_er: { type: number }
+                        market_er: { type: number, nullable: true }
+                        sector_er: { type: number, nullable: true }
+                        subsector_er: { type: number, nullable: true }
+                        residual_er: { type: number, nullable: true }
+                        systematic_er: { type: number, nullable: true }
+                        er_coverage: { type: number, minimum: 0, maximum: 1 }
+                        data_quality_flags: { type: array, items: { type: string } }
                   errors:
                     type: array
                     items:
@@ -9966,6 +10058,49 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+                properties:
+                  portfolio_risk_index:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      er_coverage:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        description: Ratio of covered absolute position weight to total absolute position weight for complete four-layer ER vectors.
+                      volatility_coverage:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                        description: Ratio of covered absolute position weight to total absolute position weight for finite volatility inputs.
+                      aggregation:
+                        type: string
+                        enum: [covered_weights_not_renormalized]
+                      lstar_variance_decomposition:
+                        type: object
+                        additionalProperties: true
+                        properties:
+                          market: { type: number, nullable: true }
+                          sector: { type: number, nullable: true }
+                          subsector: { type: number, nullable: true }
+                          residual: { type: number, nullable: true }
+                          systematic: { type: number, nullable: true }
+                          weight_covered:
+                            type: number
+                            minimum: 0
+                            maximum: 1
+                            description: Ratio of covered absolute position weight to total absolute position weight for names with a finite selected level and complete ER vector.
+                          dropped_count: { type: integer }
+                          aggregation:
+                            type: string
+                            enum: [covered_weights_not_renormalized]
+                          data_quality_flags:
+                            type: array
+                            items: { type: string }
+                  data_quality_flags:
+                    type: array
+                    items: { type: string }
+                    description: Missing-input and partial-coverage flags for the snapshot.
         "400":
           description: Invalid body.
           content:

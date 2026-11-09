@@ -11,6 +11,8 @@
 - `POST /batch/analyze` `returns` arrays (`values`, `l1`/`l2`/`l3`, `l3_market_hr`/`l3_sector_hr`/`l3_subsector_hr`) carry `null` on masked or unavailable sessions. They used to write 0, which showed a masked session as a real zero hedge or a zero return.
 - `market_factor_etf` other than SPY now returns 400. The basket had labelled SPY hedge ratios with the requested ETF.
 - The OpenAPI response schema now matches the response: fields at the top level, `lstar` as a level string.
+- Portfolio coverage fields are documented as absolute-weight ratios in OpenAPI and MCP schemas. Snapshot schemas now expose their coverage and quality flags, and the portfolio risk-index time-series schema uses the emitted `*_er` field names.
+- Missing cohort selection/drift aggregates and incomplete total-payout inputs remain null with explicit quality flags instead of becoming zero. The silent-default lint now parses TypeScript syntax across risk, portfolio, data-access, API, fundamentals, chat, and route code, with category-and-reason exceptions limited to control values.
 
 ## 2026-11-03 — Fund snapshots expose factor ETF identities and risk-window scale
 

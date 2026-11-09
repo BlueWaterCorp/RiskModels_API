@@ -156,11 +156,14 @@ export async function buildRiskSnapshotPdfBytes(params: {
     labelPct: boolean,
   ) => {
     const widths = fracs.map((f) => Math.max(0, f));
-    const wsum = widths.reduce((a, b) => a + b, 0) || 1;
+    const widthSum = widths.reduce((a, b) => a + b, 0);
+    const widthDivisor = widthSum > 0 ? widthSum : 1;
     let cx = M;
     segs.forEach((s, i) => {
-      const frac = fracs[i] ?? 0;
-      const w = ((widths[i] ?? 0) / wsum) * CW;
+      const frac = fracs[i];
+      const width = widths[i];
+      if (frac === undefined || width === undefined) return;
+      const w = (width / widthDivisor) * CW;
       if (w > 0.5) {
         page.drawRectangle({ x: cx, y: barY, width: w, height: barH, color: s.color });
         if (labelPct) {
@@ -195,12 +198,13 @@ export async function buildRiskSnapshotPdfBytes(params: {
   }
   const barH = 30;
   const barY = y - barH;
-  drawBar(
-    segs.map((s) => s.frac),
-    barY,
-    barH,
-    true,
-  );
+  const mainFractions = segs.map((s) => s.frac);
+  if (mainFractions.every((value): value is number => value != null)) {
+    drawBar(mainFractions, barY, barH, true);
+  } else {
+    page.drawRectangle({ x: M, y: barY, width: CW, height: barH, borderColor: COL.border, borderWidth: 0.5 });
+    text("Incomplete ER coverage — see JSON data_quality_flags", M + 8, barY + 10, 9, sans, COL.inkMuted);
+  }
   y = barY - 14;
 
   if (peerBar) {
@@ -373,9 +377,13 @@ export function toReportData(params: {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([ticker, row]) => {
       const r = row as Record<string, unknown>;
+      const weight = r.weight;
+      if (typeof weight !== "number" || !Number.isFinite(weight)) {
+        throw new Error(`missing portfolio weight for ${ticker}`);
+      }
       return {
         ticker,
-        weight: Number(r.weight ?? 0),
+        weight,
         l3_mkt_er: r.l3_mkt_er != null ? Number(r.l3_mkt_er) : null,
         l3_sec_er: r.l3_sec_er != null ? Number(r.l3_sec_er) : null,
         l3_sub_er: r.l3_sub_er != null ? Number(r.l3_sub_er) : null,
@@ -401,7 +409,11 @@ export function toReportData(params: {
       },
       portfolio_volatility_23d: data.portfolioVol,
       position_count: data.summary.resolved,
+      er_coverage: data.erCoverage,
+      volatility_coverage: data.volCoverage,
+      aggregation: data.aggregation,
     },
+    data_quality_flags: data.data_quality_flags,
     per_ticker: perTicker,
     ...(params.footnotes?.length ? { footnotes: params.footnotes } : {}),
     _metadata: {

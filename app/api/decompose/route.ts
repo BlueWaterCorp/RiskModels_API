@@ -242,17 +242,18 @@ export const POST = withBilling(
       const hedge = buildHedgeMap(layers);
 
       // ER sum sanity check (variance fractions sum to ~1 at L3).
-      const erSum =
-        (layers.market.er ?? 0) +
-        (layers.sector.er ?? 0) +
-        (layers.subsector.er ?? 0) +
-        (layers.residual.er ?? 0);
+      const erValues = [
+        layers.market.er,
+        layers.sector.er,
+        layers.subsector.er,
+        layers.residual.er,
+      ];
       const erPopulated =
-        layers.market.er !== null ||
-        layers.sector.er !== null ||
-        layers.subsector.er !== null ||
-        layers.residual.er !== null;
-      if (erPopulated && Math.abs(erSum - 1) > ER_SUM_TOLERANCE) {
+        erValues.some((value) => value !== null);
+      const erComplete = erValues.every((value): value is number => value !== null);
+      const erSum = erComplete ? erValues.reduce((sum, value) => sum + value, 0) : null;
+      const dataQualityFlags = erComplete ? [] : ["er_inputs_incomplete"];
+      if (erSum != null && Math.abs(erSum - 1) > ER_SUM_TOLERANCE) {
         console.warn(
           `[decompose] ER sum off from 1 for ${ticker}: ${erSum.toFixed(4)} (tolerance ${ER_SUM_TOLERANCE})`,
         );
@@ -329,6 +330,7 @@ export const POST = withBilling(
         },
         hedge,
         hedge_levels,
+        data_quality_flags: dataQualityFlags,
         _metadata: buildMetadataBody(metadata, {
           factors: tickerFactors,
           // Disclosed, not fixed (G.42): hedge-ETF labels come from the
@@ -343,7 +345,8 @@ export const POST = withBilling(
         }),
         _data_health: {
           er_populated: erPopulated,
-          er_sum: erPopulated ? erSum : null,
+          er_complete: erComplete,
+          er_sum: erSum,
         },
       };
 

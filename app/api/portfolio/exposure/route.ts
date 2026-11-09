@@ -34,13 +34,18 @@ function datedBookCoverage(
   const valueByTicker = new Map<string, number>();
   for (const p of submitted) {
     const ticker = p.ticker.trim().toUpperCase();
-    valueByTicker.set(ticker, (valueByTicker.get(ticker) ?? 0) + p.value);
+    valueByTicker.set(ticker, (valueByTicker.get(ticker) ?? 0) + p.value); // allow-default: accumulator - first position for a ticker starts at zero
   }
+  const submittedValue = (ticker: string): number => {
+    const value = valueByTicker.get(ticker.trim().toUpperCase());
+    if (value === undefined) throw new Error(`missing submitted value for ${ticker}`);
+    return value;
+  };
   const dropped = (transitions ?? [])
     .filter((t) => t.status === "dropped")
     .map((t) => ({
       ticker: t.submitted_ticker,
-      value_usd: valueByTicker.get(t.submitted_ticker) ?? 0,
+      value_usd: submittedValue(t.submitted_ticker),
       reason: t.outcome,
       detail: t.detail,
     }));

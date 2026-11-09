@@ -27,9 +27,30 @@ const row = {
   l1_rr: .011, l2_rr: .022, l3_rr: .033,
 };
 
+// Real MDGL L3 ER cells at 2026-08-06, shared with cohort-variance-shares.test.ts.
+const MDGL_ER = { l3_mkt_er: 0.00406, l3_sec_er: 0.01648, l3_sub_er: 0.11038 };
+
 beforeEach(() => { mocks.history.mockReset(); mocks.history.mockResolvedValue([row]); });
 
 describe("request parsing through LSTAR hedge dispatch", () => {
+  it("keeps a complete real row's total ER unchanged", async () => {
+    mocks.history.mockResolvedValue([{ ...row, ...MDGL_ER, lstar_level: 3 }]);
+    const result = await new LstarService().getLstar("MDGL");
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.total_er[0]).toBeCloseTo(0.13092, 12);
+    expect(result.data_quality_flags).toEqual([]);
+  });
+
+  it("returns null plus a flag when a chosen level is missing an ER input", async () => {
+    mocks.history.mockResolvedValue([{ ...row, ...MDGL_ER, l3_mkt_er: null, lstar_level: 3 }]);
+    const result = await new LstarService().getLstar("MDGL");
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.total_er[0]).toBeNull();
+    expect(result.data_quality_flags).toEqual(["total_er_inputs_incomplete"]);
+  });
+
   it.each([
     [1, -1.9, null, null, .011],
     [2, -.24, -.96, null, .022],

@@ -184,7 +184,7 @@ function isoMinusDays(iso: string, days: number): string {
 
 function mode(values: string[]): string | null {
   const counts = new Map<string, number>();
-  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1); // allow-default: counter - first occurrence starts at zero
   let best: string | null = null;
   let bestN = 0;
   for (const [v, n] of counts) {
@@ -289,8 +289,13 @@ export async function computePortfolioExposure(
   const valueByTicker = new Map<string, number>();
   for (const p of positions) {
     const t = p.ticker.toUpperCase();
-    valueByTicker.set(t, (valueByTicker.get(t) ?? 0) + p.value);
+    valueByTicker.set(t, (valueByTicker.get(t) ?? 0) + p.value); // allow-default: accumulator - first position for a ticker starts at zero
   }
+  const submittedValue = (ticker: string): number => {
+    const value = valueByTicker.get(ticker);
+    if (value === undefined) throw new Error(`missing submitted value for ${ticker}`);
+    return value;
+  };
   const stocksBySymbol = new Map<string, StockInput>();
   const direct = new Map<string, DirectEtfInput>();
   for (const p of positions) {
@@ -302,8 +307,8 @@ export async function computePortfolioExposure(
         // registry cannot price is named as such, not as an unknown ticker.
         dropped.push(
           isKnownEtf(t)
-            ? { ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "etf_outside_priced_universe", see: etfSee(t) }
-            : { ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "symbol_not_found" },
+            ? { ticker: t, value_usd: submittedValue(t), reason: "etf_outside_priced_universe", see: etfSee(t) }
+            : { ticker: t, value_usd: submittedValue(t), reason: "symbol_not_found" },
         );
       }
       continue;
@@ -431,7 +436,7 @@ export async function computePortfolioExposure(
       for (const t of s.tickers) {
         dropped.push({
           ticker: t,
-          value_usd: valueByTicker.get(t) ?? 0,
+          value_usd: submittedValue(t),
           reason: l ? "not_at_snapshot_teo" : opts.asOf ? "no_data_at_as_of" : "no_risk_metrics",
           teo: l?.teo ?? null,
         });
@@ -442,7 +447,7 @@ export async function computePortfolioExposure(
     // trading days ERM3 needs (MIN_PERIODS within its 252-day window).
     if (!STOCK_KEYS.some((k) => finite(metrics![k]))) {
       for (const t of s.tickers) {
-        dropped.push({ ticker: t, value_usd: valueByTicker.get(t) ?? 0, reason: "insufficient_history" });
+        dropped.push({ ticker: t, value_usd: submittedValue(t), reason: "insufficient_history" });
       }
       continue;
     }
@@ -529,7 +534,7 @@ export async function computePortfolioExposure(
       covariance_start: cov?.start ?? null,
       covariance_end: cov?.end ?? null,
       covariance_requested_n: opts.lookbackDays,
-      covariance_effective_n: cov?.effective_n ?? 0,
+      covariance_effective_n: cov?.effective_n ?? null,
       vintage_aligned: cov?.end === snapshotTeo,
       etf_mapping: "current symbol registry (not point-in-time)",
     },

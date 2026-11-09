@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const userId = topUp.user_id as string;
-    const amountUsd = parseFloat(String(topUp.amount_usd ?? 0));
+    const amountUsd = parseFloat(String(topUp.amount_usd ?? 0)); // allow-default: billing - missing receipt amount is a non-model monetary total
 
     const { data: account } = await admin
       .from("agent_accounts")
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     const newBalanceUsd =
       typeof body.balance_after_usd === "number"
         ? body.balance_after_usd
-        : parseFloat(String(account?.balance_usd ?? 0));
+        : parseFloat(String(account?.balance_usd ?? 0)); // allow-default: billing - missing account balance is a non-model monetary total
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, {

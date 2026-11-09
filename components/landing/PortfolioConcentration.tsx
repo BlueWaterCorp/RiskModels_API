@@ -42,36 +42,36 @@ const DEFAULT_HEDGED: LayerKey[] = ["market", "sector"];
 interface ConcentrationTicker {
   ticker: string;
   name: string | null;
-  l3_mkt_er: number;
-  l3_sec_er: number;
-  l3_sub_er: number;
-  l3_res_er: number;
-  l3_mkt_hr: number;
-  l3_sec_hr: number;
-  l3_sub_hr: number;
-  total_er: number;
-  sigma: number;
+  l3_mkt_er: number | null;
+  l3_sec_er: number | null;
+  l3_sub_er: number | null;
+  l3_res_er: number | null;
+  l3_mkt_hr: number | null;
+  l3_sec_hr: number | null;
+  l3_sub_hr: number | null;
+  total_er: number | null;
+  sigma: number | null;
   sector_etf: string | null;
   subsector_etf: string | null;
 }
 
 interface LayerER {
-  market_er: number;
-  sector_er: number;
-  subsector_er: number;
-  residual_er: number;
-  total: number;
+  market_er: number | null;
+  sector_er: number | null;
+  subsector_er: number | null;
+  residual_er: number | null;
+  total: number | null;
 }
 
 interface PortfolioBlock {
   weights: Record<string, number>;
   naive: LayerER;
   adjusted: LayerER;
-  variance_naive: number;
-  variance_adjusted: number;
-  sigma_naive: number;
-  sigma_adjusted: number;
-  redundancy_pct: number;
+  variance_naive: number | null;
+  variance_adjusted: number | null;
+  sigma_naive: number | null;
+  sigma_adjusted: number | null;
+  redundancy_pct: number | null;
 }
 
 interface EtfHedge {
@@ -97,8 +97,8 @@ interface CapRow {
   ticker: string;
   name: string | null;
   capWeight: number;
-  sigma: number;
-  shares: Record<LayerKey, number>;
+  sigma: number | null;
+  shares: Record<LayerKey, number> | null;
 }
 
 const ENDPOINT = "/api/landing/concentration";
@@ -187,7 +187,7 @@ function ChartBody({ data }: { data: ConcentrationPayload }) {
           ticker: t,
           name: row?.name ?? null,
           capWeight: capWeights[t] ?? 0,
-          sigma: row?.sigma ?? 0,
+          sigma: row?.sigma ?? null,
           shares: normalizeShares(row),
         };
       })
@@ -195,8 +195,11 @@ function ChartBody({ data }: { data: ConcentrationPayload }) {
       .sort((a, b) => b.capWeight - a.capWeight);
   }, [tickers, per_ticker, cap]);
 
-  const sigmaMaxTicker = capRows.reduce((m, r) => Math.max(m, r.sigma), 0);
-  const sharedSigmaMax = niceCeil5(Math.max(sigmaMaxTicker, cap?.sigma_naive ?? 0) * 1.06);
+  const sigmaCandidates = [
+    ...capRows.flatMap((row) => row.sigma == null ? [] : [row.sigma]),
+    ...(cap?.sigma_naive == null ? [] : [cap.sigma_naive]),
+  ];
+  const sharedSigmaMax = niceCeil5(Math.max(0, ...sigmaCandidates) * 1.06);
 
   if (!cap) {
     return (
@@ -216,8 +219,14 @@ function ChartBody({ data }: { data: ConcentrationPayload }) {
   );
 }
 
-function normalizeShares(row: ConcentrationTicker | undefined): Record<LayerKey, number> {
-  if (!row) return { market: 0, sector: 0, subsector: 0, residual: 0 };
+function normalizeShares(row: ConcentrationTicker | undefined): Record<LayerKey, number> | null {
+  if (
+    !row ||
+    row.l3_mkt_er == null ||
+    row.l3_sec_er == null ||
+    row.l3_sub_er == null ||
+    row.l3_res_er == null
+  ) return null;
   const raw = {
     market: clampNonNeg(row.l3_mkt_er),
     sector: clampNonNeg(row.l3_sec_er),
@@ -379,7 +388,7 @@ function MarimekkoBars({
           heights.slice(0, i).reduce((a, b) => a + b, 0) +
           gapPx * i;
         const h = heights[i];
-        const fullW = (row.sigma / xMax) * innerW;
+        const fullW = row.sigma == null ? null : (row.sigma / xMax) * innerW;
         return (
           <MarimekkoRow
             key={row.ticker}
@@ -407,16 +416,18 @@ function MarimekkoRow({
   row: CapRow;
   x: number;
   y: number;
-  fullW: number;
+  fullW: number | null;
   h: number;
   labelX: number;
 }) {
   const segments: { key: LayerKey; w: number; x: number }[] = [];
   let cursor = x;
-  for (const key of LAYER_ORDER) {
-    const segW = fullW * row.shares[key];
-    segments.push({ key, w: segW, x: cursor });
-    cursor += segW;
+  if (fullW != null && row.shares) {
+    for (const key of LAYER_ORDER) {
+      const segW = fullW * row.shares[key];
+      segments.push({ key, w: segW, x: cursor });
+      cursor += segW;
+    }
   }
 
   const tickerFont = Math.min(13, Math.max(10, h * 0.55));
@@ -458,10 +469,24 @@ function MarimekkoRow({
             fill={LAYER_COLORS[s.key]}
           >
             <title>
-              {row.ticker} · {LAYER_LABEL[s.key]}: {(row.shares[s.key] * row.sigma * 100).toFixed(1)}%
+              {row.ticker} · {LAYER_LABEL[s.key]}: {row.shares && row.sigma != null
+                ? `${(row.shares[s.key] * row.sigma * 100).toFixed(1)}%`
+                : "—"}
             </title>
           </rect>
         ) : null,
+      )}
+      {segments.length === 0 && (
+        <text
+          x={x + 6}
+          y={y + h / 2}
+          dominantBaseline="middle"
+          fontSize={11}
+          fill="#71717a"
+          fontFamily="ui-sans-serif, system-ui, sans-serif"
+        >
+          —
+        </text>
       )}
     </g>
   );
@@ -500,13 +525,7 @@ function ReplicateHedgePanel({
   // share of the total. This is the SAME math the LEFT panel uses per-stock.
   const naive = block.naive;
   const sigmaNaive = block.sigma_naive;
-  const total = naive.total > 1e-12 ? naive.total : 1;
-  const shares: Record<LayerKey, number> = {
-    market: clampNonNeg(naive.market_er) / total,
-    sector: clampNonNeg(naive.sector_er) / total,
-    subsector: clampNonNeg(naive.subsector_er) / total,
-    residual: clampNonNeg(naive.residual_er) / total,
-  };
+  const shares = normalizeLayerShares(naive);
 
   // Top ETF per layer for the SECTION 3 mapping table.
   const topPerLayer = useMemo(() => {
@@ -523,13 +542,15 @@ function ReplicateHedgePanel({
   // Default hedge selection: Market + Sector. Subsector is hedgeable but not
   // hedged by default; Residual is never hedgeable.
   const hedged = new Set<LayerKey>(DEFAULT_HEDGED);
-  const remainingShares = LAYER_ORDER.reduce<Record<LayerKey, number>>(
-    (acc, k) => {
-      acc[k] = hedged.has(k) ? 0 : shares[k];
-      return acc;
-    },
-    { market: 0, sector: 0, subsector: 0, residual: 0 },
-  );
+  const remainingShares = shares
+    ? LAYER_ORDER.reduce<Record<LayerKey, number>>(
+        (acc, k) => {
+          acc[k] = hedged.has(k) ? 0 : shares[k];
+          return acc;
+        },
+        { market: 0, sector: 0, subsector: 0, residual: 0 },
+      )
+    : null;
 
   return (
     <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-5 sm:p-7">
@@ -663,8 +684,8 @@ function DecompositionBar({
   muted,
   colors = LAYER_COLORS,
 }: {
-  shares: Record<LayerKey, number>;
-  sigma: number;
+  shares: Record<LayerKey, number> | null;
+  sigma: number | null;
   muted?: boolean;
   colors?: Record<LayerKey, string>;
 }) {
@@ -680,17 +701,19 @@ function DecompositionBar({
   // Total visible width is proportional to the share sum. For the full-stack
   // case (all layers present) the bar fills the panel; for the remaining bar
   // (some layers hedged out) the bar shortens proportionally.
-  const totalShare = LAYER_ORDER.reduce((s, k) => s + shares[k], 0);
+  const totalShare = shares ? LAYER_ORDER.reduce((s, k) => s + shares[k], 0) : 0;
   const barW = innerW * totalShare;
-  const sigmaPct = sigma * 100;
-  const remainingSigmaPct = sigmaPct * totalShare;
+  const sigmaPct = sigma == null ? null : sigma * 100;
+  const remainingSigmaPct = sigmaPct == null ? null : sigmaPct * totalShare;
 
   let cursor = ML;
   const segments: { key: LayerKey; x: number; w: number }[] = [];
-  for (const k of LAYER_ORDER) {
-    const w = innerW * shares[k];
-    if (w > 0) segments.push({ key: k, x: cursor, w });
-    cursor += w;
+  if (shares) {
+    for (const k of LAYER_ORDER) {
+      const w = innerW * shares[k];
+      if (w > 0) segments.push({ key: k, x: cursor, w });
+      cursor += w;
+    }
   }
 
   return (
@@ -722,7 +745,9 @@ function DecompositionBar({
           opacity={muted ? 0.85 : 1}
         >
           <title>
-            {LAYER_LABEL[s.key]}: {(shares[s.key] * sigmaPct).toFixed(1)}% σ
+            {LAYER_LABEL[s.key]}: {shares && sigmaPct != null
+              ? `${(shares[s.key] * sigmaPct).toFixed(1)}% σ`
+              : "—"}
           </title>
         </rect>
       ))}
@@ -736,7 +761,7 @@ function DecompositionBar({
         fontWeight={600}
         fontFamily="ui-sans-serif, system-ui, sans-serif"
       >
-        {remainingSigmaPct.toFixed(1)}% σ
+        {remainingSigmaPct == null ? "—" : `${remainingSigmaPct.toFixed(1)}% σ`}
       </text>
     </svg>
   );
@@ -747,15 +772,15 @@ function DecompositionLegend({
   sigma,
   colors = LAYER_COLORS,
 }: {
-  shares: Record<LayerKey, number>;
-  sigma: number;
+  shares: Record<LayerKey, number> | null;
+  sigma: number | null;
   colors?: Record<LayerKey, string>;
 }) {
-  const sigmaPct = sigma * 100;
+  const sigmaPct = sigma == null ? null : sigma * 100;
   return (
     <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-zinc-400 sm:grid-cols-4">
       {LAYER_ORDER.map((k) => {
-        const v = shares[k] * sigmaPct;
+        const v = shares && sigmaPct != null ? shares[k] * sigmaPct : null;
         return (
           <li key={k} className="inline-flex items-center gap-1.5">
             <span
@@ -763,12 +788,31 @@ function DecompositionLegend({
               style={{ backgroundColor: colors[k] }}
             />
             <span className="text-zinc-300">{LAYER_LABEL[k]}</span>
-            <span className="ml-auto font-mono text-zinc-400">{v.toFixed(1)}%</span>
+            <span className="ml-auto font-mono text-zinc-400">
+              {v == null ? "—" : `${v.toFixed(1)}%`}
+            </span>
           </li>
         );
       })}
     </ul>
   );
+}
+
+function normalizeLayerShares(layer: LayerER): Record<LayerKey, number> | null {
+  if (
+    layer.market_er == null ||
+    layer.sector_er == null ||
+    layer.subsector_er == null ||
+    layer.residual_er == null ||
+    layer.total == null ||
+    layer.total <= 1e-12
+  ) return null;
+  return {
+    market: clampNonNeg(layer.market_er) / layer.total,
+    sector: clampNonNeg(layer.sector_er) / layer.total,
+    subsector: clampNonNeg(layer.subsector_er) / layer.total,
+    residual: clampNonNeg(layer.residual_er) / layer.total,
+  };
 }
 
 function absUsd(n: number): string {

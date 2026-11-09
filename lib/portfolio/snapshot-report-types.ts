@@ -22,15 +22,19 @@ export interface SnapshotReportData {
   as_of: string;
   portfolio_risk_index: {
     variance_decomposition: {
-      market: number;
-      sector: number;
-      subsector: number;
-      residual: number;
-      systematic: number;
+      market: number | null;
+      sector: number | null;
+      subsector: number | null;
+      residual: number | null;
+      systematic: number | null;
     };
     portfolio_volatility_23d: number | null;
     position_count: number;
+    er_coverage: number;
+    volatility_coverage: number;
+    aggregation: "covered_weights_not_renormalized";
   };
+  data_quality_flags: string[];
   per_ticker: SnapshotTickerRow[];
   /** Short notes printed above the footer, e.g. positions carried through corporate-action events. */
   footnotes?: string[];

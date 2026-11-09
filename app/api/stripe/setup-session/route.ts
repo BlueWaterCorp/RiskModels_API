@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    let prepayUsd = Number((body as { prepayUsd?: unknown }).prepayUsd ?? 0);
+    let prepayUsd = Number((body as { prepayUsd?: unknown }).prepayUsd ?? 0); // allow-default: billing - omitted checkout prepayment is a non-model input amount
     if (!Number.isFinite(prepayUsd) || !ALLOWED_PREPAY_USD.has(prepayUsd)) {
       prepayUsd = 0; // unknown / tampered amount → fall back to the free $0 path
     }
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       .in('capability_id', ['free_credit', 'starter_credit'])
       .limit(1)
       .maybeSingle();
-    const currentBalance = parseFloat(String(account?.balance_usd ?? 0));
+    const currentBalance = parseFloat(String(account?.balance_usd ?? 0)); // allow-default: billing - missing account balance is a non-model monetary total
     const freeUsd = !priorFree && currentBalance < 20 ? 20 : 0;
 
     let customerId: string;

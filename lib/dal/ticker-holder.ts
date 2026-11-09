@@ -125,8 +125,8 @@ export function rankHolderCandidates<T extends HolderCandidate>(candidates: T[])
     const ah = a.held_through ?? "";
     const bh = b.held_through ?? "";
     if (ah !== bh) return ah > bh ? -1 : 1;
-    const al = a.label_score ?? 0;
-    const bl = b.label_score ?? 0;
+    const al = a.label_score ?? 0; // allow-default: score - absent registry evidence has zero label matches
+    const bl = b.label_score ?? 0; // allow-default: score - absent registry evidence has zero label matches
     if (al !== bl) return bl - al;
     const ad = a.in_daily_store === true ? 1 : 0;
     const bd = b.in_daily_store === true ? 1 : 0;
@@ -287,7 +287,7 @@ const holderCache = new Map<string, { at: number; holder: TickerHolder | null }>
 function holderCacheTtlMs(): number {
   const raw = process.env.TICKER_HOLDER_CACHE_TTL_MS;
   const n = raw === undefined || raw === "" ? 5 * 60 * 1000 : Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  return Number.isFinite(n) && n > 0 ? n : 0; // allow-default: parameter - invalid cache lifetime disables the cache
 }
 
 function holderCacheKey(t: string, extra: ExtraHolderCandidate[]): string {

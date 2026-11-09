@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     data_as_of: dataAsOf,
-    universe_size: universeCount ?? 0,
+    universe_size: universeCount ?? 0, // allow-default: counter - unavailable metadata count is reported as zero
     factor_set_id: "SPY_uni_mc_3000",
     factors: [
       "SPY", "XLK", "XLF", "XLV", "XLE", "XLI",

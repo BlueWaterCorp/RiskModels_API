@@ -105,7 +105,7 @@ export const DEFAULT_TOP_CONTRIBUTORS = 15;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 function addTo(map: Record<string, number>, key: string, v: number) {
-  map[key] = (map[key] ?? 0) + v;
+  map[key] = (map[key] ?? 0) + v; // allow-default: accumulator - first exposure contribution starts at zero
 }
 
 function round(v: number, dp = 2): number {
@@ -415,8 +415,8 @@ export function computeSignedExposure(input: ExposureInput) {
 
     // Market beta on the risk basis: x' Σ e_SPY / σ²_SPY, the SPY-equivalent
     // dollars of the same exposure vector the risk split uses.
-    const varSpy = spyIdx !== undefined ? cov.S[spyIdx]![spyIdx]! : 0;
-    if (spyIdx !== undefined && varSpy > 0) {
+    const varSpy = spyIdx !== undefined ? cov.S[spyIdx]![spyIdx]! : null;
+    if (spyIdx !== undefined && varSpy != null && varSpy > 0) {
       const betaOf = (v: number[]) => v.reduce((a, vi, i) => a + vi * cov.S[i]![spyIdx]!, 0) / varSpy;
       const betaUsd = betaOf(x);
       riskBasisBeta = {
@@ -480,7 +480,7 @@ export function computeSignedExposure(input: ExposureInput) {
   if (riskBasisBeta) riskBasisBeta.gross_covered = share(systematicCovered);
 
   // ---- 4. scenario inputs ----------------------------------------------------------
-  const spyVar = cov && spyIdx !== undefined ? cov.S[spyIdx]![spyIdx]! : 0;
+  const spyVar = cov && spyIdx !== undefined ? cov.S[spyIdx]![spyIdx]! : null;
   const hedgeLegEtfs = new Set<string>();
   for (const s of stocks) {
     const level = levelOf.get(s.symbol);
@@ -494,9 +494,9 @@ export function computeSignedExposure(input: ExposureInput) {
     const inCov = i !== undefined && !!cov;
     etfRows.set(etf, {
       ticker: etf,
-      beta_to_spy: inCov && spyVar > 0 ? round(cov!.S[i]![spyIdx!]! / spyVar, 4) : null,
+      beta_to_spy: inCov && spyVar != null && spyVar > 0 ? round(cov!.S[i]![spyIdx!]! / spyVar, 4) : null,
       annual_vol: inCov ? round(Math.sqrt(Math.max(cov!.S[i]![i]!, 0) * TRADING_DAYS), 4) : null,
-      held_usd: round(directExposure[etf] ?? 0),
+      held_usd: round(directExposure[etf] ?? 0), // allow-default: exposure - ETF absent from the book has zero direct exposure
       hedge_leg: hedgeLegEtfs.has(etf),
       in_covariance: inCov,
     });
@@ -504,7 +504,7 @@ export function computeSignedExposure(input: ExposureInput) {
   const scenarioInputs: Record<string, unknown> = {
     covariance_start: cov?.start ?? null,
     covariance_end: cov?.end ?? null,
-    covariance_effective_n: cov?.effective_n ?? 0,
+    covariance_effective_n: cov?.effective_n ?? null,
     etfs: [...etfRows.values()],
     positions_included: input.includePositions === true,
     note: "beta_to_spy = cov(ETF, SPY) / var(SPY) and annual_vol = √(252·var) over the covariance window (SPY = 1). held_usd is the book's own position; hedge_leg marks ETFs used by a name's hedge at its level. Per-name rows (scenario_inputs.positions) are returned only when include_positions is true.",
@@ -588,6 +588,7 @@ export function computeSignedExposure(input: ExposureInput) {
     hedges,
     risk,
     scenario_inputs: scenarioInputs,
+    data_quality_flags: cov ? [] : ["covariance_unavailable"],
     coverage: {
       input_gross_usd: round(gross),
       modelled_stock_gross_usd: round(stockGross),

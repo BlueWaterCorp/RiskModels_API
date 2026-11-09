@@ -100,7 +100,7 @@ export class L3DecompositionService {
     options?: { years?: number },
   ): Promise<L3DecompositionResult | null> {
     const upperTicker = ticker.toUpperCase();
-    const years = options?.years ?? 1;
+    const years = options?.years ?? 1; // allow-default: parameter - omitted history window defaults to one year
 
     return this.getDecompositionFromSecurityHistory(upperTicker, marketFactorEtf, years);
   }

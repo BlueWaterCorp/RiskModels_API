@@ -19,7 +19,7 @@ export function buildHedgeMap(layers: Record<string, HedgeLayer>): Record<string
   for (const name of ["market", "sector", "subsector"]) {
     const layer = layers[name];
     if (layer && layer.hedge_etf && layer.hr !== null && Number.isFinite(layer.hr)) {
-      hedge[layer.hedge_etf] = (hedge[layer.hedge_etf] ?? 0) + layer.hr;
+      hedge[layer.hedge_etf] = (hedge[layer.hedge_etf] ?? 0) + layer.hr; // allow-default: accumulator - first hedge contribution starts at zero
     }
   }
   return hedge;

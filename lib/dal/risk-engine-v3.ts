@@ -407,8 +407,8 @@ async function resolveAliasesToCanonicalSymbols(
         continue;
       }
       // Prefer current alias (valid_to null), then later valid_to, then higher confidence.
-      const aActive = existing.valid_to === null ? 1 : 0;
-      const bActive = r.valid_to === null ? 1 : 0;
+      const aActive = existing.valid_to === null ? 1 : 0; // allow-default: score - active rows outrank inactive rows
+      const bActive = r.valid_to === null ? 1 : 0; // allow-default: score - active rows outrank inactive rows
       if (bActive !== aActive) {
         if (bActive > aActive) candidates.set(key, r);
         continue;
@@ -745,7 +745,7 @@ async function resolveMostRecentHolderRows(
               h.bw_sym_id,
               t,
               h.security_master,
-              !(h.identity_delisted && (h.label_score ?? 0) === 2),
+              !(h.identity_delisted && (h.label_score ?? 0) === 2), // allow-default: score - absent registry evidence has zero label matches
             ),
             h.identity_delisted,
           )

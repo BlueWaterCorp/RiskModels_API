@@ -127,11 +127,17 @@
           "description": "Map of hedge-ETF -> dollar ratio (= negative of layer hr). Duplicate ETFs across layers are summed."
         },
         "hedge_levels": { "$ref": "#/definitions/HedgeLevelsBlock" },
+        "data_quality_flags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Contains er_inputs_incomplete when the ER sanity sum cannot be computed; missing inputs remain null."
+        },
         "_metadata": { "type": "object" },
         "_data_health": {
           "type": "object",
           "properties": {
             "er_populated": { "type": "boolean" },
+            "er_complete": { "type": "boolean" },
             "er_sum": { "type": ["number", "null"] }
           }
         }

@@ -15,7 +15,8 @@ import type {
 } from "@/lib/portfolio/snapshot-report-types";
 import { FACTOR_COLORS } from "@/lib/portfolio/snapshot-report-types";
 
-function pct(x: number): string {
+function pct(x: number | null): string {
+  if (x == null) return "\u2014";
   return `${(x * 100).toFixed(1)}%`;
 }
 
@@ -31,6 +32,9 @@ function VarianceBarChart({
 }: {
   vd: SnapshotReportData["portfolio_risk_index"]["variance_decomposition"];
 }) {
+  if (vd.market == null || vd.sector == null || vd.subsector == null || vd.residual == null) {
+    return <div>Incomplete ER coverage — see data quality flags.</div>;
+  }
   const total = vd.market + vd.sector + vd.subsector + vd.residual;
   if (total === 0) return null;
 

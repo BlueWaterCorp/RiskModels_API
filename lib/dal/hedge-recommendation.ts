@@ -114,7 +114,7 @@ export function recommendHedgeLevel(inp: RecommendHedgeLevelInputs): LStar {
 
   // Step down L3 → L2 if subsector layer fails either economic gate.
   if (candidate === "L3") {
-    const marginalHaircut = (l3SubsectorEr || 0) * erHaircut;
+    const marginalHaircut = l3SubsectorEr * erHaircut;
     const leverageFails = l3HedgeGross > cap;
     const erFails = marginalHaircut < minHaircutMarginalEr;
     if (leverageFails || erFails) {
@@ -124,7 +124,7 @@ export function recommendHedgeLevel(inp: RecommendHedgeLevelInputs): LStar {
 
   // Step down L2 → L1 if sector layer fails either economic gate.
   if (candidate === "L2") {
-    const marginalHaircut = (l2SectorEr || 0) * erHaircut;
+    const marginalHaircut = l2SectorEr * erHaircut;
     const leverageFails = l2HedgeGross > cap;
     const erFails = marginalHaircut < minHaircutMarginalEr;
     if (leverageFails || erFails) {

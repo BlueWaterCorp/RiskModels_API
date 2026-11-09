@@ -48,8 +48,8 @@ describe("computeDiversificationMetrics", () => {
 
   it("computes quadratic adjusted < naive for diversified portfolio", () => {
     const r = computeDiversificationMetrics(makeInput());
-    expect(r.correlation_adjusted.sector_er).toBeLessThan(r.naive_pws.sector_er);
-    expect(r.correlation_adjusted.subsector_er).toBeLessThan(r.naive_pws.subsector_er);
+    expect(r.correlation_adjusted.sector_er!).toBeLessThan(r.naive_pws.sector_er!);
+    expect(r.correlation_adjusted.subsector_er!).toBeLessThan(r.naive_pws.subsector_er!);
     expect(r.diversification_credit.sector).toBeGreaterThan(0);
     expect(r.diversification_credit.subsector).toBeGreaterThan(0);
   });
@@ -80,7 +80,7 @@ describe("computeDiversificationMetrics", () => {
     });
     const r = computeDiversificationMetrics(input);
     // Single ETF: u'Ru = u^2, (sum|u|)^2 = u^2, multiplier = 1.0
-    expect(r.correlation_adjusted.sector_er).toBeCloseTo(r.naive_pws.sector_er, 6);
+    expect(r.correlation_adjusted.sector_er).toBeCloseTo(r.naive_pws.sector_er!, 6);
     expect(r.diversification_credit.sector).toBeCloseTo(0, 6);
   });
 
@@ -98,7 +98,7 @@ describe("computeDiversificationMetrics", () => {
   it("layers invariant: naive == adjusted + adjustment per layer", () => {
     const r = computeDiversificationMetrics(makeInput());
     for (const layer of r.layers) {
-      expect(layer.naive_er).toBeCloseTo(layer.adjusted_er + layer.adjustment_er, 5);
+      expect(layer.naive_er).toBeCloseTo(layer.adjusted_er! + layer.adjustment_er!, 5);
     }
   });
 
@@ -120,7 +120,7 @@ describe("computeDiversificationMetrics", () => {
 
   it("market adjusted equals naive (single factor, no diversification)", () => {
     const r = computeDiversificationMetrics(makeInput());
-    expect(r.correlation_adjusted.market_er).toBeCloseTo(r.naive_pws.market_er, 6);
+    expect(r.correlation_adjusted.market_er).toBeCloseTo(r.naive_pws.market_er!, 6);
     expect(r.diversification_credit.market).toBeCloseTo(0, 6);
     expect(r.layers[0].multiplier).toBeCloseTo(1.0, 4);
   });
@@ -136,7 +136,7 @@ describe("computeDiversificationMetrics", () => {
     const r = computeDiversificationMetrics(makeInput());
     const sectorLayer = r.layers.find((l) => l.layer === "sector")!;
     expect(sectorLayer.multiplier).toBeCloseTo(
-      sectorLayer.adjusted_er / sectorLayer.naive_er,
+      sectorLayer.adjusted_er! / sectorLayer.naive_er!,
       3,
     );
   });

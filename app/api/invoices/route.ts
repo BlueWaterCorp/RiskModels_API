@@ -93,13 +93,13 @@ export async function GET(request: NextRequest) {
         r.type === "debit" &&
         (typeof r.cost_usd === "number"
           ? r.cost_usd
-          : parseFloat(String(r.cost_usd ?? 0))) > 0,
+          : parseFloat(String(r.cost_usd ?? 0))) > 0, // allow-default: billing - missing invoice cost is a non-model monetary total
     );
     const totalSpent = debits.reduce((sum, r) => {
       const c =
         typeof r.cost_usd === "number"
           ? r.cost_usd
-          : parseFloat(String(r.cost_usd ?? 0));
+          : parseFloat(String(r.cost_usd ?? 0)); // allow-default: billing - missing invoice cost is a non-model monetary total
       return sum + Math.abs(c);
     }, 0);
 
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
       const amt =
         typeof r.cost_usd === "number"
           ? r.cost_usd
-          : parseFloat(String(r.cost_usd ?? 0));
+          : parseFloat(String(r.cost_usd ?? 0)); // allow-default: billing - missing invoice cost is a non-model monetary total
       return {
         id: r.id as string,
         status:

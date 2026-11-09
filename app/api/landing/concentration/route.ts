@@ -42,11 +42,11 @@ const NOTIONAL_USD = 1_000_000;
 const WINDOW_DAYS = 252;
 
 type LayerER = {
-  market_er: number;
-  sector_er: number;
-  subsector_er: number;
-  residual_er: number;
-  total: number;
+  market_er: number | null;
+  sector_er: number | null;
+  subsector_er: number | null;
+  residual_er: number | null;
+  total: number | null;
 };
 
 type PortfolioBlock = {
@@ -55,33 +55,38 @@ type PortfolioBlock = {
   naive: LayerER;
   adjusted: LayerER;
   /** Position-weighted naive portfolio variance σ² (annualized, decimal). */
-  variance_naive: number;
+  variance_naive: number | null;
   /** Correlation-adjusted portfolio variance σ² (annualized, decimal). */
-  variance_adjusted: number;
+  variance_adjusted: number | null;
   /** sqrt(variance_naive) — annualized portfolio σ before correlation. */
-  sigma_naive: number;
+  sigma_naive: number | null;
   /** sqrt(variance_adjusted) — annualized portfolio σ after correlation. */
-  sigma_adjusted: number;
+  sigma_adjusted: number | null;
   /** (var_naive − var_adjusted) / var_naive × 100 — invariant under scaling. */
-  redundancy_pct: number;
+  redundancy_pct: number | null;
+  er_coverage: number;
+  vol_coverage: number;
+  aggregation: "covered_weights_not_renormalized";
+  data_quality_flags: string[];
 };
 
 type ConcentrationTicker = {
   ticker: string;
   name: string | null;
-  l3_mkt_er: number;
-  l3_sec_er: number;
-  l3_sub_er: number;
-  l3_res_er: number;
+  l3_mkt_er: number | null;
+  l3_sec_er: number | null;
+  l3_sub_er: number | null;
+  l3_res_er: number | null;
   /** V3 hedge ratios (dollars of ETF short per $1 of stock long). */
-  l3_mkt_hr: number;
-  l3_sec_hr: number;
-  l3_sub_hr: number;
-  total_er: number;
+  l3_mkt_hr: number | null;
+  l3_sec_hr: number | null;
+  l3_sub_hr: number | null;
+  total_er: number | null;
   /** Annualized σ (decimal, e.g. 0.32 for 32%). */
-  sigma: number;
+  sigma: number | null;
   sector_etf: string | null;
   subsector_etf: string | null;
+  data_quality_flags: string[];
 };
 
 /**
@@ -140,14 +145,19 @@ export async function GET(request: NextRequest) {
         const sectorEtf = sym.sector_etf ?? null;
         const subsectorEtf = sym.subsector_etf ?? sym.sector_etf ?? null;
 
-        const mkt = Number(m.l3_mkt_er ?? 0) || 0;
-        const sec = Number(m.l3_sec_er ?? 0) || 0;
-        const sub = Number(m.l3_sub_er ?? 0) || 0;
-        const res = Number(m.l3_res_er ?? 0) || 0;
+        const finiteOrNull = (value: unknown): number | null => {
+          if (value == null) return null;
+          const numeric = Number(value);
+          return Number.isFinite(numeric) ? numeric : null;
+        };
+        const mkt = finiteOrNull(m.l3_mkt_er);
+        const sec = finiteOrNull(m.l3_sec_er);
+        const sub = finiteOrNull(m.l3_sub_er);
+        const res = finiteOrNull(m.l3_res_er);
 
-        const mktHr = Number(m.l3_mkt_hr ?? 0) || 0;
-        const secHr = Number(m.l3_sec_hr ?? 0) || 0;
-        const subHr = Number(m.l3_sub_hr ?? 0) || 0;
+        const mktHr = finiteOrNull(m.l3_mkt_hr);
+        const secHr = finiteOrNull(m.l3_sec_hr);
+        const subHr = finiteOrNull(m.l3_sub_hr);
 
         tickerMetrics.set(ticker, {
           l3_mkt_er: mkt,
@@ -168,12 +178,12 @@ export async function GET(request: NextRequest) {
         // Annualized σ: prefer vol_23d (already annualized decimal); else
         // derive from daily stock_var (matches the original Plotly chart's
         // sqrt(stock_var × 252) fallback in _mag7_dna.row_from_p1).
-        let sigma = Number(m.vol_23d ?? 0) || 0;
-        if (sigma <= 0) {
-          const dailyVar = Number(m.stock_var ?? 0) || 0;
-          sigma = dailyVar > 0 ? Math.sqrt(dailyVar * 252) : 0;
+        let sigma = finiteOrNull(m.vol_23d);
+        if (sigma == null || sigma <= 0) {
+          const dailyVar = finiteOrNull(m.stock_var);
+          sigma = dailyVar != null && dailyVar > 0 ? Math.sqrt(dailyVar * 252) : null;
         }
-        if (sigma > 0) tickerSigma.set(ticker, sigma);
+        if (sigma != null && sigma > 0) tickerSigma.set(ticker, sigma);
 
         if (sectorEtf) sectorEtfSet.add(sectorEtf);
         if (subsectorEtf) subsectorEtfSet.add(subsectorEtf);
@@ -188,10 +198,18 @@ export async function GET(request: NextRequest) {
           l3_mkt_hr: mktHr,
           l3_sec_hr: secHr,
           l3_sub_hr: subHr,
-          total_er: mkt + sec + sub + res,
+          total_er:
+            mkt != null && sec != null && sub != null && res != null
+              ? mkt + sec + sub + res
+              : null,
           sigma,
           sector_etf: sectorEtf,
           subsector_etf: subsectorEtf,
+          data_quality_flags: [
+            ...([mkt, sec, sub, res].some((value) => value == null) ? ["er_inputs_incomplete"] : []),
+            ...([mktHr, secHr, subHr].some((value) => value == null) ? ["hedge_ratio_inputs_incomplete"] : []),
+            ...(sigma == null ? ["volatility_unavailable"] : []),
+          ],
         };
       }),
     );
@@ -218,12 +236,12 @@ export async function GET(request: NextRequest) {
 
     // Cap-weight portfolio (only over tickers with a known cap; renormalize)
     const capTickers = resolved.filter((t) => marketCaps.has(t));
-    const capTotal = capTickers.reduce((s, t) => s + (marketCaps.get(t) ?? 0), 0);
+    const capTotal = capTickers.reduce((s, t) => s + marketCaps.get(t)!, 0);
     const capWeights: Record<string, number> = {};
     const capPositions: { ticker: string; weight: number }[] = [];
     if (capTotal > 0) {
       for (const t of capTickers) {
-        const w = (marketCaps.get(t) ?? 0) / capTotal;
+        const w = marketCaps.get(t)! / capTotal;
         capWeights[t] = w;
         capPositions.push({ ticker: t, weight: w });
       }
@@ -253,32 +271,49 @@ export async function GET(request: NextRequest) {
       // Layer breakdown shape (naive shares) is preserved; we just rescale
       // share-space values into absolute σ² by multiplying by this constant.
       let varianceNaive = 0;
+      let volCoveredWeight = 0;
+      const totalAbsWeight = Object.values(weights).reduce((sum, weight) => sum + Math.abs(weight), 0);
       for (const [ticker, w] of Object.entries(weights)) {
-        const s = tickerSigma.get(ticker) ?? 0;
+        const s = tickerSigma.get(ticker);
+        if (s == null) continue;
         varianceNaive += w * s * s;
+        volCoveredWeight += Math.abs(w);
       }
+      const volCoverage = totalAbsWeight > 0 ? volCoveredWeight / totalAbsWeight : 0;
+      const hasVol = volCoveredWeight > 0;
       const adjMultiplier =
-        naive.total > 1e-12 ? adjusted.total / naive.total : 1;
-      const varianceAdjusted = varianceNaive * adjMultiplier;
-      const sigmaNaive = Math.sqrt(Math.max(0, varianceNaive));
-      const sigmaAdjusted = Math.sqrt(Math.max(0, varianceAdjusted));
+        naive.total != null && adjusted.total != null && naive.total > 1e-12
+          ? adjusted.total / naive.total
+          : naive.total === 0 && adjusted.total === 0
+            ? 1
+            : null;
+      const varianceAdjusted = hasVol && adjMultiplier != null ? varianceNaive * adjMultiplier : null;
+      const sigmaNaive = hasVol ? Math.sqrt(Math.max(0, varianceNaive)) : null;
+      const sigmaAdjusted = varianceAdjusted == null ? null : Math.sqrt(Math.max(0, varianceAdjusted));
       const redundancy_pct =
-        varianceNaive > 1e-12
+        varianceAdjusted != null && varianceNaive > 1e-12
           ? Math.max(
               0,
               ((varianceNaive - varianceAdjusted) / varianceNaive) * 100,
             )
-          : 0;
+          : varianceAdjusted === 0 && varianceNaive === 0 ? 0 : null;
 
       return {
         weights,
         naive,
         adjusted,
-        variance_naive: varianceNaive,
+        variance_naive: hasVol ? varianceNaive : null,
         variance_adjusted: varianceAdjusted,
         sigma_naive: sigmaNaive,
         sigma_adjusted: sigmaAdjusted,
         redundancy_pct,
+        er_coverage: div.er_coverage,
+        vol_coverage: volCoverage,
+        aggregation: "covered_weights_not_renormalized",
+        data_quality_flags: [
+          ...div.data_quality_flags,
+          ...(volCoverage < 1 ? ["portfolio_volatility_coverage_incomplete"] : []),
+        ],
       };
     }
 
@@ -292,24 +327,27 @@ export async function GET(request: NextRequest) {
     // grouped by the ETF symbol the layer maps to. Dollars are HR × $1M notional.
     const capEtfHedges: EtfHedge[] = [];
     if (capPositions.length) {
-      const marketHr = capPositions.reduce(
-        (s, { ticker, weight }) => s + weight * (perTicker[ticker]?.l3_mkt_hr ?? 0),
-        0,
-      );
-      capEtfHedges.push({
-        etf: MARKET_ETF,
-        layer: "market",
-        hedge_ratio: marketHr,
-        dollars: Math.round(marketHr * NOTIONAL_USD),
-      });
+      const marketRows = capPositions.filter(({ ticker }) => perTicker[ticker]?.l3_mkt_hr != null);
+      if (marketRows.length) {
+        const marketHr = marketRows.reduce(
+          (sum, { ticker, weight }) => sum + weight * perTicker[ticker]!.l3_mkt_hr!,
+          0,
+        );
+        capEtfHedges.push({
+          etf: MARKET_ETF,
+          layer: "market",
+          hedge_ratio: marketHr,
+          dollars: Math.round(marketHr * NOTIONAL_USD),
+        });
+      }
 
       const sectorBuckets = new Map<string, number>();
       for (const { ticker, weight } of capPositions) {
         const row = perTicker[ticker];
-        if (!row?.sector_etf || !row.l3_sec_hr) continue;
+        if (!row?.sector_etf || row.l3_sec_hr == null) continue;
         sectorBuckets.set(
           row.sector_etf,
-          (sectorBuckets.get(row.sector_etf) ?? 0) + weight * row.l3_sec_hr,
+          (sectorBuckets.get(row.sector_etf) ?? 0) + weight * row.l3_sec_hr, // allow-default: accumulator - first sector hedge contribution starts at zero
         );
       }
       for (const [etf, hr] of sectorBuckets) {
@@ -324,10 +362,10 @@ export async function GET(request: NextRequest) {
       const subsectorBuckets = new Map<string, number>();
       for (const { ticker, weight } of capPositions) {
         const row = perTicker[ticker];
-        if (!row?.subsector_etf || !row.l3_sub_hr) continue;
+        if (!row?.subsector_etf || row.l3_sub_hr == null) continue;
         subsectorBuckets.set(
           row.subsector_etf,
-          (subsectorBuckets.get(row.subsector_etf) ?? 0) + weight * row.l3_sub_hr,
+          (subsectorBuckets.get(row.subsector_etf) ?? 0) + weight * row.l3_sub_hr, // allow-default: accumulator - first subsector hedge contribution starts at zero
         );
       }
       for (const [etf, hr] of subsectorBuckets) {
@@ -348,6 +386,7 @@ export async function GET(request: NextRequest) {
         per_ticker: perTicker,
         portfolios,
         cap_etf_hedges: capEtfHedges,
+        data_quality_flags: [...new Set(Object.values(perTicker).flatMap((row) => row.data_quality_flags))],
         notional_usd: NOTIONAL_USD,
         data_as_of: metadata.data_as_of,
         window_days: WINDOW_DAYS,

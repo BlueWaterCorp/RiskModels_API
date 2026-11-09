@@ -135,8 +135,8 @@ export function computeHedgeRecommendationSnapshot(
     l1HedgeGross: l1HedgeGross ?? Number.POSITIVE_INFINITY,
     l2HedgeGross: l2HedgeGross ?? Number.POSITIVE_INFINITY,
     l3HedgeGross: l3HedgeGross ?? Number.POSITIVE_INFINITY,
-    l2SectorEr: finiteNum(inp.l2_sec_er) ? inp.l2_sec_er : 0,
-    l3SubsectorEr: finiteNum(inp.l3_sub_er) ? inp.l3_sub_er : 0,
+    l2SectorEr: finiteNum(inp.l2_sec_er) ? inp.l2_sec_er : Number.NaN,
+    l3SubsectorEr: finiteNum(inp.l3_sub_er) ? inp.l3_sub_er : Number.NaN,
     userSegment,
   });
   if (recommended !== "L1" && incomplete.includes(recommended)) recommended = "L1";
@@ -443,7 +443,7 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const erHaircut = DEFAULT_ER_HAIRCUT;
   const minHaircut = DEFAULT_MIN_HAIRCUT_ER;
   const incomplete = snap.incomplete_levels;
-  const rank = (l: LStar | null) => (l === null ? 0 : l === "L1" ? 1 : l === "L2" ? 2 : 3);
+  const rank = (l: LStar | null) => (l === null ? 0 : l === "L1" ? 1 : l === "L2" ? 2 : 3); // allow-default: ordering - null sorts below every concrete hedge level
   // Walk the candidate ladder mirroring computeHedgeRecommendationSnapshot.
   let candidate: LStar = (lstar ?? "L1") as LStar;
   if (incomplete.some((l) => rank(l) > rank(snap.recommended_hedge_level) && rank(l) <= rank(candidate))) {
