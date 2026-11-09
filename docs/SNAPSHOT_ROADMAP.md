@@ -1,5 +1,7 @@
 # Snapshot Roadmap: Institutional PDF Suite
 
+> **Historical (pre-2026-10):** `ticker_metadata` (frozen 2026-01-21) and `security_history` (frozen 2026-04-14) are stale; do not read them. Live sources: `symbols`, the `security_master` mirror and the zarr stores. See [SUPABASE_TABLES.md](../SUPABASE_TABLES.md).
+
 > Working document for the snapshot system. Updated 2026-04-07.
 >
 > **Naming:** The original S1–S4 grid has been superseded by a 2×4 matrix:

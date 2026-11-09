@@ -80,7 +80,7 @@ The P1/DD waterfall uses **geometric (sequential compounding) attribution** — 
 ## PeerGroupProxy (Intermediary Object)
 **Location:** `sdk/riskmodels/peer_group.py`
 
-Bridges a single stock to a synthetic portfolio of its **subsector** peers. Uses Supabase `ticker_metadata` table directly (via `client.get_ticker_metadata()`) — zero extra API calls for peer discovery and cap-weighting.
+Bridges a single stock to a synthetic portfolio of its **subsector** peers. Today it reads the frozen Supabase `ticker_metadata` table (last_teo 2026-01-21, pre-ERM3-41 taxonomy) via `client.get_ticker_metadata()`; PRs #500/#506 move it to `symbols`. Do not use `ticker_metadata` for cohorts in new work — use `symbols.sector_etf/subsector_etf` or the cohort zarr (`ds_erm3_cohorts_*`).
 
 ```python
 from riskmodels.peer_group import PeerGroupProxy
@@ -91,8 +91,7 @@ comparison.selection_spread                        # → target - peer avg resid
 ```
 
 **Key details:**
-- `from_ticker()` queries `ticker_metadata` for target's subsector_etf, then queries all matching peers ordered by market_cap. Cap-weights from the same table — one Supabase call, no batch-analyze needed.
-- DB value for subsector_etf is source of truth; `sector_etf_override` is fallback only.
+- `from_ticker()` resolves the target's subsector_etf and peers. Source of truth for sector/subsector labels is `symbols` (nightly), mirrored from `security_master`; `ticker_metadata` is frozen and being retired. `sector_etf_override` is fallback only.
 - Falls back from subsector_etf → sector_etf if too few peers.
 - Vol derived from `stock_var` when `vol_23d` unavailable: `sqrt(stock_var × 252)`.
 - `compare()` calls `analyze_portfolio()` on peers → `PeerComparison` dataclass (the fetch/render boundary).
@@ -113,14 +112,17 @@ render_XX_to_pdf(data, path)    → Path         # pure Matplotlib, no network
 When the Supabase schema changes, only `get_data` is touched. Renderers stay stable. The JSON file is the boundary between them.
 
 ## Data Contract (V3)
-- **`ticker_metadata`** — authoritative for sector/subsector mappings, company names, market caps. Used by PeerGroupProxy.
-- **`symbols`** — identity registry (symbol PK, ticker, sector_etf, subsector_etf)
-- **`security_history`** — long-form temporal (symbol, teo, periodicity, metric_key → value)
+- **`ticker_metadata`** — STALE: FROZEN 2026-01-21, 877 rows with no sector, old taxonomy. Do not read. Being retired (ERM3 taxonomy spec §8.5; SDK migration in PRs #500/#506).
+- **`symbols`** — identity registry and the authoritative sector/subsector labels (symbol PK, ticker, name, sector_etf, subsector_etf); nightly sync.
+- **`security_history`** — STALE: FROZEN 2026-04-14 (~204M rows); all history is served from zarr (`lib/dal/zarr-reader.ts`). Do not read.
 - **`security_history_latest`** — materialized latest metrics per symbol
-- **`erm3_landing_chart_cache`** — pre-computed cumulative returns
+- **`erm3_landing_chart_cache`** — STALE: empty (0 rows) since 2026-04; do not read.
 - **`macro_factors`** — daily macro factor returns
+- **`security_master`** (mirror), **`security_aliases`**, **`security_events`**, **`security_name_history`**, **`class_projections_current`** — live identity tables, nightly. Ticker history (e.g. FB→META) resolves through these.
+- STALE, do not use: `ticker_change_history` (1 row), `ticker_history` (0 rows), `etf_metadata` (frozen 2026-03-28; ETFs come from `ds_etf.zarr` / `lib/dal/etf-register.ts`).
+- Zarr stores in `gs://rm_api_data/eodhd/` are the source for all history: `ds_daily` (incl. `bw_sector_id` / `bw_industry_id`), `ds_erm3_cohorts_*`, `ds_market_cap`, `ds_masks`, `ds_erm3_hedge_weights_*`, `ds_erm3_returns_*`, `ds_rankings_*`.
 
-See `SUPABASE_TABLES.md` for full schema. Source of truth is `Risk_Models` repo.
+See `SUPABASE_TABLES.md` for full schema. Writers: the ERM3 nightly sync (`ERM3/scripts/python/lib/supabase_schema_v3.py`); sync state in `erm3_sync_state_v4`; DDL in `BWMACRO/supabase/migrations/`.
 
 ## Discovery Protocol
 Before building any API client or adding new HTTP/SDK calls:
@@ -131,7 +133,7 @@ Before building any API client or adding new HTTP/SDK calls:
 ## Key Directories
 ```
 sdk/riskmodels/
-├── client.py              # RiskModelsClient + get_ticker_metadata()
+├── client.py              # RiskModelsClient + get_ticker_metadata()  (reads frozen ticker_metadata until #500 merges)
 ├── peer_group.py          # PeerGroupProxy + PeerComparison
 ├── portfolio_math.py      # Portfolio aggregation (weights, HR/ER)
 ├── snapshots/

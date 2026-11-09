@@ -221,16 +221,8 @@ const { data } = await supabase
   .eq('symbol', 'BW-US67066G1040')
   .eq('periodicity', 'daily');
 
-// Example: time-series history from security_history
-const { data: history } = await supabase
-  .from('security_history')
-  .select('teo, metric_key, metric_value')
-  .eq('symbol', 'BW-US67066G1040')
-  .eq('periodicity', 'daily')
-  .in('metric_key', ['returns_gross', 'l3_mkt_hr', 'l3_sec_hr', 'l3_sub_hr'])
-  .gte('teo', '2024-01-01')
-  .order('teo', { ascending: false })
-  .limit(100);
+// Time-series history is not in Supabase (security_history is frozen at
+// 2026-04-14); use the REST endpoints, e.g. GET /api/ticker-returns.
 ```
 
 Row Level Security (RLS) is enforced — users can only access data they are authorised for.
@@ -253,18 +245,19 @@ response = supabase.table('security_history_latest').select('*').execute()
 
 ---
 
-## Implementation — Supabase Tables (Risk_Models)
+## Implementation — Supabase Tables
 
-The live platform ([Risk_Models](https://github.com/BlueWaterCorp/Risk_Models)) uses Supabase for persistence. **V3 schema** (see [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for full reference):
+The platform uses Supabase for persistence; the ERM3 nightly sync writes the data tables. **V3 schema** (see [SUPABASE_TABLES.md](SUPABASE_TABLES.md) for full reference):
 
 | Table | Purpose |
 |-------|---------|
 | `symbols` | Identity registry (symbol, ticker, name, asset_type, sector_etf) |
-| `security_history` | Long-form temporal engine: (symbol, teo, periodicity, metric_key, metric_value) |
+| `security_history` | STALE — frozen 2026-04-14, do not read (history is served from Zarr) |
 | `security_history_latest` | Latest metrics per symbol/periodicity (cards, tape, treemap) |
-| `erm3_landing_chart_cache` | Landing page chart (pre-computed cumulative returns) |
+| `erm3_landing_chart_cache` | STALE — empty since 2026-04, do not read |
+| `security_master`, `security_aliases`, `security_events`, `security_name_history` | Identity (live, nightly) |
 | `trading_calendar` | Canonical trading dates |
-| `erm3_sync_state_v3` | Sync health and freshness |
+| `erm3_sync_state_v4` | Sync health and freshness |
 | `agent_accounts`, `agent_api_keys` | Agent keys and provisioning |
 | `billing_events`, `agent_invoices`, `balance_top_ups`, `user_generated_api_keys` | Billing and prepaid balance |
 | `ticker_request_logs` | Request logging / analytics (internal) |

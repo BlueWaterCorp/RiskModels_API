@@ -42,7 +42,7 @@ riskmodels config init
 
 riskmodels health
 riskmodels metrics NVDA
-riskmodels query "SELECT ticker, company_name FROM ticker_metadata LIMIT 3"
+riskmodels query "SELECT ticker, name FROM symbols LIMIT 3"
 riskmodels balance
 ```
 

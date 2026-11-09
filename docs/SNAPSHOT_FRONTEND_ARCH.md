@@ -1,5 +1,7 @@
 # Snapshot Frontend Architecture
 
+> **Historical (pre-2026-10):** `ticker_metadata` (frozen 2026-01-21) and `security_history` (frozen 2026-04-14) are stale; do not read them. Live sources: `symbols`, the `security_master` mirror and the zarr stores. See [SUPABASE_TABLES.md](../SUPABASE_TABLES.md).
+
 > Pure-Matplotlib rendering pipeline for institutional-grade PDF snapshots.
 > No WeasyPrint, no HTML, no Jinja2.
 

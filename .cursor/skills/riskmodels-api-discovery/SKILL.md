@@ -45,13 +45,13 @@ Regardless of MCP:
 
 ### 3. CLI / ad-hoc data exploration
 
-The `cli-query` capability (`POST /api/cli/query`) allows SELECT-only SQL queries against Supabase tables (`security_history`, `symbols`, `macro_factors`). Use it as a fallback when you need to explore raw data that isn't exposed through a dedicated endpoint — e.g., checking available date ranges, confirming column names, or sampling rows before building a client.
+The `cli-query` capability (`POST /api/cli/query`) allows SELECT-only SQL queries against Supabase tables (`security_history_latest`, `symbols`, `security_master`, `macro_factors`; `security_history` is frozen at 2026-04-14 — do not query; `ticker_metadata` is frozen at 2026-01-21 — do not query). Use it as a fallback when you need to explore raw data that isn't exposed through a dedicated endpoint — e.g., checking available date ranges, confirming column names, or sampling rows before building a client.
 
 ```python
 resp = requests.post(
     "https://riskmodels.app/api/cli/query",
     headers={"Authorization": f"Bearer {api_key}"},
-    json={"sql": "SELECT ticker, l3_mkt_er, l3_res_er FROM security_history WHERE ticker = 'AAPL' ORDER BY date DESC LIMIT 5"}
+    json={"sql": "SELECT s.ticker, l.teo, l.l3_mkt_er, l.l3_res_er FROM security_history_latest l JOIN symbols s USING (symbol) WHERE s.ticker = 'AAPL' AND l.periodicity = 'daily'"}
 )
 ```
 
