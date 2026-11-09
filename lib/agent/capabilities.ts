@@ -921,8 +921,10 @@ export const CAPABILITIES: Capability[] = [
       legacy_cost_usd: 0.001,
     },
     performance: {
-      avg_latency_ms: 110,
-      p95_latency_ms: 220,
+      // Measured 2026-11-09 from a laptop: ~1.8 s server time (≈0.25 s data,
+      // ≈1.5 s billing middleware), 2.6-3.3 s client TTFB. Not a SLA.
+      avg_latency_ms: 2800,
+      p95_latency_ms: 4500,
       availability_sla: 99.9,
       rate_limit_per_minute: 120,
     },
