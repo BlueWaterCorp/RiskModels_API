@@ -756,6 +756,22 @@ def _local_fund_zarr_root() -> Path | None:
     return None
 
 
+def _open_consolidated_first(store):
+    """Open a zarr group from its ``.zmetadata``; fall back to per-array metadata.
+
+    The published stores may carry ``.zmetadata`` only (the per-array
+    ``.zarray`` / ``.zattrs`` live inside it), so the consolidated open is the
+    one that always works there. Local build trees without ``.zmetadata`` still
+    open through the fallback.
+    """
+    import zarr
+
+    try:
+        return zarr.open_consolidated(store, mode="r")
+    except KeyError:
+        return zarr.open(store, mode="r")
+
+
 def _open_fund_zarr(bw_fund_id: str, store: str):
     """Return an open zarr group for one of the per-fund stores.
 
@@ -782,14 +798,14 @@ def _open_fund_zarr(bw_fund_id: str, store: str):
         local_path = local_root / "bw_fund_id" / bw_fund_id / store
         if local_path.is_dir():
             try:
-                return zarr.open(str(local_path), mode="r")
+                return _open_consolidated_first(str(local_path))
             except (GroupNotFoundError, PathNotFoundError, ArrayNotFoundError, KeyError) as e:
                 raise FileNotFoundError(str(local_path)) from e
 
     fs = gcsfs.GCSFileSystem()
     path = f"gs://{ZARR_FUNDS_GCS_PREFIX}/bw_fund_id/{bw_fund_id}/{store}"
     try:
-        return zarr.open(fs.get_mapper(path), mode="r")
+        return _open_consolidated_first(fs.get_mapper(path))
     except (GroupNotFoundError, PathNotFoundError, ArrayNotFoundError, KeyError) as e:
         raise FileNotFoundError(path) from e
 
