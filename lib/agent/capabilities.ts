@@ -921,8 +921,12 @@ export const CAPABILITIES: Capability[] = [
       legacy_cost_usd: 0.001,
     },
     performance: {
-      avg_latency_ms: 110,
-      p95_latency_ms: 220,
+      // Measured 2026-11-09 from a laptop, warm, after functions moved to
+      // pdx1: ~0.25 s server time (≈0.09 s data), 0.42-0.58 s client TTFB;
+      // cold first call 1.5-2.4 s. Prepaid keys add ≈0.3 s of billing
+      // round trips. Not a SLA.
+      avg_latency_ms: 600,
+      p95_latency_ms: 2000,
       availability_sla: 99.9,
       rate_limit_per_minute: 120,
     },

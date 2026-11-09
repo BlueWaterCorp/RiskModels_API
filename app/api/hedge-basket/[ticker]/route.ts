@@ -178,7 +178,7 @@ export const GET = withBilling(
         headers: {
           ...getCorsHeaders(origin),
           "Content-Type": "application/json",
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          "Cache-Control": "private, no-store",
           "X-Data-Fetch-Latency-Ms": String(fetchLatency),
         },
       });
