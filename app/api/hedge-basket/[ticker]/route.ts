@@ -1,13 +1,15 @@
 /**
  * GET /api/hedge-basket/[ticker]
  *
- * Structured hedge-basket payload — the chat-rendered 4-row table with a
- * net-market-β subtotal, plus a `decision_trace` explaining why
- * `recommended_hedge_level` was chosen.
+ * Structured hedge-basket payload — the recommended level's legs (stock + SPY,
+ * plus the sector ETF at L2 and the subsector ETF at L3) with a net-market-β
+ * subtotal, plus a `decision_trace` explaining why `recommended_hedge_level`
+ * was chosen.
  *
  * Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas
- * from `ds_erm3_link_betas_{market_factor_etf}.zarr` into a structured response
- * the chat narrates verbatim.
+ * from the cohort store (`ds_erm3_cohorts_{factor_set}.zarr`, via
+ * `readLatestLinkBetas`) into a structured response the chat narrates verbatim.
+ * A beta that cannot be read is null with a `data_quality_flags` entry — never 0.
  *
  * `?user_segment=` drives the leverage cap. Defaults to family_office (2.0×).
  *
@@ -22,7 +24,7 @@ import {
   resolveSymbolByTicker,
   fetchLatestMetricsWithFallback,
 } from "@/lib/dal/risk-engine-v3";
-import { readLatestLinkBetas } from "@/lib/dal/zarr-reader";
+import { isServedMarketFactorEtf, readLatestLinkBetas } from "@/lib/dal/zarr-reader";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { buildHedgeBasket } from "@/lib/risk/hedge-recommendation-service";
@@ -52,6 +54,18 @@ export const GET = withBilling(
     }
 
     const { ticker, user_segment, market_factor_etf } = validation.data;
+
+    // Hedge ratios and link betas exist only for the market factor the model is
+    // rooted on. Labelling them with another ETF would misstate every leg.
+    if (!isServedMarketFactorEtf(market_factor_etf)) {
+      return NextResponse.json(
+        {
+          error: "Invalid request",
+          message: `market_factor_etf=${market_factor_etf.toUpperCase()} is not served; hedge baskets are computed against SPY. Omit the parameter or pass SPY.`,
+        },
+        { status: 400, headers: getCorsHeaders(origin) },
+      );
+    }
 
     try {
       const fetchStart = performance.now();
@@ -104,10 +118,16 @@ export const GET = withBilling(
       const sectorEtf = symbolRecord.sector_etf || null;
       const subsectorEtf = symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
 
-      // Link-betas: one cell each from the SPY-rooted ETF-to-ETF store.
-      // Falls back to NaN if the store is unreachable — the basket assembler
-      // treats null λ as 0 (per-leg market β contribution becomes 0).
-      const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, market_factor_etf);
+      // Link-betas from the cohort store, at the latest date on or before the
+      // metric snapshot's date. Null when unreadable or when no such date exists:
+      // the basket keeps the leg, reports beta_to_spy and net market β as null,
+      // and flags it.
+      const linkBetas = await readLatestLinkBetas(
+        sectorEtf,
+        subsectorEtf,
+        market_factor_etf,
+        latestData.teo ?? null,
+      );
 
       const basket = buildHedgeBasket({
         lstar_level: m.lstar_level,
@@ -127,6 +147,8 @@ export const GET = withBilling(
         market_etf_ticker: market_factor_etf,
         lambda_s_to_m: linkBetas?.lambda_s_to_m ?? null,
         lambda_u_to_m: linkBetas?.lambda_u_to_m ?? null,
+        lambda_s_to_m_r2: linkBetas?.lambda_s_to_m_r2 ?? null,
+        link_betas_as_of: linkBetas?.teo ?? null,
         user_segment,
       });
 
@@ -138,6 +160,7 @@ export const GET = withBilling(
       }, {
         recommended_level: basket.recommended_hedge_level,
         statistical_lstar: basket.lstar,
+        incomplete_levels: basket.incomplete_levels,
       });
 
       const metadata = await getRiskMetadata();

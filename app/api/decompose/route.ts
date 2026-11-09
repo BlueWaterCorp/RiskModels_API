@@ -292,6 +292,7 @@ export const POST = withBilling(
         {
           recommended_level: hedgeRec.recommended_hedge_level,
           statistical_lstar: hedgeRec.lstar,
+          incomplete_levels: hedgeRec.incomplete_levels,
         },
       );
 

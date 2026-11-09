@@ -47,8 +47,17 @@
         "L1": { "$ref": "#/definitions/LevelHedgeSnapshot" },
         "L2": { "$ref": "#/definitions/LevelHedgeSnapshot" },
         "L3": { "$ref": "#/definitions/LevelHedgeSnapshot" },
-        "recommended_level": { "type": ["string", "null"], "enum": ["L1", "L2", "L3", null] },
-        "statistical_lstar": { "type": ["string", "null"], "enum": ["L1", "L2", "L3", null] }
+        "recommended_level": {
+          "type": ["string", "null"],
+          "enum": ["L1", "L2", "L3", null],
+          "description": "Chosen only among levels with complete inputs; null when no level is complete."
+        },
+        "statistical_lstar": { "type": ["string", "null"], "enum": ["L1", "L2", "L3", null] },
+        "incomplete_levels": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["L1", "L2", "L3"] },
+          "description": "Levels missing a hedge ratio or their marginal ER; never recommended."
+        }
       },
       "additionalProperties": true
     },

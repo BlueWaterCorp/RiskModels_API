@@ -8,6 +8,7 @@ import {
   pivotHistory,
   fetchLatestMetricsWithFallback,
 } from "@/lib/dal/risk-engine-v3";
+import { batchReturnsFromPivoted } from "@/lib/api/batch-returns";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
 import { formatResponse } from "@/lib/api/format-response";
@@ -100,18 +101,19 @@ interface PositionAnalysis {
   current_holder?: { symbol: string; name: string | null };
   /** The resolution check could not read its evidence; answer unchecked. */
   resolution_degraded?: boolean;
+  /** Parallel daily arrays; null where the value is masked or unavailable (never 0). */
   returns?: {
     dates: string[];
-    values: number[];
+    values: (number | null)[];
     /** @deprecated Prefer `l3_market_hr` — orthogonal L3 market-leg HR history. */
-    l1: number[];
+    l1: (number | null)[];
     /** @deprecated Prefer `l3_sector_hr`. */
-    l2: number[];
+    l2: (number | null)[];
     /** @deprecated Prefer `l3_subsector_hr`. */
-    l3: number[];
-    l3_market_hr?: number[];
-    l3_sector_hr?: number[];
-    l3_subsector_hr?: number[];
+    l3: (number | null)[];
+    l3_market_hr?: (number | null)[];
+    l3_sector_hr?: (number | null)[];
+    l3_subsector_hr?: (number | null)[];
   };
   l3_decomposition?: {
     market_factor_etf: string;
@@ -440,16 +442,7 @@ async function analyzeTicker(
 
       const pivoted = pivotHistory(rows);
 
-      result.returns = {
-        dates: pivoted.map(p => p.teo),
-        values: pivoted.map((p) => p.returns_gross as number ?? 0),
-        l1: pivoted.map((p) => p.l3_mkt_hr as number ?? 0),
-        l2: pivoted.map((p) => p.l3_sec_hr as number ?? 0),
-        l3: pivoted.map((p) => p.l3_sub_hr as number ?? 0),
-        l3_market_hr: pivoted.map((p) => p.l3_mkt_hr as number ?? 0),
-        l3_sector_hr: pivoted.map((p) => p.l3_sec_hr as number ?? 0),
-        l3_subsector_hr: pivoted.map((p) => p.l3_sub_hr as number ?? 0),
-      };
+      result.returns = batchReturnsFromPivoted(pivoted);
 
       result.meta = {
         market_etf: "SPY",
@@ -539,6 +532,7 @@ async function analyzeTicker(
           {
             recommended_level: hedgeRec.recommended_hedge_level,
             statistical_lstar: hedgeRec.lstar,
+            incomplete_levels: hedgeRec.incomplete_levels,
           },
         );
       }

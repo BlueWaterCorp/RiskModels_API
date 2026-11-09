@@ -668,12 +668,30 @@ components:
           type: string
           enum: [L1, L2, L3]
           nullable: true
-          description: Economic recommendation when emitted (user-segment hedge gate).
+          description: >
+            Economic recommendation (user-segment hedge gate). It is chosen only
+            among levels with complete inputs. Selection starts at the highest
+            complete level at or below `statistical_lstar` and steps down
+            through the leverage-cap and ER-haircut gates. It skips any level
+            listed in `incomplete_levels`, so a missing value never passes or
+            fails a gate. When no level is complete (L1 lacks its market hedge
+            ratio) this is null: there is no recommendation.
         statistical_lstar:
           type: string
           enum: [L1, L2, L3]
           nullable: true
           description: Orthogonal cascade statistical layer pick.
+        incomplete_levels:
+          type: array
+          description: >
+            Levels missing any of their inputs. L1 needs the market hedge ratio.
+            L2 needs the market and sector hedge ratios and the sector marginal
+            ER. L3 needs the market, sector and subsector hedge ratios and the
+            subsector marginal ER. These levels are never recommended. Empty
+            when every level is complete. Emitted alongside `recommended_level`.
+          items:
+            type: string
+            enum: [L1, L2, L3]
 
     DecomposeRequest:
       type: object
@@ -1680,6 +1698,7 @@ components:
       description: >
         Present when `metrics` includes `returns`. Arrays are parallel by index.
         Fields `l1`, `l2`, `l3` hold daily rolling hedge ratios from V3 (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` history), not combined L1/L2/L3 model levels.
+        An item is null where that session's value is masked or unavailable; a missing hedge ratio or return is never reported as 0.
       properties:
         dates:
           type: array
@@ -1690,19 +1709,41 @@ components:
           type: array
           items:
             type: number
-          description: Daily gross returns (`returns_gross`).
+            nullable: true
+          description: Daily gross returns (`returns_gross`); null when unavailable.
         l1:
           type: array
+          description: Deprecated alias of `l3_market_hr`.
           items:
             type: number
             nullable: true
         l2:
           type: array
+          description: Deprecated alias of `l3_sector_hr`.
           items:
             type: number
             nullable: true
         l3:
           type: array
+          description: Deprecated alias of `l3_subsector_hr`.
+          items:
+            type: number
+            nullable: true
+        l3_market_hr:
+          type: array
+          description: Daily L3 market-leg hedge ratio; null on masked or unavailable sessions.
+          items:
+            type: number
+            nullable: true
+        l3_sector_hr:
+          type: array
+          description: Daily L3 sector-leg hedge ratio; null on masked or unavailable sessions.
+          items:
+            type: number
+            nullable: true
+        l3_subsector_hr:
+          type: array
+          description: Daily L3 subsector-leg hedge ratio; null on masked or unavailable sessions.
           items:
             type: number
             nullable: true
@@ -5836,7 +5877,10 @@ paths:
         The chat-rendered hedge table: per-layer ETF legs with a net-market-β
         subtotal, plus a `decision_trace` explaining why `recommended_level` was
         chosen. Composes the latest-teo metric snapshot (HRs, ERs, betas) with
-        link-betas read from `ds_erm3_link_betas_{market_factor_etf}.zarr`.
+        sector and subsector link betas read from the cohort store
+        (`ds_erm3_cohorts`). A beta that cannot be read is returned as null,
+        the net market β subtotal is then null, and the gap is named in
+        `data_quality_flags`; a missing beta is never reported as 0.
 
 
         `user_segment` drives the leverage cap (default `family_office`, 2.0×).
@@ -5877,7 +5921,9 @@ paths:
           in: query
           required: false
           schema: { type: string, default: SPY }
-          description: Market factor ETF whose link-beta cube is read.
+          description: >
+            Market factor ETF. Only the model's market root (SPY) is served;
+            any other value returns 400.
       responses:
         "200":
           description: Hedge basket
@@ -5887,23 +5933,152 @@ paths:
                 type: object
                 properties:
                   ticker: { type: string }
-                  as_of: { type: string, format: date }
-                  inputs:
-                    type: object
+                  as_of:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: Date of the metric snapshot (hedge ratios, ERs, betas).
+                  lstar:
+                    type: string
+                    enum: [L1, L2, L3]
+                    nullable: true
+                    description: Statistical level selection.
+                  recommended_hedge_level:
+                    type: string
+                    enum: [L1, L2, L3]
+                    nullable: true
                     description: >
-                      Betas, layer ETF tickers, and the `lambda_s_to_m` /
-                      `lambda_u_to_m` link betas the basket was built from.
-                  basket:
+                      Level after the leverage cap and ER haircut checks, chosen
+                      only among levels with complete inputs (see
+                      HedgeLevelsBlock.recommended_level). Null when no level is
+                      complete; `legs` then show the L1 legs with the missing
+                      hedge ratio as null.
+                  incomplete_levels:
+                    type: array
+                    description: Levels missing a hedge ratio or their marginal ER (never recommended).
+                    items:
+                      type: string
+                      enum: [L1, L2, L3]
+                  user_segment_applied:
+                    type: string
+                    enum: [retail, family_office, ls_equity, stat_arb]
+                  leverage_cap_applied: { type: number }
+                  haircut_applied: { type: number }
+                  legs:
+                    type: array
+                    description: >
+                      Stock leg, market leg, and the sector / subsector ETF legs
+                      of the recommended level.
+                    items:
+                      type: object
+                      properties:
+                        leg: { type: string }
+                        side:
+                          type: string
+                          enum: [long, short]
+                          nullable: true
+                          description: Null when position is null.
+                        position:
+                          type: number
+                          nullable: true
+                          description: >
+                            Signed hedge ratio (the stock leg is +1.0). Null when
+                            the hedge ratio is unavailable.
+                        beta_to_spy:
+                          type: number
+                          nullable: true
+                          description: >
+                            The leg's slope on the market ETF (1.0 for the
+                            market leg). Null when the link beta is unavailable.
+                        beta_to_spy_r2:
+                          type: number
+                          nullable: true
+                          description: >
+                            r² of the sector-on-market link regression. Set on
+                            the sector leg only; null on every other leg.
+                        market_beta_contribution:
+                          type: number
+                          nullable: true
+                          description: position × beta_to_spy; null when either is null.
+                  net_market_beta_after_hedge:
+                    type: number
+                    nullable: true
+                    description: >
+                      Sum of the legs' market_beta_contribution. Null when any
+                      leg's contribution is unavailable.
+                  link_betas_as_of:
+                    type: string
+                    format: date
+                    nullable: true
+                    description: >
+                      Date of the link betas the ETF legs used. Null when no ETF
+                      leg needs one, or when the betas were rejected as too old
+                      or dated after `as_of`.
+                  data_quality_flags:
+                    type: array
+                    description: >
+                      Empty when every input was available and current. The
+                      `*_unavailable` codes mean the corresponding numbers are
+                      null; link betas more than 60 calendar days behind `as_of`
+                      are not used and are reported unavailable.
+                      `sector_link_beta_weak`: the sector link r² is below 0.1.
+                      `link_betas_stale`: the link betas are more than 10
+                      trading days behind `as_of`.
+                      `link_betas_unavailable`: no link betas exist on or
+                      before `as_of`; link betas dated after `as_of` are never
+                      used.
+                      `hedge_level_inputs_incomplete`: a level at or below
+                      `lstar` was not recommended because one of its hedge
+                      ratios or its marginal ER is missing; selection steps
+                      down only on real values.
+                    items:
+                      type: string
+                      enum:
+                        - stock_market_beta_unavailable
+                        - market_hedge_ratio_unavailable
+                        - sector_hedge_ratio_unavailable
+                        - subsector_hedge_ratio_unavailable
+                        - sector_link_beta_unavailable
+                        - subsector_link_beta_unavailable
+                        - sector_link_beta_weak
+                        - link_betas_stale
+                        - link_betas_unavailable
+                        - hedge_level_inputs_incomplete
+                  hedge_gross:
+                    type: object
+                    description: Σ|HR| per level; null for a level whose inputs are incomplete.
+                    properties:
+                      L1: { type: number, nullable: true }
+                      L2: { type: number, nullable: true }
+                      L3: { type: number, nullable: true }
+                  marginal_er:
                     type: object
                     properties:
-                      recommended_level: { type: string }
-                      statistical_lstar: { type: number, nullable: true }
+                      L2_sector_raw: { type: number, nullable: true }
+                      L2_sector_haircut:
+                        type: number
+                        nullable: true
+                        description: Null when L2_sector_raw is null.
+                      L3_subsector_raw: { type: number, nullable: true }
+                      L3_subsector_haircut:
+                        type: number
+                        nullable: true
+                        description: Null when L3_subsector_raw is null.
                   decision_trace:
                     type: array
                     items: { type: string }
                     description: Ordered rationale for the recommended level.
+                  hedge_levels:
+                    type: object
+                    additionalProperties: true
+                    description: Per-level hedge ratios, explained risk and ETF identities.
+                  _metadata:
+                    type: object
+                    additionalProperties: true
         "400":
-          description: Invalid ticker or query parameter
+          description: >
+            Invalid ticker or query parameter, including a market_factor_etf
+            other than the served market root.
         "401":
           description: Authentication required
         "402":

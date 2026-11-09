@@ -253,6 +253,7 @@ export const GET = withBilling(
       {
       recommended_level: hedgeRec.recommended_hedge_level,
       statistical_lstar: hedgeRec.lstar,
+      incomplete_levels: hedgeRec.incomplete_levels,
       },
     );
 
@@ -324,6 +325,7 @@ export const GET = withBilling(
         l2_hedge_gross: hedgeRec.l2_hedge_gross,
         l3_hedge_gross: hedgeRec.l3_hedge_gross,
         higher_er_haircut: hedgeRec.higher_er_haircut,
+        incomplete_levels: hedgeRec.incomplete_levels,
       },
       meta: {
         sector_etf: symbolRecord.sector_etf || null,

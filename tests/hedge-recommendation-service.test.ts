@@ -111,11 +111,13 @@ describe("computeHedgeRecommendationSnapshot — edge cases", () => {
       l3_sub_er: null,
     });
     expect(snap.lstar).toBeNull();
-    expect(snap.recommended_hedge_level).toBe("L1");
-    expect(snap.higher_er_haircut).toBe(0);
+    expect(snap.recommended_hedge_level).toBe("L1"); // L1 is complete (market HR present)
+    // Missing ERs make the combined haircut unknown — null, never a 0 (RMAPI-30).
+    expect(snap.higher_er_haircut).toBeNull();
+    expect(snap.incomplete_levels).toEqual(["L2", "L3"]);
   });
 
-  it("partially-null HRs are NaN-safe (treated as 0 contribution)", () => {
+  it("partially-null HRs make that level's gross null, never a partial sum", () => {
     const snap = computeHedgeRecommendationSnapshot({
       l1_mkt_hr: -0.5,
       l2_mkt_hr: null,
@@ -127,8 +129,10 @@ describe("computeHedgeRecommendationSnapshot — edge cases", () => {
       l3_sub_er: 0.05,
     });
     expect(snap.l1_hedge_gross).toBeCloseTo(0.5, 6);
-    expect(snap.l2_hedge_gross).toBe(0);
-    expect(snap.l3_hedge_gross).toBeCloseTo(0.8, 6);
+    expect(snap.l2_hedge_gross).toBeNull(); // both L2 ratios missing
+    expect(snap.l3_hedge_gross).toBeNull(); // l3_sec_hr missing — not 0.8
+    expect(snap.incomplete_levels).toEqual(["L2", "L3"]);
+    expect(snap.recommended_hedge_level).toBe("L1");
   });
 
   it("buildHedgeBasket for AAPL (live numbers, family_office) — L1 legs after L3→L1 downgrade", () => {

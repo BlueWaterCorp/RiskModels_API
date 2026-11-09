@@ -20,6 +20,15 @@ export interface HedgeLevelsBlock {
   L1: LevelHedgeSnapshot;
   L2: LevelHedgeSnapshot;
   L3: LevelHedgeSnapshot;
+  /**
+   * Economic recommendation, chosen only among levels with complete inputs.
+   * Null when no level is complete; absent when the server did not emit one.
+   */
+  recommended_level?: HedgeLevelId | null;
+  /** Statistical Lstar pick (orthogonal cascade). */
+  statistical_lstar?: HedgeLevelId | null;
+  /** Levels missing a hedge ratio or their marginal ER; never recommended. */
+  incomplete_levels?: HedgeLevelId[];
 }
 
 function weightedMean(parts: Array<{ w: number; v: number | null }>): number | null {

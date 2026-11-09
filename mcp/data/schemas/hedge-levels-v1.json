@@ -54,12 +54,17 @@
         "recommended_level": {
           "type": ["string", "null"],
           "enum": ["L1", "L2", "L3", null],
-          "description": "Economically gated recommendation when emitted by the hedge stack."
+          "description": "Economically gated recommendation when emitted by the hedge stack. Chosen only among levels with complete inputs (selection steps down through complete levels only); null when no level is complete."
         },
         "statistical_lstar": {
           "type": ["string", "null"],
           "enum": ["L1", "L2", "L3", null],
           "description": "Cascade statistical layer pick (orthogonal Lstar)."
+        },
+        "incomplete_levels": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["L1", "L2", "L3"] },
+          "description": "Levels missing a hedge ratio or their marginal ER (L1: market HR; L2: market and sector HR, sector ER; L3: market, sector and subsector HR, subsector ER). Never recommended. Empty when every level is complete."
         }
       },
       "additionalProperties": true
