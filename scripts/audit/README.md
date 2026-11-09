@@ -21,9 +21,34 @@ Reports are written to `audit-reports/<timestamp>/` (gitignored).
 | `schema-selftest` | `scripts/audit/live_schema_check.py --self-test` | no | yes |
 | `smoke-endpoints` | `sdk/scripts/smoke_v3_all_endpoints.py` | **yes** | yes (critical only) |
 | `schema-check` | `scripts/audit/live_schema_check.py` (consumes smoke report) | no | no (reports) |
+| `store-freshness` | `scripts/audit/store_freshness.py` (metadata + newest date of every API zarr store vs the release session) | GCS read | yes |
+| `golden-probe` | `scripts/audit/golden_ticker_probe.py` (values on NVDA, XOM, CAT: sector betas, ER sums, session, no silent zeros) | **yes** (12 calls) | yes |
 
 The orchestrator writes `audit-reports/<ts>/summary.json` (per-check PASS/FAIL/SKIP)
 for the email step.
+
+## After every publish
+
+Run these two right after an ERM3 publish finishes (`full_only_publish` / nightly release):
+
+```bash
+python scripts/audit/store_freshness.py          # exit 1 if a store is stale, unreadable or retired-but-published
+python scripts/audit/golden_ticker_probe.py      # exit 1 if a live value is wrong; needs RISKMODELS_API_KEY
+```
+
+They exist because of RMAPI-30. For months the hedge-basket route returned `beta_to_spy = 0`
+on every sector leg: it read a store the pipeline no longer published, and the cohort store
+that replaced it was stuck at 2026-10-23 behind an ERM3 gate warning. Every response was a 200,
+so the smoke tests that check status codes passed. These two checks look at data age and values.
+Store cadences and the retired-store list live in the `STORES` and `RETIRED` tables at the top
+of `store_freshness.py`. When ERM3 adds or retires a published store, update them there.
+
+Call site for automation, not wired yet: the end of ERM3's publish, after
+`sync_to_gcs_asset` (`erm3/shared/assets_data.py`) writes the release manifest under
+`gs://rm_api_data/eodhd/_manifests/`. Wiring it there makes the ERM3 publish job depend on
+this repo and needs a decision on what a failure does: the release is already live by then,
+so a failure should page rather than roll back. Until that is decided, run both by hand or
+from the weekly audit.
 
 ## Migration drift
 

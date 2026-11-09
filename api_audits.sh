@@ -9,6 +9,8 @@
 #   4. schema-selftest the response-schema validator has teeth   (scripts/audit/live_schema_check.py --self-test)
 #   5. smoke-endpoints hit every endpoint live                   (sdk/scripts/smoke_v3_all_endpoints.py)
 #   6. schema-check    validate live 2xx bodies vs schemas       (consumes step 5's smoke_report.json)
+#   7. store-freshness every API zarr store has metadata and is current (scripts/audit/store_freshness.py; GCS read, no billing)
+#   8. golden-probe    value checks on NVDA, XOM, CAT across 4 routes (scripts/audit/golden_ticker_probe.py; 12 billed calls)
 #
 # Reports are written to audit-reports/<timestamp>/. Exit is nonzero if any
 # step fails (SKIP does not fail).
@@ -66,15 +68,22 @@ step "migration-drift" "$PY" scripts/audit/migration_drift.py --out-dir "$OUT"
 
 step "schema-selftest" "$PY" scripts/audit/live_schema_check.py --self-test
 
+# Store freshness reads GCS metadata only (no API key, no billing); needs Google credentials.
+if [ "${AUDIT_SKIP_GCS:-0}" = "1" ]; then
+  record "store-freshness" "skip"
+else
+  step "store-freshness" "$PY" scripts/audit/store_freshness.py
+fi
+
 # ---- live audits (need an API key; cost money) ---------------------------
 if [ "${AUDIT_SKIP_LIVE:-0}" = "1" ]; then
   echo; echo "AUDIT_SKIP_LIVE=1 — skipping live smoke + schema check."
-  record "smoke-endpoints" "skip"; record "schema-check" "skip"
+  record "smoke-endpoints" "skip"; record "schema-check" "skip"; record "golden-probe" "skip"
 else
   HAS_KEY="$("$PY" -c "import sys,os; sys.path.insert(0,'sdk/scripts'); import smoke_v3_all_endpoints as s; s.load_env_files(); print('1' if os.environ.get('RISKMODELS_API_KEY') else '0')" 2>/dev/null || echo 0)"
   if [ "$HAS_KEY" != "1" ]; then
     echo; echo "No RISKMODELS_API_KEY found (env or .env/.env.local) — skipping live steps. Set AUDIT_SKIP_LIVE=1 to silence."
-    record "smoke-endpoints" "skip"; record "schema-check" "skip"
+    record "smoke-endpoints" "skip"; record "schema-check" "skip"; record "golden-probe" "skip"
   else
     export SMOKE_REPORT_DIR="$OUT/smoke"
     export SMOKE_JSON_BODY_MAX="${SMOKE_JSON_BODY_MAX:-200000}"  # fuller bodies → fewer truncation skips
@@ -90,6 +99,8 @@ else
     else
       echo "smoke_report.json not found — skipping schema-check"; record "schema-check" "skip"
     fi
+    # Value checks on complete names (NVDA, XOM, CAT): 12 billed calls.
+    step "golden-probe" "$PY" scripts/audit/golden_ticker_probe.py
   fi
 fi
 

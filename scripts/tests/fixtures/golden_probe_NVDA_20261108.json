@@ -1,0 +1,145 @@
+{
+ "_source": "Live riskmodels.app responses for NVDA, captured 2026-11-08 (release session 2026-11-05, after RMAPI-30 #522). Trimmed to the fields golden_ticker_probe.py reads; batch ER/HR values retain the captured response values under the public contract names.",
+ "session": "2026-11-05",
+ "hedge_basket": {
+  "as_of": "2026-11-05",
+  "recommended_hedge_level": "L2",
+  "legs": [
+   {
+    "leg": "NVDA",
+    "side": "long",
+    "position": 1,
+    "beta_to_spy": 1.95726490020752,
+    "beta_to_spy_r2": null,
+    "market_beta_contribution": 1.95726490020752
+   },
+   {
+    "leg": "SPY",
+    "side": "short",
+    "position": -0.0617159008979797,
+    "beta_to_spy": 1,
+    "beta_to_spy_r2": null,
+    "market_beta_contribution": -0.0617159008979797
+   },
+   {
+    "leg": "XLK",
+    "side": "short",
+    "position": -1.05136632919312,
+    "beta_to_spy": 1.7590864896774292,
+    "beta_to_spy_r2": 0.7183336615562439,
+    "market_beta_contribution": -1.8494443053853697
+   }
+  ],
+  "data_quality_flags": [],
+  "link_betas_as_of": "2026-10-23"
+ },
+ "decompose": {
+  "teo": "2026-11-05",
+  "exposure": {
+   "market": {
+    "er": 0.420864313840866,
+    "hr": -0.614302277565002,
+    "hedge_etf": "SPY"
+   },
+   "sector": {
+    "er": 0.112017281353474,
+    "hr": -0.0934916660189629,
+    "hedge_etf": "XLK"
+   },
+   "subsector": {
+    "er": -0.00442980602383614,
+    "hr": -0.478276163339615,
+    "hedge_etf": "SMH"
+   },
+   "residual": {
+    "er": 0.471548229455948,
+    "hr": null,
+    "hedge_etf": null
+   }
+  }
+ },
+ "metrics": {
+  "teo": "2026-11-05",
+  "hedge_levels": {
+   "L1": {
+    "market_hr": -1.95726490020752,
+    "sector_hr": null,
+    "subsector_hr": null,
+    "market_er": 0.420864313840866,
+    "sector_er": null,
+    "subsector_er": null,
+    "residual_er": 0.579135715961456,
+    "hedge_etfs": {
+     "market": "SPY",
+     "sector": null,
+     "subsector": null
+    }
+   },
+   "L2": {
+    "market_hr": -0.0617159008979797,
+    "sector_hr": -1.05136632919312,
+    "subsector_hr": null,
+    "market_er": 0.420864313840866,
+    "sector_er": 0.112017281353474,
+    "subsector_er": null,
+    "residual_er": 0.467118412256241,
+    "hedge_etfs": {
+     "market": "SPY",
+     "sector": "XLK",
+     "subsector": null
+    }
+   },
+   "L3": {
+    "market_hr": -0.614302277565002,
+    "sector_hr": -0.0934916660189629,
+    "subsector_hr": -0.478276163339615,
+    "market_er": 0.420864313840866,
+    "sector_er": 0.112017281353474,
+    "subsector_er": -0.00442980602383614,
+    "residual_er": 0.471548229455948,
+    "hedge_etfs": {
+     "market": "SPY",
+     "sector": "XLK",
+     "subsector": "SMH"
+    }
+   },
+   "recommended_level": "L2",
+   "statistical_lstar": "L3",
+   "incomplete_levels": []
+  }
+ },
+ "batch": {
+  "results": {
+   "NVDA": {
+    "status": "success",
+    "full_metrics": {
+     "ticker": "NVDA",
+     "date": "2026-11-05",
+     "l1_market_hr": -1.95726490020752,
+     "l2_market_hr": -0.0617159008979797,
+     "l2_sector_hr": -1.05136632919312,
+     "l3_market_hr": -0.614302277565002,
+     "l3_sector_hr": -0.0934916660189629,
+     "l3_subsector_hr": -0.478276163339615,
+     "l1_market_er": 0.420864313840866,
+     "l1_residual_er": 0.579135715961456,
+     "l2_market_er": 0.420864313840866,
+     "l2_sector_er": 0.112017281353474,
+     "l2_residual_er": 0.467118412256241,
+     "l3_market_er": 0.420864313840866,
+     "l3_sector_er": 0.112017281353474,
+     "l3_subsector_er": -0.00442980602383614,
+     "l3_residual_er": 0.471548229455948
+    },
+    "hedge_ratios": {
+     "l1_market": -1.95726490020752,
+     "l2_market": -0.0617159008979797,
+     "l2_sector": -1.05136632919312,
+     "l3_market": -0.614302277565002,
+     "l3_sector": -0.0934916660189629,
+     "l3_subsector": -0.478276163339615
+    }
+   }
+  }
+ }
+}
