@@ -105,7 +105,7 @@ export const DEFAULT_TOP_CONTRIBUTORS = 15;
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
 function addTo(map: Record<string, number>, key: string, v: number) {
-  map[key] = (map[key] ?? 0) + v;
+  map[key] = (map[key] ?? 0) + v; // allow-default: absent accumulator starts at zero
 }
 
 function round(v: number, dp = 2): number {
@@ -496,7 +496,7 @@ export function computeSignedExposure(input: ExposureInput) {
       ticker: etf,
       beta_to_spy: inCov && spyVar > 0 ? round(cov!.S[i]![spyIdx!]! / spyVar, 4) : null,
       annual_vol: inCov ? round(Math.sqrt(Math.max(cov!.S[i]![i]!, 0) * TRADING_DAYS), 4) : null,
-      held_usd: round(directExposure[etf] ?? 0),
+      held_usd: round(directExposure[etf] ?? 0), // allow-default: absent ETF holding is zero exposure
       hedge_leg: hedgeLegEtfs.has(etf),
       in_covariance: inCov,
     });
@@ -504,7 +504,7 @@ export function computeSignedExposure(input: ExposureInput) {
   const scenarioInputs: Record<string, unknown> = {
     covariance_start: cov?.start ?? null,
     covariance_end: cov?.end ?? null,
-    covariance_effective_n: cov?.effective_n ?? 0,
+    covariance_effective_n: cov?.effective_n ?? null,
     etfs: [...etfRows.values()],
     positions_included: input.includePositions === true,
     note: "beta_to_spy = cov(ETF, SPY) / var(SPY) and annual_vol = √(252·var) over the covariance window (SPY = 1). held_usd is the book's own position; hedge_leg marks ETFs used by a name's hedge at its level. Per-name rows (scenario_inputs.positions) are returned only when include_positions is true.",
@@ -588,6 +588,7 @@ export function computeSignedExposure(input: ExposureInput) {
     hedges,
     risk,
     scenario_inputs: scenarioInputs,
+    data_quality_flags: cov ? [] : ["covariance_unavailable"],
     coverage: {
       input_gross_usd: round(gross),
       modelled_stock_gross_usd: round(stockGross),

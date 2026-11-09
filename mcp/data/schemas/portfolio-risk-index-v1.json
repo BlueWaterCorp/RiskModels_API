@@ -13,10 +13,10 @@
           "type": "object",
           "required": ["market", "sector", "subsector", "residual"],
           "properties": {
-            "market": { "type": "number" },
-            "sector": { "type": "number" },
-            "subsector": { "type": "number" },
-            "residual": { "type": "number" }
+            "market": { "type": ["number", "null"] },
+            "sector": { "type": ["number", "null"] },
+            "subsector": { "type": ["number", "null"] },
+            "residual": { "type": ["number", "null"] }
           }
         },
         "portfolio_volatility_23d": {
@@ -24,9 +24,13 @@
         },
         "position_count": {
           "type": "integer"
-        }
+        },
+        "er_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "volatility_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+        "aggregation": { "const": "covered_weights_not_renormalized" }
       }
     },
+    "data_quality_flags": { "type": "array", "items": { "type": "string" } },
     "time_series": {
       "type": "array",
       "description": "Only present when timeSeries=true",
@@ -34,10 +38,12 @@
         "type": "object",
         "properties": {
           "date": { "type": "string", "format": "date" },
-          "market": { "type": "number" },
-          "sector": { "type": "number" },
-          "subsector": { "type": "number" },
-          "residual": { "type": "number" }
+          "market": { "type": ["number", "null"] },
+          "sector": { "type": ["number", "null"] },
+          "subsector": { "type": ["number", "null"] },
+          "residual": { "type": ["number", "null"] },
+          "er_coverage": { "type": "number", "minimum": 0, "maximum": 1 },
+          "data_quality_flags": { "type": "array", "items": { "type": "string" } }
         }
       }
     },

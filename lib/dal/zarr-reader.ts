@@ -703,7 +703,7 @@ async function readColumnBlockPartial(
   if (meta.chunks.length !== nd) return null;
   const [CT, CW] = meta.chunks as [number, number];
   const CL = nd === 3 ? meta.chunks[2]! : 1;
-  const l = sel.levelIdx ?? 0;
+  const l = sel.levelIdx ?? 0; // allow-default: omitted array-axis index selects the first level
   if (nd === 3 && l >= CL) return null; // level axis split across chunks
   const tc = Math.floor(sel.t0 / CT);
   if (Math.floor((sel.t1 - 1) / CT) !== tc) return null;
@@ -885,7 +885,7 @@ async function readFirstValidDates(
       continue;
     }
 
-    const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1);
+    const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1); // allow-default: missing storage chunk width uses one element
     const byChunk = new Map<number, Array<{ symbol: string; idx: number }>>();
     for (const member of pending) {
       const chunk = Math.floor(member.idx / chunkW);
@@ -1337,7 +1337,7 @@ export async function readHistorySlice(
       } catch {
         return;
       }
-      const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1);
+      const chunkW = Math.max(1, Number(arr.chunks?.[1]) || 1); // allow-default: missing storage chunk width uses one element
       const byChunk = new Map<number, Array<{ symbol: string; idx: number }>>();
       for (const m of members) {
         const c = Math.floor(m.idx / chunkW);
@@ -1409,7 +1409,7 @@ export async function readHistorySlice(
     if (c !== 0) return orderBy === "asc" ? c : -c;
     const k = a.metric_key.localeCompare(b.metric_key);
     if (k !== 0) return k;
-    return (symbolPos.get(a.symbol) ?? 0) - (symbolPos.get(b.symbol) ?? 0);
+    return (symbolPos.get(a.symbol) ?? 0) - (symbolPos.get(b.symbol) ?? 0); // allow-default: absent sort index uses the first array position
   });
 
   const servedDates = rows.map((row) => row.teo);

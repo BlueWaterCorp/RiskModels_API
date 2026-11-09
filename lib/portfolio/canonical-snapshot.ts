@@ -88,11 +88,11 @@ export type CanonicalSnapshotResponse = {
      * windows, or `"naive_pws"` (per-holding ER weighted sum) as a last resort.
      */
     variance_decomposition: {
-      market: number;
-      sector: number;
-      subsector: number;
-      residual: number;
-      systematic: number;
+      market: number | null;
+      sector: number | null;
+      subsector: number | null;
+      residual: number | null;
+      systematic: number | null;
     };
     /** How `variance_decomposition` was derived (see above). */
     variance_decomposition_basis: "realized_strips" | "etf_correlation_adjusted" | "naive_pws";
@@ -108,6 +108,7 @@ export type CanonicalSnapshotResponse = {
      */
     diversification: DiversificationResult;
     portfolio_volatility_23d: number | null;
+    data_quality_flags: string[];
     /** Holdings-weighted L1/L2/L3 hedge snapshot (descriptive aggregates). */
     portfolio_hedge_levels?: HedgeLevelsBlock | null;
     unresolved: { ticker: string; error: string }[];
@@ -141,7 +142,7 @@ export type CanonicalSnapshotResponse = {
       l3_sec_er: number | null;
       l3_sub_er: number | null;
     }>;
-    systematic_risk_share: number;
+    systematic_risk_share: number | null;
     /** Present when daily series used a relaxed same-day coverage threshold (sparse factor history). */
     time_series_caveat?: string;
   };
@@ -200,7 +201,9 @@ function yearsForLookback(lookbackDays: number): number {
 }
 
 function num(x: number | null | undefined): number {
-  if (x == null || !Number.isFinite(x)) return 0;
+  if (x == null || !Number.isFinite(x)) {
+    throw new Error("complete attribution row contains a missing model value");
+  }
   return x;
 }
 
@@ -291,11 +294,11 @@ function compoundAndDrawdown(daily: number[]): { cumulative: number[]; drawdown:
 function layerRowComplete(m: Record<string, number | null> | undefined): boolean {
   return (
     !!m &&
-    m.returns_gross != null &&
-    m.l1_fr != null &&
-    m.l2_fr != null &&
-    m.l3_fr != null &&
-    m.l3_rr != null
+    Number.isFinite(m.returns_gross) &&
+    Number.isFinite(m.l1_fr) &&
+    Number.isFinite(m.l2_fr) &&
+    Number.isFinite(m.l3_fr) &&
+    Number.isFinite(m.l3_rr)
   );
 }
 
@@ -323,7 +326,15 @@ function aggregatePortfolioDailySeries(
   const residual: number[] = [];
   const systematicDaily: number[] = [];
 
-  const totalW = resolvedTickers.reduce((s, t) => s + (weightMap.get(t) ?? 0), 0);
+  const portfolioWeight = (ticker: string): number => {
+    const weight = weightMap.get(ticker);
+    if (weight == null || !Number.isFinite(weight)) {
+      throw new Error(`missing portfolio weight for ${ticker}`);
+    }
+    return weight;
+  };
+
+  const totalW = resolvedTickers.reduce((sum, ticker) => sum + portfolioWeight(ticker), 0);
 
   for (const teo of sortedTeos) {
     const dateMap = byDate.get(teo)!;
@@ -332,7 +343,7 @@ function aggregatePortfolioDailySeries(
     for (const t of resolvedTickers) {
       const m = dateMap.get(t);
       if (!layerRowComplete(m)) continue;
-      wCov += weightMap.get(t) ?? 0;
+      wCov += portfolioWeight(t);
       complete.push(t);
     }
     const coverRatio = totalW > 0 ? wCov / totalW : 0;
@@ -345,7 +356,7 @@ function aggregatePortfolioDailySeries(
     let uSum = 0;
     let rSum = 0;
     for (const tk of complete) {
-      const w = (weightMap.get(tk) ?? 0) * rn;
+      const w = portfolioWeight(tk) * rn;
       const m = dateMap.get(tk)!;
       const g = m.returns_gross!;
       const l1 = m.l1_fr!;
@@ -519,9 +530,13 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   const perPositions: CanonicalSnapshotResponse["snapshot"]["positions"] = [];
   for (const t of resolvedTickers) {
     const pt = core.perTicker[t] as Record<string, unknown>;
+    const weight = pt.weight;
+    if (typeof weight !== "number" || !Number.isFinite(weight)) {
+      throw new Error(`missing portfolio weight for ${t}`);
+    }
     perPositions.push({
       ticker: t,
-      weight: Number(pt.weight ?? 0),
+      weight,
       symbol: String(pt.symbol ?? ""),
       teo: (pt.teo as string) ?? null,
       l3_mkt_er: (pt.l3_mkt_er as number) ?? null,
@@ -538,8 +553,8 @@ export async function buildCanonicalPortfolioSnapshot(input: {
   }
   perPositions.sort((a, b) => b.weight - a.weight);
 
-  const maxW = perPositions[0]?.weight ?? 0;
-  const highSingle = maxW > 0.4;
+  const maxW = perPositions[0]?.weight;
+  const highSingle = maxW != null && maxW > 0.4;
 
   // ── Diversification-adjusted decomposition ───────────────────────────────
   // `core.portfolioER` is the naive position-weighted sum (treats the book as
@@ -613,11 +628,18 @@ export async function buildCanonicalPortfolioSnapshot(input: {
     residual: rS,
   });
   let varianceDecompBasis: "realized_strips" | "etf_correlation_adjusted" | "naive_pws";
-  let decomp: { market: number; sector: number; subsector: number; residual: number };
+  let decomp: { market: number | null; sector: number | null; subsector: number | null; residual: number | null };
   if (stripDecomp) {
     decomp = stripDecomp;
     varianceDecompBasis = "realized_strips";
-  } else if (adj.total > 1e-9) {
+  } else if (
+    adj.total != null &&
+    adj.total > 1e-9 &&
+    adj.market_er != null &&
+    adj.sector_er != null &&
+    adj.subsector_er != null &&
+    adj.residual_er != null
+  ) {
     decomp = {
       market: adj.market_er / adj.total,
       sector: adj.sector_er / adj.total,
@@ -634,15 +656,23 @@ export async function buildCanonicalPortfolioSnapshot(input: {
     };
     varianceDecompBasis = "naive_pws";
   }
-  const decompSystematic = decomp.market + decomp.sector + decomp.subsector;
-  const highLayer = Math.max(decomp.market, decomp.sector, decomp.subsector) > 0.55;
+  const decompSystematic =
+    decomp.market != null && decomp.sector != null && decomp.subsector != null
+      ? decomp.market + decomp.sector + decomp.subsector
+      : null;
+  const highLayer =
+    decomp.market != null && decomp.sector != null && decomp.subsector != null
+      ? Math.max(decomp.market, decomp.sector, decomp.subsector) > 0.55
+      : false;
 
-  const driverScores: { label: string; value: number }[] = [
+  const driverScores = ([
     { label: "market", value: decomp.market },
     { label: "sector", value: decomp.sector },
     { label: "subsector", value: decomp.subsector },
     { label: "residual", value: decomp.residual },
-  ].sort((a, b) => b.value - a.value);
+  ] as Array<{ label: string; value: number | null }>)
+    .filter((driver): driver is { label: string; value: number } => driver.value != null)
+    .sort((a, b) => b.value - a.value);
   const dominant_drivers = driverScores.slice(0, 3).map((d) => d.label);
 
   const top_exposures = perPositions.slice(0, 10).map((p) => ({
@@ -674,6 +704,7 @@ export async function buildCanonicalPortfolioSnapshot(input: {
       variance_decomposition_basis: varianceDecompBasis,
       diversification,
       portfolio_volatility_23d: core.portfolioVol,
+      data_quality_flags: core.data_quality_flags,
       ...(core.portfolio_hedge_levels
         ? { portfolio_hedge_levels: core.portfolio_hedge_levels }
         : {}),

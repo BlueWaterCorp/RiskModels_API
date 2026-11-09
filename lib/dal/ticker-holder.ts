@@ -125,8 +125,8 @@ export function rankHolderCandidates<T extends HolderCandidate>(candidates: T[])
     const ah = a.held_through ?? "";
     const bh = b.held_through ?? "";
     if (ah !== bh) return ah > bh ? -1 : 1;
-    const al = a.label_score ?? 0;
-    const bl = b.label_score ?? 0;
+    const al = a.label_score ?? 0; // allow-default: absent registry evidence has zero label matches
+    const bl = b.label_score ?? 0; // allow-default: absent registry evidence has zero label matches
     if (al !== bl) return bl - al;
     const ad = a.in_daily_store === true ? 1 : 0;
     const bd = b.in_daily_store === true ? 1 : 0;

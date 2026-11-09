@@ -44,12 +44,15 @@ function secVal(row: Row, concept: string): number | null {
   return f && typeof f.value === "number" && Number.isFinite(f.value) ? f.value : null;
 }
 
-function buildWorkbook(
+export type ScaffoldDefaultedAssumption = "erp" | "tax_rate";
+
+export function buildWorkbook(
   ticker: string,
   rows: Row[],
   asOf: string,
   erp: number,
   taxRate: number,
+  assumptionsDefaulted: ScaffoldDefaultedAssumption[] = [],
 ): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = "RiskModels (riskmodels.app)";
@@ -161,6 +164,9 @@ function buildWorkbook(
     "Cost of equity recomputes live if you change the ERP (B6). WACC as-served uses book weights — supply market weights for the textbook convention. Forward projections = your assumptions (RiskModels is realized-only). as_of " +
     asOf;
   w2.getCell(14, 1).font = { italic: true, size: 9, color: { argb: GREY } };
+  w2.getCell(16, 1).value = "assumptions_defaulted";
+  w2.getCell(16, 1).font = { bold: true };
+  w2.getCell(16, 2).value = assumptionsDefaulted.join(", ");
   w2.getColumn(1).width = 34;
   w2.getColumn(2).width = 16;
 
@@ -197,8 +203,14 @@ export const GET = withBilling(async (request: NextRequest, _context: BillingCon
   if (floorErr) {
     return NextResponse.json(floorErr, { status: 404, headers: getCorsHeaders(origin) });
   }
-  const erpUsed = erp ?? 0.05;
-  const taxUsed = tax_rate ?? 0.21;
+  // The request schema supplies the documented 5% / 21% defaults. Query-key
+  // presence, rather than the parsed value, records whether the caller chose them.
+  const erpUsed = erp;
+  const taxUsed = tax_rate;
+  const assumptionsDefaulted: ScaffoldDefaultedAssumption[] = [
+    ...(!sp.has("erp") ? ["erp" as const] : []),
+    ...(!sp.has("tax_rate") ? ["tax_rate" as const] : []),
+  ];
 
   try {
     const result = await getFundamentalsForTicker(ticker, {
@@ -220,7 +232,14 @@ export const GET = withBilling(async (request: NextRequest, _context: BillingCon
       sanitizeFundamentalsRow(row as unknown as Record<string, unknown>),
     ) as unknown as Row[];
 
-    const wb = buildWorkbook(result.ticker ?? ticker, rows, asOf, erpUsed, taxUsed);
+    const wb = buildWorkbook(
+      result.ticker ?? ticker,
+      rows,
+      asOf,
+      erpUsed,
+      taxUsed,
+      assumptionsDefaulted,
+    );
     const buf = new Uint8Array(await wb.xlsx.writeBuffer());
 
     return new NextResponse(buf, {
@@ -231,6 +250,7 @@ export const GET = withBilling(async (request: NextRequest, _context: BillingCon
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${ticker}_model_scaffold.xlsx"`,
         "Cache-Control": "private, max-age=300",
+        "X-Assumptions-Defaulted": assumptionsDefaulted.join(","),
       },
     });
   } catch (err) {

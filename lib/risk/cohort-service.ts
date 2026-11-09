@@ -169,7 +169,7 @@ export class CohortService {
       cohorts: series,
       range: dates.length ? [dates[0]!, dates[dates.length - 1]!] : null,
       variables,
-      min_names: options.minNames ?? 0,
+      min_names: options.minNames ?? 0, // allow-default: omitted cohort-size filter disables the threshold
       universe: meta?.universe ?? getZarrFactorSetId(),
       market_factor_etf: meta?.market_factor_etf ?? "SPY",
       store_build: meta?.build_timestamp ?? null,
@@ -202,7 +202,7 @@ export class CohortService {
       teo: snapshot.teo,
       cohorts: snapshot.rows,
       variables,
-      min_names: options.minNames ?? 0,
+      min_names: options.minNames ?? 0, // allow-default: omitted cohort-size filter disables the threshold
       universe: meta?.universe ?? getZarrFactorSetId(),
       market_factor_etf: meta?.market_factor_etf ?? "SPY",
       store_build: meta?.build_timestamp ?? null,

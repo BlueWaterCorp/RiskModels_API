@@ -251,8 +251,8 @@ export class CohortPnlService {
     const netWeightByCohort = new Map<string, number>();
     const countByCohort = new Map<string, number>();
     for (const r of resolved) {
-      netWeightByCohort.set(r.cohort, (netWeightByCohort.get(r.cohort) ?? 0) + r.weight);
-      countByCohort.set(r.cohort, (countByCohort.get(r.cohort) ?? 0) + 1);
+      netWeightByCohort.set(r.cohort, (netWeightByCohort.get(r.cohort) ?? 0) + r.weight); // allow-default: absent cohort accumulator starts at zero
+      countByCohort.set(r.cohort, (countByCohort.get(r.cohort) ?? 0) + 1); // allow-default: absent cohort counter starts at zero
     }
 
     const dates = Array.from(
@@ -276,7 +276,7 @@ export class CohortPnlService {
         if (!finite(e) || !finite(m)) continue;
         const sel = r.weight * (e - m);
         daySelection += sel;
-        selectionByCohort.set(r.cohort, (selectionByCohort.get(r.cohort) ?? 0) + sel);
+        selectionByCohort.set(r.cohort, (selectionByCohort.get(r.cohort) ?? 0) + sel); // allow-default: absent cohort accumulator starts at zero
         contributed = true;
       }
 
@@ -287,7 +287,7 @@ export class CohortPnlService {
         if (!finite(m)) continue;
         const d = w * m;
         dayDrift += d;
-        driftByCohort.set(cohort, (driftByCohort.get(cohort) ?? 0) + d);
+        driftByCohort.set(cohort, (driftByCohort.get(cohort) ?? 0) + d); // allow-default: absent cohort accumulator starts at zero
         contributed = true;
       }
 
@@ -309,10 +309,10 @@ export class CohortPnlService {
     const byCohort: PnlCohortRow[] = Array.from(netWeightByCohort.keys())
       .map((cohort) => ({
         cohort,
-        net_weight: netWeightByCohort.get(cohort) ?? 0,
-        n_positions: countByCohort.get(cohort) ?? 0,
-        drift: driftByCohort.get(cohort) ?? 0,
-        selection: selectionByCohort.get(cohort) ?? 0,
+        net_weight: netWeightByCohort.get(cohort) ?? 0, // allow-default: cohort with no positions has zero net weight
+        n_positions: countByCohort.get(cohort) ?? 0, // allow-default: cohort with no positions has zero count
+        drift: driftByCohort.get(cohort) ?? 0, // allow-default: cohort with no drift rows has zero aggregate drift
+        selection: selectionByCohort.get(cohort) ?? 0, // allow-default: cohort with no selection rows has zero aggregate selection
       }))
       .sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
 

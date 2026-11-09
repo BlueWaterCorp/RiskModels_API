@@ -3,6 +3,7 @@ import type {
   ChartDatum,
   DecompositionComponent,
   LayerExposure,
+  PortfolioRiskIndexBlock,
   RiskLayer,
   RiskModelsResult,
   SuggestedChart,
@@ -333,12 +334,15 @@ export function normalizePortfolioResult<TRaw>(
     raw,
     normalized: {
       components,
-      portfolio: pri,
+      portfolio: pri as unknown as PortfolioRiskIndexBlock,
       metadata: metadataFromRaw(raw),
     },
     chart_data: chartDataFromComponents(components),
     suggested_chart: "bar",
-    plain_english: "The portfolio was decomposed into market, sector, subsector, and residual risk layers.",
+    plain_english:
+      Array.isArray(record.data_quality_flags) && record.data_quality_flags.length > 0
+        ? "The portfolio decomposition has incomplete model coverage; null values are unavailable and the covered weights were not renormalized."
+        : "The portfolio was decomposed into market, sector, subsector, and residual risk layers.",
     api_call: apiCallWithLineage(raw, apiCall),
   };
 }

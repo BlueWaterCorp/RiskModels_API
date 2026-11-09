@@ -29,9 +29,23 @@ vi.mock("@/lib/dal/risk-metadata", () => ({
 const mockCoreOk = {
   status: "ok" as const,
   fetchLatencyMs: 1,
-  portfolioER: { market: 0.6, sector: 0.15, subsector: 0.1, residual: 0.15 },
+  portfolioER: {
+    market: 0.6,
+    sector: 0.15,
+    subsector: 0.1,
+    residual: 0.15,
+    er_coverage: 1,
+    names_covered: 1,
+    names_total: 1,
+    aggregation: "covered_weights_not_renormalized" as const,
+    data_quality_flags: [],
+  },
   systematic: 0.85,
   portfolioVol: 0.22,
+  erCoverage: 1,
+  volCoverage: 1,
+  aggregation: "covered_weights_not_renormalized" as const,
+  data_quality_flags: [],
   perTicker: {
     MSFT: {
       weight: 1,
@@ -51,7 +65,7 @@ const mockCoreOk = {
   summary: { total_positions: 1, resolved: 1, errors: 0 },
   errorsList: [] as { ticker: string; error: string }[],
   timeSeriesData: [
-    { date: "2026-01-10", market_er: 0.4, sector_er: 0.2, subsector_er: 0.2, residual_er: 0.2, systematic_er: 0.8 },
+    { date: "2026-01-10", market_er: 0.4, sector_er: 0.2, subsector_er: 0.2, residual_er: 0.2, systematic_er: 0.8, er_coverage: 1, data_quality_flags: [] },
   ],
 };
 

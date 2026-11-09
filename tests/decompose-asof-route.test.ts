@@ -90,6 +90,13 @@ const LATEST_ROW = {
   },
 };
 
+const REAL_MDGL_ER = {
+  l3_mkt_er: 0.00406,
+  l3_sec_er: 0.01648,
+  l3_sub_er: 0.11038,
+  l3_res_er: 0.86908,
+};
+
 const HIST_ROW = {
   teo: "2025-06-27",
   metrics: {
@@ -121,6 +128,19 @@ beforeEach(() => {
 });
 
 describe("POST /api/decompose — no as_of stays on the fast path (Verify c)", () => {
+  it("returns a null ER sum and a quality flag when one real row cell is missing", async () => {
+    mockFastPath.mockResolvedValue({
+      ...LATEST_ROW,
+      metrics: { ...LATEST_ROW.metrics, ...REAL_MDGL_ER, l3_res_er: null },
+    });
+    const res = await decomposePOST(post({ ticker: "NVDA" }), fakeContext);
+    const body = await res.json();
+    expect(body.exposure.residual.er).toBeNull();
+    expect(body._data_health.er_sum).toBeNull();
+    expect(body._data_health.er_complete).toBe(false);
+    expect(body.data_quality_flags).toEqual(["er_inputs_incomplete"]);
+  });
+
   it("calls fetchLatestMetricsWithFallback; the as_of read is never entered", async () => {
     mockFastPath.mockResolvedValue(LATEST_ROW);
     const res = await decomposePOST(post({ ticker: "NVDA" }), fakeContext);

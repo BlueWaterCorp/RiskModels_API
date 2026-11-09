@@ -94,7 +94,7 @@ export async function GET(
   const endDate = sp.get("end") ?? undefined;
   const order = sp.get("order") ?? "asc";
   const pageSize = Math.min(Number(sp.get("page_size") ?? 5000), 10000);
-  const offset = Number(sp.get("offset") ?? 0);
+    const offset = Number(sp.get("offset") ?? 0); // allow-default: omitted pagination offset starts at zero
 
   const metricKeys = keys as V3MetricKey[];
 

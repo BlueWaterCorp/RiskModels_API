@@ -125,8 +125,11 @@ export async function getResidualSignalBasket(
     seen.add(t);
     orderedTickers.push(t);
     if (weightInput && i < weightInput.length) {
-      const w = Number(weightInput[i]);
-      orderedWeights.push(Number.isFinite(w) && w > 0 ? w : 0);
+      const w = weightInput[i]!;
+      if (!Number.isFinite(w) || w < 0) {
+        throw new Error(`invalid basket weight at index ${i}`);
+      }
+      orderedWeights.push(w);
     } else {
       orderedWeights.push(1);
     }
@@ -186,12 +189,12 @@ export async function getResidualSignalBasket(
     // they describe what the basket contains, not what made the aggregate.
     const decileKey =
       row.decile_rank == null ? "null" : String(Math.round(row.decile_rank));
-    decileDist[decileKey] = (decileDist[decileKey] ?? 0) + 1;
+    decileDist[decileKey] = (decileDist[decileKey] ?? 0) + 1; // allow-default: absent histogram bucket starts at zero
     const qKey =
       row.signal_quality_quintile == null
         ? "null"
         : String(Math.round(row.signal_quality_quintile));
-    qualityDist[qKey] = (qualityDist[qKey] ?? 0) + 1;
+    qualityDist[qKey] = (qualityDist[qKey] ?? 0) + 1; // allow-default: absent histogram bucket starts at zero
 
     if (passesGate && weight > 0) {
       contributors.push({ row, weight });

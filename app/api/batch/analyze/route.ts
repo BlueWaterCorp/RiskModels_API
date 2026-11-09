@@ -244,7 +244,7 @@ export const POST = withBilling(
         for (const r of results) {
           if (r.status === "success" && r.returns) {
             const { dates, values, l1, l2, l3 } = r.returns;
-            for (let i = 0; i < (dates?.length ?? 0); i++) {
+            for (let i = 0; i < (dates?.length ?? 0); i++) { // allow-default: missing date array has zero loop iterations
               rows.push({
                 ticker: r.ticker,
                 date: dates![i],

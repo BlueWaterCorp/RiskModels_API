@@ -76,7 +76,10 @@ async function buildCorrelationMatrix(
     return sortedDates.map((d) => m?.get(d) ?? NaN);
   });
 
-  const R: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  const R: Array<Array<number | null>> = Array.from(
+    { length: n },
+    () => new Array<number | null>(n).fill(null),
+  );
   for (let i = 0; i < n; i++) {
     R[i][i] = 1;
     for (let j = i + 1; j < n; j++) {
@@ -87,7 +90,7 @@ async function buildCorrelationMatrix(
           aligned[1].push(series[j][d]);
         }
       }
-      const rho = pearson(aligned[0], aligned[1]) ?? 0;
+      const rho = pearson(aligned[0], aligned[1]);
       R[i][j] = rho;
       R[j][i] = rho;
     }

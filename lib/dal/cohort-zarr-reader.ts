@@ -663,7 +663,7 @@ export async function readCohortSeries(params: {
     }),
   );
 
-  const minNames = params.minNames ?? 0;
+  const minNames = params.minNames ?? 0; // allow-default: omitted cohort-size filter disables the threshold
   const out: CohortSeries[] = [];
   const etfTickerById = params.includeProxySource
     ? await readEtfTickerById(prefix)
@@ -751,7 +751,7 @@ export async function readCohortCrossSection(params: {
   const wanted = params.tickers?.length
     ? new Set(params.tickers.map((t) => t.trim().toUpperCase()))
     : null;
-  const minNames = params.minNames ?? 0;
+  const minNames = params.minNames ?? 0; // allow-default: omitted cohort-size filter disables the threshold
 
   const rows: CohortCrossSectionRow[] = [];
   for (const entry of roster.entries) {

@@ -90,6 +90,8 @@ export interface LstarResult {
   market_factor_etf: string;
   universe: string;
   data_source: string;
+  /** Empty unless one or more chosen rows lacked an ER needed for total_er. */
+  data_quality_flags: string[];
   history_starts?: string;
 }
 
@@ -189,8 +191,10 @@ function processIndustryRow(
   total_er: number | null;
   residual_return: number | null;
 } {
-  const l2Marginal = (p.l2_sec_er as number | null) ?? null;
-  const l3Marginal = (p.l3_sub_er as number | null) ?? null;
+  const finiteOrNull = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  const l2Marginal = finiteOrNull(p.l2_sec_er);
+  const l3Marginal = finiteOrNull(p.l3_sub_er);
   // SSOT: when the materialized canonical level is present, it wins (carries the
   // shipped selector — GBM or 1%). Fall back to the live θ rule otherwise.
   const lvlRaw = p.lstar_level as number | null | undefined;
@@ -203,9 +207,9 @@ function processIndustryRow(
     : dispatchLstarResidualReturn(chosen, p);
 
   if (chosen === "L3") {
-    const m = (p.l3_mkt_er as number | null) ?? 0;
-    const s = (p.l3_sec_er as number | null) ?? 0;
-    const ss = l3Marginal ?? 0;
+    const m = finiteOrNull(p.l3_mkt_er);
+    const s = finiteOrNull(p.l3_sec_er);
+    const totalEr = m != null && s != null && l3Marginal != null ? m + s + l3Marginal : null;
     return {
       chosen,
       l2Marginal,
@@ -213,13 +217,13 @@ function processIndustryRow(
       market_hr: (p.l3_mkt_hr as number | null) ?? null,
       sector_hr: (p.l3_sec_hr as number | null) ?? null,
       subsector_hr: (p.l3_sub_hr as number | null) ?? null,
-      total_er: m + s + ss,
+      total_er: totalEr,
       residual_return: residualReturn,
     };
   }
   if (chosen === "L2") {
-    const m = (p.l2_mkt_er as number | null) ?? 0;
-    const s = l2Marginal ?? 0;
+    const m = finiteOrNull(p.l2_mkt_er);
+    const totalEr = m != null && l2Marginal != null ? m + l2Marginal : null;
     return {
       chosen,
       l2Marginal,
@@ -227,7 +231,7 @@ function processIndustryRow(
       market_hr: (p.l2_mkt_hr as number | null) ?? null,
       sector_hr: (p.l2_sec_hr as number | null) ?? null,
       subsector_hr: null,
-      total_er: m + s,
+      total_er: totalEr,
       residual_return: residualReturn,
     };
   }
@@ -239,7 +243,7 @@ function processIndustryRow(
       market_hr: (p.l1_mkt_hr as number | null) ?? null,
       sector_hr: null,
       subsector_hr: null,
-      total_er: (p.l1_mkt_er as number | null) ?? null,
+      total_er: finiteOrNull(p.l1_mkt_er),
       residual_return: residualReturn,
     };
   }
@@ -273,7 +277,7 @@ export class LstarService {
       throw new Error(LSTAR_STYLE_AXIS_REMOVED_MESSAGE);
     }
     const upperTicker = ticker.toUpperCase();
-    const years = options?.years ?? 1;
+    const years = options?.years ?? 1; // allow-default: omitted history-window parameter defaults to one year
     const threshold = options?.threshold ?? LSTAR_DEFAULT_THRESHOLD;
     const axis: LstarAxis = options?.axis ?? "industry";
 
@@ -324,6 +328,7 @@ export class LstarService {
     const residual_return: (number | null)[] = [];
     const l2_sector_er: (number | null)[] = [];
     const l3_subsector_er: (number | null)[] = [];
+    const dataQualityFlags = new Set<string>();
 
     // Prefer the materialized canonical level at the default θ; an explicit
     // caller θ keeps live derivation.
@@ -338,6 +343,9 @@ export class LstarService {
       sector_hr.push(row.sector_hr);
       subsector_hr.push(row.subsector_hr);
       total_er.push(row.total_er);
+      if (row.chosen != null && row.total_er == null) {
+        dataQualityFlags.add("total_er_inputs_incomplete");
+      }
       residual_return.push(row.residual_return);
     }
 
@@ -357,6 +365,7 @@ export class LstarService {
       market_factor_etf: marketFactorEtf,
       universe: "US_EQUITY",
       data_source: "zarr",
+      data_quality_flags: [...dataQualityFlags],
     };
   }
 
@@ -383,6 +392,7 @@ export class LstarService {
       market_factor_etf: marketFactorEtf,
       universe: "US_EQUITY",
       data_source: "zarr",
+      data_quality_flags: [],
       ...(historyStart ? { history_starts: historyStart } : {}),
     };
   }

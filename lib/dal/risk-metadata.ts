@@ -53,7 +53,7 @@ export async function getRiskMetadata(): Promise<RiskMetadata> {
     model_version: process.env.RISK_MODEL_VERSION ?? RISK_MODEL_VERSION,
     data_as_of: dataAsOf,
     factor_set_id: "SPY_uni_mc_3000",
-    universe_size: universeCount ?? 0,
+    universe_size: universeCount ?? 0, // allow-default: unavailable metadata count is a non-model counter
     wiki_uri: METHODOLOGY_URL,
     factors: L3_FACTORS,
   };

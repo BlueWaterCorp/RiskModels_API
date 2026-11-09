@@ -117,6 +117,9 @@ async function buildSnapshotResponse(
     },
     portfolio_volatility_23d: core.portfolioVol,
     position_count: core.summary.resolved,
+    er_coverage: core.erCoverage,
+    volatility_coverage: core.volCoverage,
+    aggregation: core.aggregation,
   };
 
   // Parallel Lstar-dispatched attribution: same shape as the fixed-L3 block
@@ -132,11 +135,17 @@ async function buildSnapshotResponse(
       subsector: core.lstar_attribution.subsector,
       residual: core.lstar_attribution.residual,
       systematic:
-        core.lstar_attribution.market +
-        core.lstar_attribution.sector +
-        core.lstar_attribution.subsector,
+        core.lstar_attribution.market != null &&
+        core.lstar_attribution.sector != null &&
+        core.lstar_attribution.subsector != null
+          ? core.lstar_attribution.market +
+            core.lstar_attribution.sector +
+            core.lstar_attribution.subsector
+          : null,
       weight_covered: core.lstar_attribution.weight_covered,
       dropped_count: core.lstar_attribution.dropped_count,
+      aggregation: core.lstar_attribution.aggregation,
+      data_quality_flags: core.lstar_attribution.data_quality_flags,
     };
   }
 
@@ -193,6 +202,7 @@ async function buildSnapshotResponse(
       : {}),
     per_ticker: core.perTicker,
     summary: core.summary,
+    data_quality_flags: core.data_quality_flags,
     ...(core.errorsList.length ? { errors: core.errorsList } : {}),
     ...(transitions.length ? { transitions } : {}),
     _agent: { cost_usd: context.costUsd, request_id: context.requestId },

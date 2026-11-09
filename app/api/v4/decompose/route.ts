@@ -280,8 +280,10 @@ export const POST = withBilling(
         stockSpecificEv,
       ];
       const erPopulated = parts.some((p) => p !== null);
-      const erSum = parts.reduce<number>((a, p) => a + (p ?? 0), 0);
-      if (erPopulated && Math.abs(erSum - 1) > ER_SUM_TOLERANCE) {
+      const erComplete = parts.every((part): part is number => part !== null);
+      const erSum = erComplete ? parts.reduce((sum, part) => sum + part, 0) : null;
+      const dataQualityFlags = erComplete ? [] : ["er_inputs_incomplete"];
+      if (erSum != null && Math.abs(erSum - 1) > ER_SUM_TOLERANCE) {
         console.warn(
           `[v4/decompose] ER sum off from 1 for ${ticker} (basis=${basis}): ${erSum.toFixed(4)}`,
         );
@@ -299,10 +301,12 @@ export const POST = withBilling(
         data_as_of: metadata.data_as_of,
         teo: latestData.teo,
         decomposition,
+        data_quality_flags: dataQualityFlags,
         _metadata: buildMetadataBody(metadata, { factors }),
         _data_health: {
           er_populated: erPopulated,
-          er_sum: erPopulated ? erSum : null,
+          er_complete: erComplete,
+          er_sum: erSum,
         },
       };
 

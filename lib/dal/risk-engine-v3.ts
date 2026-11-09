@@ -745,7 +745,7 @@ async function resolveMostRecentHolderRows(
               h.bw_sym_id,
               t,
               h.security_master,
-              !(h.identity_delisted && (h.label_score ?? 0) === 2),
+              !(h.identity_delisted && (h.label_score ?? 0) === 2), // allow-default: absent registry evidence has zero label matches
             ),
             h.identity_delisted,
           )

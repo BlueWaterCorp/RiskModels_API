@@ -14,6 +14,28 @@ import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-header
 
 export const dynamic = "force-dynamic";
 
+export function summarizeHoldingValues(holdings: Array<Record<string, unknown>>): {
+  total_value: number | null;
+  value_coverage: number;
+  data_quality_flags: string[];
+} {
+  const coveredValues = holdings.flatMap((holding) => {
+    const raw = holding.institution_value;
+    if (raw == null || raw === "") return [];
+    const value = Number(raw);
+    return Number.isFinite(value) ? [value] : [];
+  });
+  const valueCoverage = holdings.length > 0 ? coveredValues.length / holdings.length : 1;
+  return {
+    total_value:
+      coveredValues.length > 0
+        ? coveredValues.reduce((sum, value) => sum + value, 0)
+        : holdings.length === 0 ? 0 : null,
+    value_coverage: valueCoverage,
+    data_quality_flags: valueCoverage < 1 ? ["holding_value_coverage_incomplete"] : [],
+  };
+}
+
 export const GET = withBilling(
   async (request: NextRequest, context: BillingContext) => {
     const origin = request.headers.get("origin");
@@ -78,7 +100,9 @@ export const GET = withBilling(
           total_value: 0,
           account_count: 0,
           position_count: 0,
+          value_coverage: 1,
         },
+        data_quality_flags: [] as string[],
         _metadata: buildMetadataBody(metadata),
         _agent: {
           cost_usd: context.costUsd,
@@ -145,10 +169,7 @@ export const GET = withBilling(
       }
     }
 
-    const total_value = holdingsOut.reduce(
-      (sum, h) => sum + (Number(h.institution_value) || 0),
-      0,
-    );
+    const valueSummary = summarizeHoldingValues(holdingsOut);
 
     const response = NextResponse.json(
       {
@@ -157,10 +178,12 @@ export const GET = withBilling(
         securities: securitiesOut,
         connections_count: rows.length,
         summary: {
-          total_value,
+          total_value: valueSummary.total_value,
           account_count: accountsOut.length,
           position_count: holdingsOut.length,
+          value_coverage: valueSummary.value_coverage,
         },
+        data_quality_flags: valueSummary.data_quality_flags,
         _metadata: buildMetadataBody(metadata),
         _agent: {
           cost_usd: context.costUsd,

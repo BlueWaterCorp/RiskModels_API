@@ -18,7 +18,7 @@ export interface DiversificationTickerMetrics {
 
 export interface CorrelationMatrix {
   etfs: string[];
-  R: number[][];
+  R: Array<Array<number | null>>;
 }
 
 export interface DiversificationInput {
@@ -33,9 +33,9 @@ export interface DiversificationInput {
 
 export interface DiversificationLayer {
   layer: "market" | "sector" | "subsector" | "residual";
-  naive_er: number;
-  adjusted_er: number;
-  adjustment_er: number;
+  naive_er: number | null;
+  adjusted_er: number | null;
+  adjustment_er: number | null;
   multiplier: number | null;
   unique_etfs?: number;
 }
@@ -44,26 +44,31 @@ export interface DiversificationResult {
   window_days: number;
   method: string;
   naive_pws: {
-    market_er: number;
-    sector_er: number;
-    subsector_er: number;
-    residual_er: number;
-    total: number;
+    market_er: number | null;
+    sector_er: number | null;
+    subsector_er: number | null;
+    residual_er: number | null;
+    total: number | null;
   };
   correlation_adjusted: {
-    market_er: number;
-    sector_er: number;
-    subsector_er: number;
-    residual_er: number;
-    total: number;
+    market_er: number | null;
+    sector_er: number | null;
+    subsector_er: number | null;
+    residual_er: number | null;
+    total: number | null;
   };
   diversification_credit: {
-    market: number;
-    sector: number;
-    subsector: number;
-    residual: number;
-    total: number;
+    market: number | null;
+    sector: number | null;
+    subsector: number | null;
+    residual: number | null;
+    total: number | null;
   };
+  er_coverage: number;
+  names_covered: number;
+  names_total: number;
+  aggregation: "covered_weights_not_renormalized";
+  data_quality_flags: string[];
   layers: DiversificationLayer[];
   warnings: string[];
   _explanation: string;
@@ -78,14 +83,16 @@ export interface DiversificationResult {
  * imperfect correlations reduce portfolio variance.
  * Clamped to [0, 1].
  */
-function diversificationMultiplier(u: number[], R: number[][]): number {
+function diversificationMultiplier(u: number[], R: Array<Array<number | null>>): number | null {
   const n = u.length;
   let uRu = 0;
   let sumAbsU = 0;
   for (let i = 0; i < n; i++) {
     sumAbsU += Math.abs(u[i]);
     for (let j = 0; j < n; j++) {
-      uRu += u[i] * R[i][j] * u[j];
+      const rho = R[i]?.[j];
+      if (rho == null || !Number.isFinite(rho)) return null;
+      uRu += u[i] * rho * u[j];
     }
   }
   const perfectlyCorrelated = sumAbsU * sumAbsU;
@@ -136,17 +143,17 @@ function buildExposureVector(
 
 function makeLayer(
   layer: DiversificationLayer["layer"],
-  naive: number,
-  adjusted: number,
+  naive: number | null,
+  adjusted: number | null,
   uniqueEtfs?: number,
 ): DiversificationLayer {
-  const adjustment = naive - adjusted;
-  const multiplier = naive > 1e-10 ? adjusted / naive : null;
+  const adjustment = naive != null && adjusted != null ? naive - adjusted : null;
+  const multiplier = naive != null && adjusted != null && naive > 1e-10 ? adjusted / naive : null;
   return {
     layer,
-    naive_er: round6(naive),
-    adjusted_er: round6(adjusted),
-    adjustment_er: round6(adjustment),
+    naive_er: naive == null ? null : round6(naive),
+    adjusted_er: adjusted == null ? null : round6(adjusted),
+    adjustment_er: adjustment == null ? null : round6(adjustment),
     multiplier: multiplier != null ? round4(multiplier) : null,
     ...(uniqueEtfs != null ? { unique_etfs: uniqueEtfs } : {}),
   };
@@ -173,86 +180,114 @@ export function computeDiversificationMetrics(
   let naiveSector = 0;
   let naiveSubsector = 0;
   let naiveResidual = 0;
-
-  for (const { ticker, weight } of positions) {
+  let coveredAbsWeight = 0;
+  const totalAbsWeight = positions.reduce((sum, position) => sum + Math.abs(position.weight), 0);
+  const coveredPositions = positions.filter(({ ticker, weight }) => {
     const m = tickerMetrics.get(ticker);
-    if (!m) continue;
-    naiveMarket += weight * (m.l3_mkt_er ?? 0);
-    naiveSector += weight * (m.l3_sec_er ?? 0);
-    naiveSubsector += weight * (m.l3_sub_er ?? 0);
-    naiveResidual += weight * (m.l3_res_er ?? 0);
+    const complete = !!m &&
+      m.l3_mkt_er != null && Number.isFinite(m.l3_mkt_er) &&
+      m.l3_sec_er != null && Number.isFinite(m.l3_sec_er) &&
+      m.l3_sub_er != null && Number.isFinite(m.l3_sub_er) &&
+      m.l3_res_er != null && Number.isFinite(m.l3_res_er);
+    if (complete) coveredAbsWeight += Math.abs(weight);
+    return complete;
+  });
+
+  for (const { ticker, weight } of coveredPositions) {
+    const m = tickerMetrics.get(ticker)!;
+    naiveMarket += weight * m.l3_mkt_er!;
+    naiveSector += weight * m.l3_sec_er!;
+    naiveSubsector += weight * m.l3_sub_er!;
+    naiveResidual += weight * m.l3_res_er!;
   }
+  const hasCoverage = coveredPositions.length > 0;
+  const erCoverage = totalAbsWeight > 0 ? coveredAbsWeight / totalAbsWeight : 0;
+  const dataQualityFlags: string[] = erCoverage < 1 ? ["portfolio_er_coverage_incomplete"] : [];
 
   // Market: single factor (SPY) — no cross-ETF diversification possible.
   // adjusted = naive (all positions share the same market factor).
-  const adjMarket = naiveMarket;
+  const adjMarket = hasCoverage ? naiveMarket : null;
 
   // Sector: diversification multiplier from cross-sector ETF correlations
   const { u: uSec, warnings: wSec } = buildExposureVector(
-    positions, tickerMetrics, "l3_sec_er", "sector_etf", etfCorrelations.sector.etfs,
+    coveredPositions, tickerMetrics, "l3_sec_er", "sector_etf", etfCorrelations.sector.etfs,
   );
   warnings.push(...wSec);
-  const adjSector = naiveSector * diversificationMultiplier(uSec, etfCorrelations.sector.R);
+  const sectorMultiplier = diversificationMultiplier(uSec, etfCorrelations.sector.R);
+  const adjSector = hasCoverage && sectorMultiplier != null ? naiveSector * sectorMultiplier : null;
+  if (hasCoverage && sectorMultiplier == null) dataQualityFlags.push("sector_correlation_incomplete");
 
   // Subsector: diversification multiplier from cross-subsector ETF correlations
   const { u: uSub, warnings: wSub } = buildExposureVector(
-    positions, tickerMetrics, "l3_sub_er", "subsector_etf", etfCorrelations.subsector.etfs,
+    coveredPositions, tickerMetrics, "l3_sub_er", "subsector_etf", etfCorrelations.subsector.etfs,
   );
   warnings.push(...wSub);
-  const adjSubsector = naiveSubsector * diversificationMultiplier(uSub, etfCorrelations.subsector.R);
+  const subsectorMultiplier = diversificationMultiplier(uSub, etfCorrelations.subsector.R);
+  const adjSubsector = hasCoverage && subsectorMultiplier != null ? naiveSubsector * subsectorMultiplier : null;
+  if (hasCoverage && subsectorMultiplier == null) dataQualityFlags.push("subsector_correlation_incomplete");
 
   // Residual: concentration multiplier — HHI of ER-weighted positions.
   // multiplier = (sum w_i^2 * res_er_i) / (sum w_i * res_er_i) when naive > 0.
   // Equals 1/N for equal-weight equal-ER portfolio, 1.0 for single position.
   let residualConcentration = 0;
-  for (const { ticker, weight } of positions) {
-    const m = tickerMetrics.get(ticker);
-    if (!m) continue;
-    residualConcentration += weight * weight * (m.l3_res_er ?? 0);
+  for (const { ticker, weight } of coveredPositions) {
+    const m = tickerMetrics.get(ticker)!;
+    residualConcentration += weight * weight * m.l3_res_er!;
   }
   const residualMultiplier = naiveResidual > 1e-15 ? Math.min(1, residualConcentration / naiveResidual) : 1;
-  const adjResidual = naiveResidual * residualMultiplier;
+  const adjResidual = hasCoverage ? naiveResidual * residualMultiplier : null;
 
   const layers: DiversificationLayer[] = [
-    makeLayer("market", naiveMarket, adjMarket),
-    makeLayer("sector", naiveSector, adjSector, etfCorrelations.sector.etfs.length),
-    makeLayer("subsector", naiveSubsector, adjSubsector, etfCorrelations.subsector.etfs.length),
-    makeLayer("residual", naiveResidual, adjResidual),
+    makeLayer("market", hasCoverage ? naiveMarket : null, adjMarket),
+    makeLayer("sector", hasCoverage ? naiveSector : null, adjSector, etfCorrelations.sector.etfs.length),
+    makeLayer("subsector", hasCoverage ? naiveSubsector : null, adjSubsector, etfCorrelations.subsector.etfs.length),
+    makeLayer("residual", hasCoverage ? naiveResidual : null, adjResidual),
   ];
 
-  const naiveTotal = naiveMarket + naiveSector + naiveSubsector + naiveResidual;
-  const adjTotal = adjMarket + adjSector + adjSubsector + adjResidual;
+  const naiveTotal = hasCoverage ? naiveMarket + naiveSector + naiveSubsector + naiveResidual : null;
+  const adjTotal =
+    adjMarket != null && adjSector != null && adjSubsector != null && adjResidual != null
+      ? adjMarket + adjSector + adjSubsector + adjResidual
+      : null;
+  const credit = (naive: number | null, adjusted: number | null) =>
+    naive != null && adjusted != null ? round6(Math.max(0, naive - adjusted)) : null;
 
   return {
     window_days: windowDays,
     method: "variance_space_quadratic",
     naive_pws: {
-      market_er: round6(naiveMarket),
-      sector_er: round6(naiveSector),
-      subsector_er: round6(naiveSubsector),
-      residual_er: round6(naiveResidual),
-      total: round6(naiveTotal),
+      market_er: hasCoverage ? round6(naiveMarket) : null,
+      sector_er: hasCoverage ? round6(naiveSector) : null,
+      subsector_er: hasCoverage ? round6(naiveSubsector) : null,
+      residual_er: hasCoverage ? round6(naiveResidual) : null,
+      total: naiveTotal == null ? null : round6(naiveTotal),
     },
     correlation_adjusted: {
-      market_er: round6(adjMarket),
-      sector_er: round6(adjSector),
-      subsector_er: round6(adjSubsector),
-      residual_er: round6(adjResidual),
-      total: round6(adjTotal),
+      market_er: adjMarket == null ? null : round6(adjMarket),
+      sector_er: adjSector == null ? null : round6(adjSector),
+      subsector_er: adjSubsector == null ? null : round6(adjSubsector),
+      residual_er: adjResidual == null ? null : round6(adjResidual),
+      total: adjTotal == null ? null : round6(adjTotal),
     },
     diversification_credit: {
-      market: round6(Math.max(0, naiveMarket - adjMarket)),
-      sector: round6(Math.max(0, naiveSector - adjSector)),
-      subsector: round6(Math.max(0, naiveSubsector - adjSubsector)),
-      residual: round6(Math.max(0, naiveResidual - adjResidual)),
-      total: round6(Math.max(0, naiveTotal - adjTotal)),
+      market: credit(hasCoverage ? naiveMarket : null, adjMarket),
+      sector: credit(hasCoverage ? naiveSector : null, adjSector),
+      subsector: credit(hasCoverage ? naiveSubsector : null, adjSubsector),
+      residual: credit(hasCoverage ? naiveResidual : null, adjResidual),
+      total: credit(naiveTotal, adjTotal),
     },
+    er_coverage: round4(erCoverage),
+    names_covered: coveredPositions.length,
+    names_total: positions.length,
+    aggregation: "covered_weights_not_renormalized",
+    data_quality_flags: dataQualityFlags,
     layers,
     warnings,
     _explanation:
       "Sector and subsector layers apply a diversification multiplier (u'Ru)/(u'u) " +
       "derived from realized correlations between the underlying ETFs, scaled to naive ER. " +
       "Market layer has no diversification credit (single shared factor). " +
-      "Residual uses a concentration multiplier reflecting position-count diversification.",
+      "Residual uses a concentration multiplier reflecting position-count diversification. " +
+      "Names missing any ER layer are excluded and covered weights are not renormalized; er_coverage uses absolute portfolio weight.",
   };
 }

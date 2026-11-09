@@ -112,6 +112,9 @@ export const POST = withBilling(
         l3_sub_er: portfolioER.subsector,
         l3_res_er: portfolioER.residual,
         systematic,
+        er_coverage: core.erCoverage,
+        volatility_coverage: core.volCoverage,
+        aggregation: core.aggregation,
         vol_23d: core.portfolioVol,
       });
       return formatResponse({
@@ -133,7 +136,11 @@ export const POST = withBilling(
         },
         portfolio_volatility_23d: core.portfolioVol,
         position_count: core.summary.resolved,
+        er_coverage: core.erCoverage,
+        volatility_coverage: core.volCoverage,
+        aggregation: core.aggregation,
       },
+      data_quality_flags: core.data_quality_flags,
       per_ticker: core.perTicker,
       summary: {
         total_positions: core.summary.total_positions,

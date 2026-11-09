@@ -52,6 +52,17 @@ describe("computeSignedExposure", () => {
   const book = [stock("NVDA", 100_000, NVDA), stock("AMD", -60_000, AMD)];
   const out = computeSignedExposure({ stocks: book, directEtfs: [], inputGrossUsd: 160_000, cov: COV });
 
+  it("returns null plus a flag when covariance is unavailable", () => {
+    const withoutCovariance = computeSignedExposure({
+      stocks: [stock("NVDA", 100_000, NVDA)],
+      directEtfs: [],
+      inputGrossUsd: 100_000,
+      cov: null,
+    });
+    expect(withoutCovariance.scenario_inputs.covariance_effective_n).toBeNull();
+    expect(withoutCovariance.data_quality_flags).toEqual(["covariance_unavailable"]);
+  });
+
   it("sums beta-dollars with signs, without normalising", () => {
     expect(out.beta.stock_beta_usd).toBeCloseTo(100_000 * 1.8 - 60_000 * 2.0, 2);
     expect(out.beta.by_sector_usd.XLK).toBeCloseTo(60_000, 2);
