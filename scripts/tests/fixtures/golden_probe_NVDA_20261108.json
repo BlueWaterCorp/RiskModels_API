@@ -1,5 +1,5 @@
 {
- "_source": "Live riskmodels.app responses for NVDA, captured 2026-11-08 (release session 2026-11-05, after RMAPI-30 #522). Trimmed to the fields golden_ticker_probe.py reads.",
+ "_source": "Live riskmodels.app responses for NVDA, captured 2026-11-08 (release session 2026-11-05, after RMAPI-30 #522). Trimmed to the fields golden_ticker_probe.py reads; batch ER/HR values retain the captured response values under the public contract names.",
  "session": "2026-11-05",
  "hedge_basket": {
   "as_of": "2026-11-05",
@@ -113,15 +113,25 @@
    "NVDA": {
     "status": "success",
     "full_metrics": {
-     "date": "2026-11-05"
-    },
-    "hedge_ratios": {
+     "ticker": "NVDA",
+     "date": "2026-11-05",
      "l1_market_hr": -1.95726490020752,
      "l2_market_hr": -0.0617159008979797,
      "l2_sector_hr": -1.05136632919312,
      "l3_market_hr": -0.614302277565002,
      "l3_sector_hr": -0.0934916660189629,
      "l3_subsector_hr": -0.478276163339615,
+     "l1_market_er": 0.420864313840866,
+     "l1_residual_er": 0.579135715961456,
+     "l2_market_er": 0.420864313840866,
+     "l2_sector_er": 0.112017281353474,
+     "l2_residual_er": 0.467118412256241,
+     "l3_market_er": 0.420864313840866,
+     "l3_sector_er": 0.112017281353474,
+     "l3_subsector_er": -0.00442980602383614,
+     "l3_residual_er": 0.471548229455948
+    },
+    "hedge_ratios": {
      "l1_market": -1.95726490020752,
      "l2_market": -0.0617159008979797,
      "l2_sector": -1.05136632919312,

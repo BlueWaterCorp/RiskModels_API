@@ -6,7 +6,7 @@
   "stores": [
     {"name": "ds_daily.zarr", "cadence": "session", "latest": "2026-11-05", "expect": "OK"},
     {"name": "ds_erm3_cohorts_SPY_uni_mc_3000.zarr", "cadence": "session", "latest": "2026-10-23", "expect": "FAIL"},
-    {"name": "ds_fundamentals.zarr", "cadence": ["days", 7], "latest": "2026-10-23", "expect": "FAIL"},
+    {"name": "ds_fundamentals.zarr", "cadence": ["days", 14], "latest": "2026-10-23", "expect": "OK"},
     {"name": "ds_erm3_weekly_hedge_SPY_uni_mc_3000.zarr", "cadence": ["days", 10], "latest": "2026-10-30", "expect": "OK"},
     {"name": "ds_exposure_month_end_SPY_uni_mc_3000.zarr", "cadence": ["days", 35], "latest": "2026-11-05", "expect": "OK"}
   ]

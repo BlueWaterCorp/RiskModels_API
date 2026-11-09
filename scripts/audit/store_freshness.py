@@ -8,11 +8,15 @@ because both check that a request succeeds, not what data it read.
 The check, store by store, against gs://rm_api_data/eodhd (or ZARR_GCS_PREFIX):
   1. .zmetadata and .zattrs exist.
   2. The newest value on the store's time axis is within the store's cadence of the
-     release session. The release session is the newest teo of ds_daily.zarr, the
-     store every release writes.
+     expected session. That is the later of the newest release manifest's session
+     and the last completed NYSE session, so a stale daily store cannot validate
+     itself.
   3. The store has a current ERM3 writer (the static table below; ERM3 records the
      writers in erm3/shared/store_dependencies.py and erm3/shared/zarr_layout.py).
      A store listed as retired fails if it is still published.
+
+When ZARR_GCS_RELEASE_SLOTS is enabled, CURRENT is resolved to slots/a or slots/b
+before any store is checked. With the switch off, the fixed prefix is used unchanged.
 
 Usage:
   python scripts/audit/store_freshness.py           # human report, exit 1 on failure
@@ -29,6 +33,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, asdict
+from zoneinfo import ZoneInfo
 
 FACTOR_SET = os.environ.get("ZARR_FACTOR_SET_ID", "SPY_uni_mc_3000")
 PREFIX = os.environ.get("ZARR_GCS_PREFIX", "rm_api_data/eodhd").strip("/")
@@ -42,7 +47,7 @@ STORES: list[dict] = [
     {"name": "ds_market_cap.zarr", "cadence": "session", "writer": "eodhd_daily"},
     {"name": "ds_macro_factor.zarr", "cadence": "session", "writer": "macro_factor"},
     # Newest filing date stored, not the quarter axis (period_end_date lags by a quarter).
-    {"name": "ds_fundamentals.zarr", "cadence": ("days", 7), "writer": "build_ds_fundamentals",
+    {"name": "ds_fundamentals.zarr", "cadence": ("days", 14), "writer": "build_ds_fundamentals",
      "time": "max:filed_date"},
     {"name": f"ds_erm3_returns_{FACTOR_SET}.zarr", "cadence": "session", "writer": "1d"},
     {"name": f"ds_erm3_hedge_weights_{FACTOR_SET}.zarr", "cadence": "session", "writer": "1d"},
@@ -63,6 +68,16 @@ RETIRED: list[str] = [
 ]
 
 TIME_AXES = ("teo", "date", "time", "month_end", "week")
+TRUE_VALUES = {"1", "true", "yes", "on"}
+MANIFEST_SESSION_KEYS = {
+    "session",
+    "release_session",
+    "teo",
+    "latest_teo",
+    "max_teo",
+    "as_of",
+    "data_as_of",
+}
 
 
 @dataclass
@@ -108,19 +123,171 @@ def evaluate(name: str, cadence, latest: dt.date | None, session: dt.date,
     return Result(name, "OK" if ok else "FAIL", reason, latest.isoformat(), label)
 
 
-def _open(fs, name: str):
+def release_slots_enabled() -> bool:
+    return os.environ.get("ZARR_GCS_RELEASE_SLOTS", "").strip().lower() in TRUE_VALUES
+
+
+def _read_text(fs, path: str) -> str:
+    data = fs.cat(path)
+    return data.decode("utf-8") if isinstance(data, bytes) else str(data)
+
+
+def resolve_prefix(fs, fixed_prefix: str = PREFIX) -> str:
+    """Resolve the configured base exactly once through CURRENT when slots are on.
+
+    The API falls back to the fixed, mirrored prefix when CURRENT is absent,
+    unreadable or invalid. This command is one-shot, so there is no prior cached
+    slot to retain on a transient read error.
+    """
+    fixed = fixed_prefix.strip("/")
+    if not release_slots_enabled():
+        return fixed
+    try:
+        raw = json.loads(_read_text(fs, f"{fixed}/CURRENT"))
+    except Exception:  # the API also falls back on any CURRENT read/parse failure
+        return fixed
+    slot = raw.get("slot") if isinstance(raw, dict) else None
+    return f"{fixed}/slots/{slot}" if slot in ("a", "b") else fixed
+
+
+def _manifest_date_values(value, key: str | None = None) -> list[dt.date]:
+    dates: list[dt.date] = []
+    if isinstance(value, dict):
+        for child_key, child_value in value.items():
+            dates.extend(_manifest_date_values(child_value, str(child_key).lower()))
+    elif isinstance(value, list):
+        for child in value:
+            dates.extend(_manifest_date_values(child, key))
+    elif key in MANIFEST_SESSION_KEYS and isinstance(value, str):
+        try:
+            dates.append(dt.date.fromisoformat(value[:10]))
+        except ValueError:
+            pass
+    return dates
+
+
+def newest_manifest_session(fs, prefix: str) -> dt.date | None:
+    """Return the session recorded by the newest release manifest."""
+    paths = list(fs.glob(f"{prefix}/_manifests/*"))
+    if not paths:
+        raise ValueError(f"no release manifests under {prefix}/_manifests")
+
+    def newest_key(path: str):
+        try:
+            info = fs.info(path)
+        except (FileNotFoundError, OSError):
+            info = {}
+        stamp = info.get("updated") or info.get("mtime") or info.get("created") or ""
+        return str(stamp), path
+
+    path = max(paths, key=newest_key)
+    try:
+        manifest = json.loads(_read_text(fs, path))
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"newest release manifest is not readable JSON: {path}") from exc
+    dates = _manifest_date_values(manifest)
+    # ERM3 manifests record publish timestamps, not a session; the calendar then decides alone.
+    return max(dates) if dates else None
+
+
+def _observed(d: dt.date) -> dt.date:
+    if d.weekday() == 5:
+        return d - dt.timedelta(days=1)
+    if d.weekday() == 6:
+        return d + dt.timedelta(days=1)
+    return d
+
+
+def _nth_weekday(year: int, month: int, weekday: int, n: int) -> dt.date:
+    first = dt.date(year, month, 1)
+    return first + dt.timedelta(days=(weekday - first.weekday()) % 7 + 7 * (n - 1))
+
+
+def _last_weekday(year: int, month: int, weekday: int) -> dt.date:
+    if month == 12:
+        last = dt.date(year + 1, 1, 1) - dt.timedelta(days=1)
+    else:
+        last = dt.date(year, month + 1, 1) - dt.timedelta(days=1)
+    return last - dt.timedelta(days=(last.weekday() - weekday) % 7)
+
+
+def _easter_sunday(year: int) -> dt.date:
+    """Gregorian Easter (Meeus/Jones/Butcher), used for Good Friday."""
+    a = year % 19
+    b, c = divmod(year, 100)
+    d, e = divmod(b, 4)
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    ell = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ell) // 451
+    month, day = divmod(h + ell - 7 * m + 114, 31)
+    return dt.date(year, month, day + 1)
+
+
+def nyse_holidays(year: int) -> set[dt.date]:
+    holidays = {
+        _observed(dt.date(year, 1, 1)),
+        _nth_weekday(year, 1, 0, 3),
+        _nth_weekday(year, 2, 0, 3),
+        _easter_sunday(year) - dt.timedelta(days=2),
+        _last_weekday(year, 5, 0),
+        _observed(dt.date(year, 7, 4)),
+        _nth_weekday(year, 9, 0, 1),
+        _nth_weekday(year, 11, 3, 4),
+        _observed(dt.date(year, 12, 25)),
+    }
+    if year >= 2022:
+        holidays.add(_observed(dt.date(year, 6, 19)))
+    # A Saturday New Year's Day is observed on the prior calendar year.
+    next_new_year = dt.date(year + 1, 1, 1)
+    if next_new_year.weekday() == 5:
+        holidays.add(next_new_year - dt.timedelta(days=1))
+    return holidays
+
+
+def _is_nyse_session(day: dt.date) -> bool:
+    return day.weekday() < 5 and day not in nyse_holidays(day.year)
+
+
+def last_completed_nyse_session(now: dt.datetime | None = None) -> dt.date:
+    """Most recent regular NYSE session whose 16:00 ET close has passed."""
+    eastern = ZoneInfo("America/New_York")
+    if now is None:
+        now = dt.datetime.now(eastern)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=eastern)
+    else:
+        now = now.astimezone(eastern)
+    day = now.date()
+    if not (_is_nyse_session(day) and now.time() >= dt.time(16, 0)):
+        day -= dt.timedelta(days=1)
+    while not _is_nyse_session(day):
+        day -= dt.timedelta(days=1)
+    return day
+
+
+def expected_session(fs, prefix: str, now: dt.datetime | None = None) -> dt.date:
+    """Independent expected session from both release metadata and the calendar."""
+    calendar = last_completed_nyse_session(now)
+    manifest = newest_manifest_session(fs, prefix)
+    return max(manifest, calendar) if manifest else calendar
+
+
+def _open(fs, name: str, prefix: str = PREFIX):
     import zarr  # local import: tests of evaluate() need no GCS stack
 
-    return zarr.open_consolidated(fs.get_mapper(f"{PREFIX}/{name}"), mode="r")
+    return zarr.open_consolidated(fs.get_mapper(f"{prefix}/{name}"), mode="r")
 
 
 def latest_date(fs, name: str, time_source: str | None = None,
-                not_after: dt.date | None = None) -> dt.date | None:
+                not_after: dt.date | None = None, prefix: str = PREFIX) -> dt.date | None:
     """Newest date of a store: its time axis, a root attribute ("attr:<key>") or the
     maximum of a date array ("max:<var>"). For "max:", dates after ``not_after`` are
     ignored: ds_fundamentals approximates a missing filing date as period end + 45 days,
     which can lie in the future and would otherwise mask a stale store."""
-    grp = _open(fs, name)
+    grp = _open(fs, name, prefix)
     if time_source and time_source.startswith("attr:"):
         raw = grp.attrs.get(time_source[5:])
         return dt.date.fromisoformat(str(raw)[:10]) if raw else None
@@ -143,19 +310,23 @@ def latest_date(fs, name: str, time_source: str | None = None,
     return None
 
 
-def run(fs) -> list[Result]:
-    session = latest_date(fs, "ds_daily.zarr")
-    if session is None:
-        raise SystemExit("ds_daily.zarr has no readable teo; cannot set the release session")
+def run(fs, now: dt.datetime | None = None) -> list[Result]:
+    prefix = resolve_prefix(fs, PREFIX)
+    try:
+        # Release manifests are an append-only log under the fixed base; only
+        # the served store tree moves under slots/<a|b>.
+        session = expected_session(fs, PREFIX, now)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     out: list[Result] = []
     for row in STORES:
         name, cadence = row["name"], row["cadence"]
-        base = f"{PREFIX}/{name}"
+        base = f"{prefix}/{name}"
         has_meta, has_attrs = fs.exists(f"{base}/.zmetadata"), fs.exists(f"{base}/.zattrs")
         latest = None
         if has_meta and has_attrs:
             try:
-                latest = latest_date(fs, name, row.get("time"), not_after=session)
+                latest = latest_date(fs, name, row.get("time"), not_after=session, prefix=prefix)
             except Exception as exc:  # a store that will not open is a failure, not a crash
                 out.append(Result(name, "FAIL", f"open failed: {exc}", None, cadence_label(cadence)))
                 continue
@@ -164,7 +335,7 @@ def run(fs) -> list[Result]:
     for name in RETIRED:
         if name in listed:
             out.append(Result(name, "FAIL", "retired store is still listed in STORES", None, "retired"))
-        elif fs.exists(f"{PREFIX}/{name}/.zmetadata"):
+        elif fs.exists(f"{prefix}/{name}/.zmetadata"):
             out.append(Result(name, "FAIL", "retired store is still published", None, "retired"))
     return out
 

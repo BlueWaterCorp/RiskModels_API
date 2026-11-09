@@ -6,13 +6,14 @@ whose inputs are complete:
 
   hedge-basket   every hedge leg has a finite, nonzero beta_to_spy, or a data-quality flag
                  explaining the null; a hedge level is recommended; as_of = release session
-  decompose      market + sector + subsector + residual ER sum to 1; teo = release session;
-                 no hedge ratio is exactly 0
-  metrics        L1, L2 and L3 ER each sum to 1; a hedge level is recommended; no level is
-                 incomplete; teo = release session; no hedge ratio or ER is exactly 0
+  decompose      present ER values are finite and complete sets sum to 1; teo = release
+                 session; no hedge ratio is exactly 0
+  metrics        complete levels' ERs sum to 1; the recommended level is complete; teo =
+                 release session; no hedge ratio or ER is exactly 0
   batch/analyze  status ok; date = release session; no hedge ratio is exactly 0
 
-The release session is the newest teo of ds_daily.zarr on GCS (scripts/audit/store_freshness.py).
+The release session comes from the newest release manifest and the last completed NYSE
+session (scripts/audit/store_freshness.py), independently of ds_daily.zarr.
 
 Usage:
   RISKMODELS_API_KEY=... python scripts/audit/golden_ticker_probe.py
@@ -42,14 +43,19 @@ def check_hedge_basket(resp: dict, session: str) -> list[str]:
         out.append(f"as_of {resp.get('as_of')} != release session {session}")
     if resp.get("recommended_hedge_level") is None:
         out.append("recommended_hedge_level is null")
-    flags = resp.get("data_quality_flags") or []
-    for leg in (resp.get("legs") or [])[1:]:  # legs[0] is the stock itself
+    flags = set(resp.get("data_quality_flags") or [])
+    null_beta_flags = {
+        0: "stock_market_beta_unavailable",
+        2: "sector_link_beta_unavailable",
+        3: "subsector_link_beta_unavailable",
+    }
+    for index, leg in enumerate(resp.get("legs") or []):
         b = leg.get("beta_to_spy")
         if _finite(b) and b != 0:
             continue
-        if b is None and any("link_beta" in f or "beta" in f for f in flags):
+        if b is None and null_beta_flags.get(index) in flags:
             continue
-        out.append(f"leg {leg.get('leg')}: beta_to_spy={b!r} with no explaining flag ({flags})")
+        out.append(f"leg {leg.get('leg')}: beta_to_spy={b!r} with no explaining flag ({sorted(flags)})")
     return out
 
 
@@ -59,9 +65,10 @@ def check_decompose(resp: dict, session: str) -> list[str]:
         out.append(f"teo {resp.get('teo')} != release session {session}")
     exp = resp.get("exposure") or {}
     ers = [(exp.get(k) or {}).get("er") for k in ("market", "sector", "subsector", "residual")]
-    if not all(_finite(e) for e in ers):
-        out.append(f"missing ER component: {ers}")
-    elif abs(sum(ers) - 1.0) > TOL:
+    present = [e for e in ers if e is not None]
+    if not all(_finite(e) for e in present):
+        out.append(f"non-finite ER component: {ers}")
+    elif len(present) == len(ers) and abs(sum(present) - 1.0) > TOL:
         out.append(f"ER shares sum to {sum(ers):.9f}, not 1")
     for k in ("market", "sector", "subsector"):
         if (exp.get(k) or {}).get("hr") == 0:
@@ -74,17 +81,21 @@ def check_metrics(resp: dict, session: str) -> list[str]:
     if resp.get("teo") != session:
         out.append(f"teo {resp.get('teo')} != release session {session}")
     hl = resp.get("hedge_levels") or {}
-    if hl.get("recommended_level") is None:
+    recommended = hl.get("recommended_level")
+    incomplete = set(hl.get("incomplete_levels") or [])
+    if recommended is None:
         out.append("hedge_levels.recommended_level is null")
-    if hl.get("incomplete_levels"):
-        out.append(f"incomplete_levels {hl['incomplete_levels']}")
+    elif recommended not in ("L1", "L2", "L3"):
+        out.append(f"hedge_levels.recommended_level {recommended!r} is invalid")
+    elif recommended in incomplete:
+        out.append(f"recommended level {recommended} is incomplete")
     for lvl in ("L1", "L2", "L3"):
         block = hl.get(lvl) or {}
         ers = [block.get(k) for k in ("market_er", "sector_er", "subsector_er", "residual_er")]
         present = [e for e in ers if e is not None]
-        if not present or not all(_finite(e) for e in present):
+        if not all(_finite(e) for e in present):
             out.append(f"{lvl}: non-finite ER {ers}")
-        elif abs(sum(present) - 1.0) > TOL:
+        elif lvl not in incomplete and (not present or abs(sum(present) - 1.0) > TOL):
             out.append(f"{lvl}: ER shares sum to {sum(present):.9f}, not 1")
         for k in ("market_hr", "sector_hr", "subsector_hr", "market_er", "sector_er", "subsector_er"):
             if block.get(k) == 0:
@@ -101,7 +112,11 @@ def check_batch(resp: dict, ticker: str, session: str) -> list[str]:
     fm = r.get("full_metrics") or {}
     if fm.get("date") != session:
         out.append(f"full_metrics.date {fm.get('date')} != release session {session}")
-    for k, v in (r.get("hedge_ratios") or {}).items():
+    hedge_ratios = r.get("hedge_ratios")
+    if not isinstance(hedge_ratios, dict) or not hedge_ratios:
+        out.append("hedge_ratios is missing or empty")
+        return out
+    for k, v in hedge_ratios.items():
         if v == 0:
             out.append(f"hedge_ratios.{k} is exactly 0")
     return out
@@ -122,7 +137,8 @@ def release_session() -> str:
     import gcsfs
     import store_freshness as sf
 
-    return sf.latest_date(gcsfs.GCSFileSystem(), "ds_daily.zarr").isoformat()
+    fs = gcsfs.GCSFileSystem()
+    return sf.expected_session(fs, sf.PREFIX).isoformat()
 
 
 def _load_env_files() -> None:
