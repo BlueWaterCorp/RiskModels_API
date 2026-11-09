@@ -759,16 +759,18 @@ def _local_fund_zarr_root() -> Path | None:
 def _open_consolidated_first(store):
     """Open a zarr group from its ``.zmetadata``; fall back to per-array metadata.
 
-    The published stores may carry ``.zmetadata`` only (the per-array
-    ``.zarray`` / ``.zattrs`` live inside it), so the consolidated open is the
-    one that always works there. Local build trees without ``.zmetadata`` still
-    open through the fallback.
+    The published stores may carry chunks, the root ``.zgroup`` and
+    ``.zmetadata`` only (the per-array ``.zarray`` / ``.zattrs`` live inside
+    it), so the consolidated open is the one that always works there. Local
+    build trees without ``.zmetadata`` still open through the fallback, which
+    raises the usual not-found errors when the store is absent.
     """
     import zarr
 
     try:
         return zarr.open_consolidated(store, mode="r")
-    except KeyError:
+    except (KeyError, ValueError):
+        # zarr 2 raises KeyError for a missing .zmetadata, zarr 3 ValueError.
         return zarr.open(store, mode="r")
 
 
