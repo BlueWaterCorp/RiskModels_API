@@ -8023,7 +8023,7 @@
     "/hedge-basket/{ticker}": {
       "get": {
         "summary": "Structured hedge basket with a recommended hedge level and decision trace",
-        "description": "The chat-rendered hedge table: per-layer ETF legs with a net-market-β subtotal, plus a `decision_trace` explaining why `recommended_level` was chosen. Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas read from `ds_erm3_link_betas_{market_factor_etf}.zarr`.\n\n`user_segment` drives the leverage cap (default `family_office`, 2.0×).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.02 per request\n**Rate Limit:** 120 requests/minute (default)\n",
+        "description": "The chat-rendered hedge table: per-layer ETF legs with a net-market-β subtotal, plus a `decision_trace` explaining why `recommended_level` was chosen. Composes the latest-teo metric snapshot (HRs, ERs, betas) with sector and subsector link betas read from the cohort store (`ds_erm3_cohorts`). A beta that cannot be read is returned as null, the net market β subtotal is then null, and the gap is named in `data_quality_flags`; a missing beta is never reported as 0.\n\n`user_segment` drives the leverage cap (default `family_office`, 2.0×).\n\n**Authentication:** Required (API Key or OAuth2)\n**Billing:** $0.02 per request\n**Rate Limit:** 120 requests/minute (default)\n",
         "operationId": "getHedgeBasket",
         "tags": [
           "Risk Metrics"
@@ -8120,6 +8120,61 @@
                         "type": "string"
                       },
                       "description": "Ordered rationale for the recommended level."
+                    },
+                    "legs": {
+                      "type": "array",
+                      "description": "Stock leg plus the ETF legs of the recommended level.\n",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "leg": {
+                            "type": "string"
+                          },
+                          "side": {
+                            "type": "string",
+                            "enum": [
+                              "long",
+                              "short"
+                            ]
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "beta_to_spy": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "The leg's slope on the market ETF (1.0 for the market leg). Null when the link beta is unavailable.\n"
+                          },
+                          "market_beta_contribution": {
+                            "type": "number",
+                            "nullable": true,
+                            "description": "position × beta_to_spy; null when beta_to_spy is null."
+                          }
+                        }
+                      }
+                    },
+                    "net_market_beta_after_hedge": {
+                      "type": "number",
+                      "nullable": true,
+                      "description": "Sum of the legs' market_beta_contribution. Null when any leg's beta_to_spy is unavailable.\n"
+                    },
+                    "link_betas_as_of": {
+                      "type": "string",
+                      "format": "date",
+                      "nullable": true,
+                      "description": "Date of the link betas the ETF legs used."
+                    },
+                    "data_quality_flags": {
+                      "type": "array",
+                      "description": "Empty when every beta was available. Codes: stock_market_beta_unavailable, sector_link_beta_unavailable, subsector_link_beta_unavailable.\n",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "stock_market_beta_unavailable",
+                          "sector_link_beta_unavailable",
+                          "subsector_link_beta_unavailable"
+                        ]
+                      }
                     }
                   }
                 }

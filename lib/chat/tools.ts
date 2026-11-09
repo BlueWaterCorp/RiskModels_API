@@ -607,6 +607,7 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
     market_etf_ticker: "SPY",
     lambda_s_to_m: linkBetas?.lambda_s_to_m ?? null,
     lambda_u_to_m: linkBetas?.lambda_u_to_m ?? null,
+    link_betas_as_of: linkBetas?.teo ?? null,
     user_segment: segment,
   });
 

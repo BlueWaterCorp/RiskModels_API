@@ -165,6 +165,11 @@ export function zarrWeeklyHedgeBasename(factorSetId = getZarrFactorSetId()): str
   return `ds_erm3_weekly_hedge_${factorSetId}.zarr`;
 }
 
+/**
+ * @deprecated The retired link-betas store (frozen 2026-01-22, no longer
+ * published). Link betas are read from the cohort store — see
+ * `zarrCohortsBasename` and `readLatestLinkBetas` (RMAPI-30).
+ */
 export function zarrLinkBetasBasename(marketFactorEtf = "SPY"): string {
   return `ds_erm3_link_betas_${marketFactorEtf}.zarr`;
 }

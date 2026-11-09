@@ -26,7 +26,7 @@ import {
   zarrEtfBasename,
   zarrExposureMonthEndBasename,
   zarrHedgeBasename,
-  zarrLinkBetasBasename,
+  zarrCohortsBasename,
   zarrWeeklyHedgeBasename,
   zarrMasksBasename,
   zarrRankingsBasename,
@@ -1542,14 +1542,16 @@ export async function readLatestRankSnapshot(
 // Link-betas: latest-teo lookup for the cascade hedge basket
 // =====================================================================
 //
-// `ds_erm3_link_betas_{marketFactorEtf}.zarr` carries ETF-to-ETF betas:
-//   L2_link_sec_mkt_BF  — sector ETF's slope on SPY (λ_s→m)
-//   L3_link_sub_mkt_BF  — subsector ETF's slope on SPY (λ_u→m)
-//   L3_link_sub_sec_BF  — subsector ETF's slope on the sector ETF (λ_u→s)
-// Indexed (teo, symbol) over ~51 ETFs with `ticker` as an extra string coord.
-// The hedge-basket endpoint reads three cells per call: λ_s→m at the sector
-// ETF's index, λ_u→m + λ_u→s at the subsector ETF's index. SPY itself is the
-// market root by convention, so λ_*→SPY = 1.0 and never reads from this store.
+// Source: the cohort store `ds_erm3_cohorts_{factor_set}.zarr` (teo × cohort),
+// the SSOT that superseded `ds_erm3_link_betas_{mkt}.zarr`. The old store froze
+// at 2026-01-22 when its writer was retired and is no longer published, so
+// reading it returned null on every call and the basket wrote 0 (RMAPI-30).
+// The mapping mirrors ERM3 `erm3.core.cohort_store.read_link_betas`:
+//   λ_s→m = linked_beta (hedge policy) at a level-2 cohort (sector; parent = market)
+//   λ_u→s = linked_beta (hedge policy) at a level-3 cohort (subsector on its sector)
+//   λ_u→m = linked_beta_mkt            at a level-3 cohort (subsector on the market)
+// `ticker` is a coord on the cohort dim. SPY itself is the market root by
+// convention, so λ_*→SPY = 1.0 and never reads from this store.
 
 async function readTickerIndexMap(grp: Group<Readable>): Promise<Map<string, number> | null> {
   // Recycled-ticker collision policy: prefer the collision-free `unique_ticker`
@@ -1589,18 +1591,63 @@ async function readTickerIndexMap(grp: Group<Readable>): Promise<Map<string, num
   return (await readCoordMap("unique_ticker")) ?? (await readCoordMap("ticker"));
 }
 
-async function readFloatScalarTeoSymbol(
+export interface LatestLinkBetas {
+  teo: string;
+  /** Sector ETF's slope on SPY. Null if the sector ETF isn't a level-2 cohort or the cell is NaN. */
+  lambda_s_to_m: number | null;
+  /** Subsector ETF's slope on SPY. Null if absent. */
+  lambda_u_to_m: number | null;
+  /** Subsector ETF's slope on the sector ETF. Null if absent. */
+  lambda_u_to_s: number | null;
+}
+
+/** One cohort's latest cells, as read from the cohort store. */
+export interface CohortLinkCells {
+  /** 1 = market, 2 = sector, 3 = subsector (`cohort_level`). */
+  level: number;
+  /** Policy-selected `linked_beta`: the cohort's slope on its parent. */
+  linked_beta: number | null;
+  /** `linked_beta_mkt`: the cohort's slope on the market (set at level 3). */
+  linked_beta_mkt: number | null;
+}
+
+/**
+ * Map one sector cohort and one subsector cohort to the three basket lambdas —
+ * the same split as ERM3 `read_link_betas`. Pure, for tests.
+ *
+ * A sector cohort's parent is the market, so its `linked_beta` is λ_s→m. When
+ * the subsector ETF falls back to a sector ETF (a name with no subsector), that
+ * level-2 cohort's slope on SPY is λ_u→m and there is no λ_u→s.
+ */
+export function mapCohortLinkBetas(
+  teo: string,
+  sector: CohortLinkCells | null,
+  subsector: CohortLinkCells | null,
+): LatestLinkBetas {
+  const fin = (x: number | null | undefined): number | null =>
+    x != null && Number.isFinite(x) ? x : null;
+  const lambdaSM = sector?.level === 2 ? fin(sector.linked_beta) : null;
+  let lambdaUM: number | null = null;
+  let lambdaUS: number | null = null;
+  if (subsector?.level === 3) {
+    lambdaUM = fin(subsector.linked_beta_mkt);
+    lambdaUS = fin(subsector.linked_beta);
+  } else if (subsector?.level === 2) {
+    lambdaUM = fin(subsector.linked_beta);
+  }
+  return { teo, lambda_s_to_m: lambdaSM, lambda_u_to_m: lambdaUM, lambda_u_to_s: lambdaUS };
+}
+
+async function readFloatCell(
   grp: Group<Readable>,
   varName: string,
-  teoIdx: number,
-  symIdx: number,
+  selection: (number | ReturnType<typeof slice>)[],
 ): Promise<number | null> {
-  // Slice with a 1-element teo range to get a typed-array result (zarrita's
-  // scalar-indexed get returns a 0-d type that TS doesn't surface `.data` for).
+  // The teo axis is sliced to one element so the result is a typed array (zarrita's
+  // all-scalar get returns a 0-d type that TS doesn't surface `.data` for).
   try {
-    const loc = grp.resolve(varName);
-    const arr = await open.v2(loc, { kind: "array" });
-    const ch = await get(arr, [slice(teoIdx, teoIdx + 1), symIdx]);
+    const arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    const ch = await get(arr, selection);
     const d = ch?.data;
     if (d instanceof Float32Array || d instanceof Float64Array) {
       const v = d[0];
@@ -1612,33 +1659,29 @@ async function readFloatScalarTeoSymbol(
   }
 }
 
-export interface LatestLinkBetas {
-  teo: string;
-  /** Sector ETF's slope on SPY. Null if the sector ETF isn't in the store. */
-  lambda_s_to_m: number | null;
-  /** Subsector ETF's slope on SPY. Null if absent. */
-  lambda_u_to_m: number | null;
-  /** Subsector ETF's slope on the sector ETF. Null if absent. */
-  lambda_u_to_s: number | null;
-}
-
 /**
- * Read the latest-teo link-betas for a given (sector_etf, subsector_etf) pair.
+ * Read the latest-teo link-betas for a given (sector_etf, subsector_etf) pair
+ * from the cohort store.
  *
- * - Ticker matching is case-insensitive against the ETF roster in the link-betas
- *   zarr (~51 ETFs).
+ * - Ticker matching is case-insensitive against the cohort roster's `ticker` coord.
+ * - The coefficient is `linked_beta_policy` at link_policy="hedge" when the store
+ *   carries policies (today an alias of "attribution"; ERM3 asks hedge consumers
+ *   to name it), else `linked_beta`.
  * - If either ticker resolves to "SPY", the corresponding lambda is implicitly
- *   1.0 (sector_etf=SPY) or 0.0 (subsector→sector when subsector_etf=SPY), and
- *   no zarr read is needed for that leg. The caller can apply that convention
- *   without checking — this function only returns store-derived values.
- * - Returns null if the store can't be opened or the latest teo is empty.
+ *   1.0 and the caller applies that convention — this function only returns
+ *   store-derived values.
+ * - Returns null if the store can't be opened, the market factor ETF is not the
+ *   one the configured cohort store is rooted on, or the latest teo is empty.
+ *   A null field means unavailable: callers must not substitute 0.
  */
 export async function readLatestLinkBetas(
   sectorEtfTicker: string | null,
   subsectorEtfTicker: string | null,
   marketFactorEtf = "SPY",
 ): Promise<LatestLinkBetas | null> {
-  const grp = await openZarrGroup(zarrLinkBetasBasename(marketFactorEtf));
+  const factorSet = getZarrFactorSetId();
+  if (!factorSet.toUpperCase().startsWith(`${marketFactorEtf.toUpperCase()}_`)) return null;
+  const grp = await openZarrGroup(zarrCohortsBasename(factorSet));
   if (!grp) return null;
 
   const teos = await readTeoStrings(grp);
@@ -1646,31 +1689,33 @@ export async function readLatestLinkBetas(
   const teoIdx = teos.length - 1;
   const teoStr = teos[teoIdx]!;
 
-  const tickerMap = await readTickerIndexMap(grp);
-  if (!tickerMap?.size) return null;
-
-  const secIdx = sectorEtfTicker ? tickerMap.get(sectorEtfTicker.toUpperCase()) : undefined;
-  const subIdx = subsectorEtfTicker ? tickerMap.get(subsectorEtfTicker.toUpperCase()) : undefined;
-
-  // Parallelize the three single-cell reads. NaN-safe via Float32Array unpacking.
-  const [lam_s_m, lam_u_m, lam_u_s] = await Promise.all([
-    secIdx !== undefined
-      ? readFloatScalarTeoSymbol(grp, "L2_link_sec_mkt_BF", teoIdx, secIdx)
-      : Promise.resolve(null),
-    subIdx !== undefined
-      ? readFloatScalarTeoSymbol(grp, "L3_link_sub_mkt_BF", teoIdx, subIdx)
-      : Promise.resolve(null),
-    subIdx !== undefined
-      ? readFloatScalarTeoSymbol(grp, "L3_link_sub_sec_BF", teoIdx, subIdx)
-      : Promise.resolve(null),
+  const [tickerMap, levels, policies] = await Promise.all([
+    readTickerIndexMap(grp),
+    readIntCoord(grp, "cohort_level"),
+    readStringCoord(grp, "link_policy"),
   ]);
+  if (!tickerMap?.size || !levels?.length) return null;
+  const hedgePolicyIdx = policies ? policies.indexOf("hedge") : -1;
 
-  return {
-    teo: teoStr,
-    lambda_s_to_m: lam_s_m,
-    lambda_u_to_m: lam_u_m,
-    lambda_u_to_s: lam_u_s,
+  const readCohort = async (ticker: string | null): Promise<CohortLinkCells | null> => {
+    if (!ticker) return null;
+    const idx = tickerMap.get(ticker.toUpperCase());
+    if (idx === undefined) return null;
+    const teoSel = slice(teoIdx, teoIdx + 1);
+    const [beta, betaMkt] = await Promise.all([
+      hedgePolicyIdx >= 0
+        ? readFloatCell(grp, "linked_beta_policy", [teoSel, idx, hedgePolicyIdx])
+        : readFloatCell(grp, "linked_beta", [teoSel, idx]),
+      readFloatCell(grp, "linked_beta_mkt", [teoSel, idx]),
+    ]);
+    return { level: levels[idx] ?? NaN, linked_beta: beta, linked_beta_mkt: betaMkt };
   };
+
+  const [sector, subsector] = await Promise.all([
+    readCohort(sectorEtfTicker),
+    readCohort(subsectorEtfTicker),
+  ]);
+  return mapCohortLinkBetas(teoStr, sector, subsector);
 }
 
 export interface SymbolRankResult {

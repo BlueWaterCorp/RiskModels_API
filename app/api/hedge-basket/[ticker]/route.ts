@@ -6,8 +6,9 @@
  * `recommended_hedge_level` was chosen.
  *
  * Composes the latest-teo metric snapshot (HRs, ERs, betas) with link-betas
- * from `ds_erm3_link_betas_{market_factor_etf}.zarr` into a structured response
- * the chat narrates verbatim.
+ * from the cohort store (`ds_erm3_cohorts_{factor_set}.zarr`, via
+ * `readLatestLinkBetas`) into a structured response the chat narrates verbatim.
+ * A beta that cannot be read is null with a `data_quality_flags` entry — never 0.
  *
  * `?user_segment=` drives the leverage cap. Defaults to family_office (2.0×).
  *
@@ -104,9 +105,8 @@ export const GET = withBilling(
       const sectorEtf = symbolRecord.sector_etf || null;
       const subsectorEtf = symbolRecord.subsector_etf || symbolRecord.sector_etf || null;
 
-      // Link-betas: one cell each from the SPY-rooted ETF-to-ETF store.
-      // Falls back to NaN if the store is unreachable — the basket assembler
-      // treats null λ as 0 (per-leg market β contribution becomes 0).
+      // Link-betas from the cohort store. Null when unreadable: the basket keeps
+      // the leg, reports beta_to_spy and net market β as null, and flags it.
       const linkBetas = await readLatestLinkBetas(sectorEtf, subsectorEtf, market_factor_etf);
 
       const basket = buildHedgeBasket({
@@ -127,6 +127,7 @@ export const GET = withBilling(
         market_etf_ticker: market_factor_etf,
         lambda_s_to_m: linkBetas?.lambda_s_to_m ?? null,
         lambda_u_to_m: linkBetas?.lambda_u_to_m ?? null,
+        link_betas_as_of: linkBetas?.teo ?? null,
         user_segment,
       });
 

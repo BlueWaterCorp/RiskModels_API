@@ -115,16 +115,27 @@ export function computeHedgeRecommendationSnapshot(
  *   leg                     — display label (ticker, "AAPL" / "SPY" / "XLK" / etc.)
  *   side                    — "long" | "short" (derived from sign of `position`)
  *   position                — signed HR (the +1 stock leg is +1.0; hedges are -HR)
- *   beta_to_spy             — leg's univariate slope on SPY (the market root)
- *   market_beta_contribution — position × beta_to_spy (sums to net market β)
+ *   beta_to_spy             — leg's univariate slope on SPY (the market root);
+ *                             null when the link beta is unavailable (never 0)
+ *   market_beta_contribution — position × beta_to_spy (sums to net market β);
+ *                             null when beta_to_spy is null
  */
 export interface HedgeBasketLeg {
   leg: string;
   side: "long" | "short";
   position: number;
-  beta_to_spy: number;
-  market_beta_contribution: number;
+  beta_to_spy: number | null;
+  market_beta_contribution: number | null;
 }
+
+/**
+ * Data-quality codes on a hedge basket. A missing beta is reported here and
+ * the affected numbers are null — a null beta is never treated as 0.
+ */
+export type HedgeBasketDataQualityFlag =
+  | "stock_market_beta_unavailable"
+  | "sector_link_beta_unavailable"
+  | "subsector_link_beta_unavailable";
 
 /**
  * Structured hedge-basket payload for `/api/hedge-basket/{ticker}` — what the
@@ -143,7 +154,12 @@ export interface HedgeBasket {
   leverage_cap_applied: number;
   haircut_applied: number;
   legs: HedgeBasketLeg[];
-  net_market_beta_after_hedge: number;
+  /** Σ market_beta_contribution; null when any leg's beta_to_spy is unavailable. */
+  net_market_beta_after_hedge: number | null;
+  /** Date of the link betas the ETF legs used; null when none were read. */
+  link_betas_as_of: string | null;
+  /** Empty when every beta was available. */
+  data_quality_flags: HedgeBasketDataQualityFlag[];
   hedge_gross: { L1: number; L2: number; L3: number };
   marginal_er: {
     L2_sector_raw: number | null;
@@ -166,6 +182,8 @@ export interface BuildHedgeBasketInputs extends HedgeRecommendationSnapshotInput
   lambda_s_to_m: number | null;
   /** Subsector ETF's slope on SPY (λ_u→m). 1.0 when the subsector ETF IS SPY. */
   lambda_u_to_m: number | null;
+  /** Date of the link betas above (latest teo of the cohort store). */
+  link_betas_as_of?: string | null;
 }
 
 function fmtPct(x: number): string {
@@ -176,8 +194,12 @@ function fmtPct(x: number): string {
  * Compose the basket payload from already-fetched inputs.
  *
  * Pure function — no IO. Caller is responsible for resolving link-betas from
- * the link-betas zarr (`readLatestLinkBetas` in zarr-reader.ts) before calling
+ * the cohort store (`readLatestLinkBetas` in zarr-reader.ts) before calling
  * this. SPY-as-sector / SPY-as-subsector edge cases use λ=1.0 by convention.
+ *
+ * Fail-closed: a null beta is never read as 0. The leg keeps its position, its
+ * beta_to_spy and market_beta_contribution are null, net_market_beta_after_hedge
+ * is null, and the gap is named in data_quality_flags (RMAPI-30).
  */
 export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const snap = computeHedgeRecommendationSnapshot(inp);
@@ -186,10 +208,16 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   // Conventions for SPY-rooted legs.
   const sectorIsSpy = inp.sector_etf_ticker?.toUpperCase() === marketEtf.toUpperCase();
   const subsectorIsSpy = inp.subsector_etf_ticker?.toUpperCase() === marketEtf.toUpperCase();
-  const lambdaSM = sectorIsSpy ? 1.0 : (inp.lambda_s_to_m ?? 0);
-  const lambdaUM = subsectorIsSpy ? 1.0 : (inp.lambda_u_to_m ?? 0);
+  const finiteOrNull = (x: number | null | undefined): number | null =>
+    x != null && Number.isFinite(x) ? x : null;
+  const lambdaSM = sectorIsSpy ? 1.0 : finiteOrNull(inp.lambda_s_to_m);
+  const lambdaUM = subsectorIsSpy ? 1.0 : finiteOrNull(inp.lambda_u_to_m);
 
-  const betaMAapl = inp.beta_m_aapl ?? 0;
+  const betaMAapl = finiteOrNull(inp.beta_m_aapl);
+  const flags: HedgeBasketDataQualityFlag[] = [];
+  if (betaMAapl === null) flags.push("stock_market_beta_unavailable");
+  const contribution = (position: number, beta: number | null): number | null =>
+    beta === null ? null : position * beta;
   // The basket implements the final recommendation, with that level's entire
   // hedge vector. In particular SPY must not retain its L3 correction at L1/L2.
   const chosen = snap.recommended_hedge_level;
@@ -203,7 +231,7 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
       side: "long",
       position: 1.0,
       beta_to_spy: betaMAapl,
-      market_beta_contribution: 1.0 * betaMAapl,
+      market_beta_contribution: contribution(1.0, betaMAapl),
     },
     {
       leg: marketEtf,
@@ -214,25 +242,30 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
     },
   ];
   if (chosen !== "L1" && inp.sector_etf_ticker && !sectorIsSpy) {
+    if (lambdaSM === null) flags.push("sector_link_beta_unavailable");
     legs.push({
       leg: inp.sector_etf_ticker.toUpperCase(),
       side: hrS <= 0 ? "short" : "long",
       position: hrS,
       beta_to_spy: lambdaSM,
-      market_beta_contribution: hrS * lambdaSM,
+      market_beta_contribution: contribution(hrS, lambdaSM),
     });
   }
   if (chosen === "L3" && inp.subsector_etf_ticker && !subsectorIsSpy) {
+    if (lambdaUM === null) flags.push("subsector_link_beta_unavailable");
     legs.push({
       leg: inp.subsector_etf_ticker.toUpperCase(),
       side: hrU <= 0 ? "short" : "long",
       position: hrU,
       beta_to_spy: lambdaUM,
-      market_beta_contribution: hrU * lambdaUM,
+      market_beta_contribution: contribution(hrU, lambdaUM),
     });
   }
 
-  const netMarketBetaAfterHedge = legs.reduce((acc, l) => acc + l.market_beta_contribution, 0);
+  // A leg with an unknown beta makes the subtotal unknown — never sum around it.
+  const netMarketBetaAfterHedge = legs.some((l) => l.market_beta_contribution === null)
+    ? null
+    : legs.reduce((acc, l) => acc + (l.market_beta_contribution as number), 0);
 
   // Decision-trace narration. Mirrors the recommendHedgeLevel decision logic
   // so the user can see WHY recommended_hedge_level may diverge from lstar.
@@ -304,6 +337,8 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
     haircut_applied: erHaircut,
     legs,
     net_market_beta_after_hedge: netMarketBetaAfterHedge,
+    link_betas_as_of: inp.link_betas_as_of ?? null,
+    data_quality_flags: flags,
     hedge_gross: {
       L1: snap.l1_hedge_gross,
       L2: snap.l2_hedge_gross,

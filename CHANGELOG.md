@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-08 — Hedge basket: sector and subsector `beta_to_spy` from the cohort store (RMAPI-30)
+
+- `GET /hedge-basket/{ticker}` reported the sector ETF leg's `beta_to_spy` as 0 and left it out of `net_market_beta_after_hedge`. The route read a retired link-beta store that is no longer published. It now reads the sector and subsector link betas from the cohort store (`ds_erm3_cohorts`).
+- A beta that cannot be read is returned as `null`, and `net_market_beta_after_hedge` is then `null`. The response adds `data_quality_flags` (`stock_market_beta_unavailable`, `sector_link_beta_unavailable`, `subsector_link_beta_unavailable`) and `link_betas_as_of`. Leg positions (the hedge ratios) are unchanged.
+
 ## 2026-11-03 — Fund snapshots expose factor ETF identities and risk-window scale
 
 - Fund top holdings add optional `sector_etf` and `subsector_etf` identities from the symbol registry so reports can explain which orthogonal sector sleeves classify each position without inventing per-ETF return attribution.
