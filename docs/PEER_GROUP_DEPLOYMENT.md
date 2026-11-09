@@ -1,5 +1,7 @@
 # PeerGroupProxy Deployment Plan
 
+> **Historical (pre-2026-10):** `ticker_metadata` (frozen 2026-01-21) and `security_history` (frozen 2026-04-14) are stale; do not read them. Live sources: `symbols`, the `security_master` mirror and the zarr stores. See [SUPABASE_TABLES.md](../SUPABASE_TABLES.md).
+
 > Cross-repo deployment of the PeerGroupProxy intermediary object and its integration into the snapshot suite. This plan covers RiskModels_API, BWMACRO, ERM3, and Risk_Models.
 
 ## Current State (2026-04-06)

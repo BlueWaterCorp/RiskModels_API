@@ -1,5 +1,7 @@
 # Zarr vs API Snapshot Reconciliation — Current State
 
+> **Historical (pre-2026-10):** `ticker_metadata` (frozen 2026-01-21) and `security_history` (frozen 2026-04-14) are stale; do not read them. Live sources: `symbols`, the `security_master` mirror and the zarr stores. See [SUPABASE_TABLES.md](../SUPABASE_TABLES.md).
+
 **Last updated:** 2026-04-09
 **Goal:** Generate 3,000+ DD snapshots from local zarr that exactly match API output.
 

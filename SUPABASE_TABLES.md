@@ -2,7 +2,7 @@
 
 Quick reference for Supabase tables used by the RiskModels API and platform. For authentication and direct DB access (Mode 2 / Mode 3), see [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md).
 
-**Source of truth:** The [Risk_Models](https://github.com/BlueWaterCorp/Risk_Models) repo defines and migrates these tables. Full V3 contract: `docs/supabase/V3_DATA_CONTRACT.md` in that repo.
+**Writers:** the ERM3 nightly sync (`ERM3/scripts/python/lib/supabase_schema_v3.py`) and the Funds_DAG sync; DDL lives in `BWMACRO/supabase/migrations/`.
 
 **Shared SQL migrations:** DDL lives under **`BWMACRO/supabase/migrations/`** (canonical — BWMACRO is private; RiskModels_API is a public repo, so SQL DDL is not committed here). Push to the linked Supabase project from `BWMACRO/supabase/`.
 
@@ -17,14 +17,30 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | Table | Purpose |
 |-------|---------|
 | **`symbols`** | Identity registry: symbol, ticker, name, asset_type, sector_etf, is_adr, isin |
-| ~~**`security_history`**~~ | **REMOVED — Pure Zarr for all history.** As of the pure-Zarr SSOT cutover, all historical time series are served exclusively from Zarr via `lib/dal/zarr-reader.ts`: daily metrics from `ds_daily.zarr`, hedge weights from `ds_erm3_hedge_weights_*.zarr`, returns decomposition from `ds_erm3_returns_*.zarr`, rankings from `ds_rankings_*.zarr`. The wide latest row still lives in `security_history_latest` below. |
-| **`erm3_sync_state_v3`** | Sync health: `table_name`, `market_factor_etf`, `universe`, `max_date`, `last_synced_at`. |
+| ~~**`security_history`**~~ | **STALE — FROZEN 2026-04-14** (table still exists, ~204M rows; nothing writes it; do not read). **Pure Zarr for all history.** As of the pure-Zarr SSOT cutover, all historical time series are served exclusively from Zarr via `lib/dal/zarr-reader.ts`: daily metrics from `ds_daily.zarr`, hedge weights from `ds_erm3_hedge_weights_*.zarr`, returns decomposition from `ds_erm3_returns_*.zarr`, rankings from `ds_rankings_*.zarr`. The wide latest row still lives in `security_history_latest` below. |
+| **`erm3_sync_state_v4`** | Sync health: `table_name`, `max_date`, `last_synced_at`. |
+
+### Identity (live, nightly)
+
+| Table | Purpose |
+|-------|---------|
+| **`security_master`** | Mirror of the ERM3 security master (35,856 rows on 2026-11-09): `company_name`, `subsector_etfs`. |
+| **`security_aliases`** | Ticker / alias → symbol history; ticker-change resolution (e.g. FB→META). |
+| **`security_events`**, **`security_event_legs`** | Corporate identity events and their legs. |
+| **`security_name_history`** | Point-in-time company names. |
+| **`security_listing`** | Listings per security. |
+| **`security_company_map`** | Security → company map. |
+| **`class_projections_current`** | Current share-class projections. |
+
+### Zarr stores (`gs://rm_api_data/eodhd/`)
+
+All history is read from these stores via `lib/dal/zarr-reader.ts`: `ds_daily` (prices, returns, `bw_sector_id`, `bw_industry_id`), `ds_erm3_cohorts_*`, `ds_market_cap`, `ds_masks`, `ds_erm3_hedge_weights_*`, `ds_erm3_returns_*`, `ds_rankings_*`.
 
 ### Performance surfaces (pipeline-maintained)
 
 | Table | Purpose |
 |-------|---------|
-| **`erm3_landing_chart_cache`** | Landing page chart: pre-computed cumulative returns (ticker, date, cum_stock, cum_market, cum_sector, cum_subsector). Last 3 years. |
+| ~~**`erm3_landing_chart_cache`**~~ | **STALE — EMPTY (0 rows) since 2026-04**; route `/api/data/landing-cache` has no callers. Do not use. Returns history: `ds_erm3_returns_*.zarr`. |
 | **`security_history_latest`** | Latest metrics per symbol/periodicity: returns_gross, vol_23d, L1/L2/L3 HR/ER, optional `l1_cfr`…`l3_rr` when present. Used by cards, tape, treemap. |
 | **`trading_calendar`** | Canonical trading dates (teo, periodicity). The authoritative time index for the API. |
 | **`macro_factors`** | Daily macro factor total returns: one row per (`factor_key`, `teo`) with `return_gross` and optional `metadata` jsonb. Ten canonical `factor_key` values: `inflation`, `term_spread`, `short_rates`, `credit`, `oil`, `gold`, `usd`, `volatility` (VXX futures-based), `bitcoin`, `vix_spot` (FRED VIXCLS spot). Legacy v1 names (`dxy`, `vix`, `ust10y2y`) are accepted as aliases for historical rows. See [`lib/risk/macro-factor-keys.ts`](lib/risk/macro-factor-keys.ts) and [`erm3/shared/macro_factor_constants.py`](erm3/shared/macro_factor_constants.py) (Python canonical source). Used by `POST /api/correlation`, `GET /api/metrics/{ticker}/correlation`, and `GET /api/macro-factors`. |
@@ -51,7 +67,7 @@ The metric keys below are the same ones the API exposes in range-history respons
 | Column | Type | Description |
 |--------|------|-------------|
 | `symbol` | TEXT | FK to symbols.symbol |
-| `periodicity` | TEXT | `daily` or `monthly` |
+| `periodicity` | TEXT | `daily` (monthly rows not currently populated) |
 | `teo` | DATE | Latest complete trading date |
 | `returns_gross`, `vol_23d` | FLOAT8 | Latest core metrics |
 | `l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` | FLOAT8 | Latest L3 hedge ratios |
@@ -94,11 +110,15 @@ The following tables were used prior to V3 and may still exist for backward comp
 
 | Table | Superseded by |
 |-------|---------------|
-| `ticker_metadata` | `symbols` |
+| `ticker_metadata` | `symbols` / `security_master` — STALE: frozen 2026-01-21; still read by SDK PeerGroupProxy and the ERM3 name overlay until migrated (PRs #500/#506). Do not use. |
+| `etf_metadata` | `ds_etf.zarr`, `lib/dal/etf-register.ts` — STALE: frozen 2026-03-28, nothing reads it. |
+| `ticker_change_history` (1 row), `ticker_history` (0 rows) | `security_aliases`, `security_events`, `security_name_history` — STALE, do not use. |
+| `erm3_landing_chart_cache_old` | `ds_erm3_returns_*.zarr` — STALE (to 2026-04-08). |
+| `erm3_mag7_yearly_contributions` | — STALE: empty (0 rows). |
 | `ticker_factor_metrics` | `security_history_latest` |
-| `erm3_ticker_returns`, `erm3_l3_decomposition` | `security_history` |
+| `erm3_ticker_returns`, `erm3_l3_decomposition` | Zarr (`ds_erm3_returns_*`) |
 | `erm3_time_index` | `trading_calendar` |
 
 ---
 
-When Risk_Models adds or renames tables, update this file and the table list in [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md). The sync script `sync-mcp-from-risk-models.sh` reminds maintainers to keep these docs in sync.
+When the ERM3 sync or a BWMACRO migration adds or renames tables, update this file and the table list in [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md). The sync script `sync-mcp-from-risk-models.sh` reminds maintainers to keep these docs in sync.
