@@ -351,10 +351,10 @@ function withSemanticAliases(
   return out;
 }
 
+/** Σ|HR| over a level's full hedge vector; null when any ratio is missing (RMAPI-30). */
 function absGross(...hrs: Array<number | null | undefined>): number | null {
-  const vals = hrs.filter((h): h is number => h != null && Number.isFinite(h));
-  if (!vals.length) return null;
-  return vals.reduce((a, b) => a + Math.abs(b), 0);
+  if (!hrs.every((h): h is number => h != null && Number.isFinite(h))) return null;
+  return (hrs as number[]).reduce((a, b) => a + Math.abs(b), 0);
 }
 
 /**

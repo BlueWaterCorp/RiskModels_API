@@ -58,10 +58,13 @@ export interface HedgeRecommendationSnapshot {
   recommended_hedge_level: LStar | null;
   /** Echo of the segment that drove the recommendation. */
   user_segment_applied: UserSegment;
-  /** Σ |HR_leg| ex-stock at each cascade level. NaN-safe (missing HRs treated as 0). */
-  l1_hedge_gross: number;
-  l2_hedge_gross: number;
-  l3_hedge_gross: number;
+  /**
+   * Σ |HR_leg| ex-stock at each cascade level. Null when any hedge ratio the
+   * level needs is missing — a sum over the ratios present is not the gross.
+   */
+  l1_hedge_gross: number | null;
+  l2_hedge_gross: number | null;
+  l3_hedge_gross: number | null;
   /**
    * (l2_sec_er + l3_sub_er) × 0.7 — combined OOS estimate of the sector + subsector
    * variance contribution. Placeholder haircut until Phase B2 walk-forward.
@@ -107,9 +110,12 @@ export function computeHedgeRecommendationSnapshot(
   const userSegment: UserSegment = inp.user_segment ?? DEFAULT_USER_SEGMENT;
   const lstar = selectLstar(inp.lstar_level, inp.l2_sec_er ?? null, inp.l3_sub_er ?? null, inp.threshold);
 
-  const l1HedgeGross = hedgeGrossFromHrs(inp.l1_mkt_hr);
-  const l2HedgeGross = hedgeGrossFromHrs(inp.l2_mkt_hr, inp.l2_sec_hr);
-  const l3HedgeGross = hedgeGrossFromHrs(inp.l3_mkt_hr, inp.l3_sec_hr, inp.l3_sub_hr);
+  // Gross over a level's full hedge vector; null as soon as one ratio is missing.
+  const grossAll = (...hrs: Array<number | null | undefined>): number | null =>
+    hrs.every(finiteNum) ? hedgeGrossFromHrs(...hrs) : null;
+  const l1HedgeGross = grossAll(inp.l1_mkt_hr);
+  const l2HedgeGross = grossAll(inp.l2_mkt_hr, inp.l2_sec_hr);
+  const l3HedgeGross = grossAll(inp.l3_mkt_hr, inp.l3_sec_hr, inp.l3_sub_hr);
 
   // Start the economic ladder at the highest COMPLETE level at or below Lstar.
   // An incomplete level's gross omits its missing legs and its missing ER would
@@ -121,11 +127,14 @@ export function computeHedgeRecommendationSnapshot(
   }
   // From L3, a failing gate steps to L2; when L2 is incomplete that step must go
   // straight to L1 rather than test L2 on a 0 that stands in for a missing ER.
+  // Only complete levels are evaluated; an incomplete level's null gross is
+  // passed as +∞ so it can never pass the leverage cap, and the post-checks
+  // below rule it out regardless.
   let recommended: LStar | null = recommendHedgeLevel({
     lstar: start,
-    l1HedgeGross,
-    l2HedgeGross,
-    l3HedgeGross,
+    l1HedgeGross: l1HedgeGross ?? Number.POSITIVE_INFINITY,
+    l2HedgeGross: l2HedgeGross ?? Number.POSITIVE_INFINITY,
+    l3HedgeGross: l3HedgeGross ?? Number.POSITIVE_INFINITY,
     l2SectorEr: finiteNum(inp.l2_sec_er) ? inp.l2_sec_er : 0,
     l3SubsectorEr: finiteNum(inp.l3_sub_er) ? inp.l3_sub_er : 0,
     userSegment,
@@ -445,9 +454,10 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
     candidate = "L2";
   } else if (candidate === "L3") {
     const haircut = (subRawNn as number) * erHaircut;
-    if (snap.l3_hedge_gross > cap) {
+    const g3 = snap.l3_hedge_gross as number; // complete level: every ratio present
+    if (g3 > cap) {
       trace.push(
-        `L3 hedge gross ${snap.l3_hedge_gross.toFixed(2)} > ${cap.toFixed(1)}× cap (${snap.user_segment_applied}) → drop to L2`,
+        `L3 hedge gross ${g3.toFixed(2)} > ${cap.toFixed(1)}× cap (${snap.user_segment_applied}) → drop to L2`,
       );
       candidate = "L2";
     } else if (haircut < minHaircut) {
@@ -462,9 +472,10 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
     candidate = "L1";
   } else if (candidate === "L2") {
     const haircut = (secRawNn as number) * erHaircut;
-    if (snap.l2_hedge_gross > cap) {
+    const g2 = snap.l2_hedge_gross as number; // complete level: every ratio present
+    if (g2 > cap) {
       trace.push(
-        `L2 hedge gross ${snap.l2_hedge_gross.toFixed(2)} > ${cap.toFixed(1)}× cap → drop to L1`,
+        `L2 hedge gross ${g2.toFixed(2)} > ${cap.toFixed(1)}× cap → drop to L1`,
       );
       candidate = "L1";
     } else if (haircut < minHaircut) {
