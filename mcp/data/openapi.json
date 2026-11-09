@@ -1886,7 +1886,7 @@
       },
       "BatchReturnsPayload": {
         "type": "object",
-        "description": "Present when `metrics` includes `returns`. Arrays are parallel by index. Fields `l1`, `l2`, `l3` hold daily rolling hedge ratios from V3 (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` history), not combined L1/L2/L3 model levels.\n",
+        "description": "Present when `metrics` includes `returns`. Arrays are parallel by index. Fields `l1`, `l2`, `l3` hold daily rolling hedge ratios from V3 (`l3_mkt_hr`, `l3_sec_hr`, `l3_sub_hr` history), not combined L1/L2/L3 model levels. An item is null where that session's value is masked or unavailable; a missing hedge ratio or return is never reported as 0.\n",
         "properties": {
           "dates": {
             "type": "array",
@@ -1898,12 +1898,14 @@
           "values": {
             "type": "array",
             "items": {
-              "type": "number"
+              "type": "number",
+              "nullable": true
             },
-            "description": "Daily gross returns (`returns_gross`)."
+            "description": "Daily gross returns (`returns_gross`); null when unavailable."
           },
           "l1": {
             "type": "array",
+            "description": "Deprecated alias of `l3_market_hr`.",
             "items": {
               "type": "number",
               "nullable": true
@@ -1911,6 +1913,7 @@
           },
           "l2": {
             "type": "array",
+            "description": "Deprecated alias of `l3_sector_hr`.",
             "items": {
               "type": "number",
               "nullable": true
@@ -1918,6 +1921,31 @@
           },
           "l3": {
             "type": "array",
+            "description": "Deprecated alias of `l3_subsector_hr`.",
+            "items": {
+              "type": "number",
+              "nullable": true
+            }
+          },
+          "l3_market_hr": {
+            "type": "array",
+            "description": "Daily L3 market-leg hedge ratio; null on masked or unavailable sessions.",
+            "items": {
+              "type": "number",
+              "nullable": true
+            }
+          },
+          "l3_sector_hr": {
+            "type": "array",
+            "description": "Daily L3 sector-leg hedge ratio; null on masked or unavailable sessions.",
+            "items": {
+              "type": "number",
+              "nullable": true
+            }
+          },
+          "l3_subsector_hr": {
+            "type": "array",
+            "description": "Daily L3 subsector-leg hedge ratio; null on masked or unavailable sessions.",
             "items": {
               "type": "number",
               "nullable": true
