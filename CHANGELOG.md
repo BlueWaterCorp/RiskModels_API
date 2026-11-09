@@ -7,6 +7,7 @@
 - The sector leg carries `beta_to_spy_r2`, the r² of its link regression. Below 0.1 the basket adds `sector_link_beta_weak`; XLE was 0.053 at 2026-10-23.
 - Link betas are read at the latest cohort date on or before the basket's `as_of`. Link betas dated after it are never used. When no qualifying date exists, the betas are null and the basket flags `link_betas_unavailable`.
 - Level selection no longer decides on a missing value. A level missing a hedge ratio or its marginal ER is not recommended, and the ladder steps down only through levels with complete inputs. This applies everywhere the recommendation is shown. The basket flags `hedge_level_inputs_incomplete`, reports that level's `hedge_gross` as `null`, and reports a haircut as `null` when its raw ER is null.
+- When no level has complete inputs (L1 lacks its market hedge ratio), there is no recommendation: `recommended_hedge_level` and `hedge_levels.recommended_level` are `null`. Every `hedge_levels` block (metrics, decompose, batch/analyze, portfolio, hedge-basket) and the metrics hedge block carry `incomplete_levels`. `higher_er_haircut` is `null` when either component ER is missing; it was a partial sum or 0. The basket's `link_betas_as_of` is `null` when the link betas were rejected or not needed.
 - `market_factor_etf` other than SPY now returns 400. The basket had labelled SPY hedge ratios with the requested ETF.
 - The OpenAPI response schema now matches the response: fields at the top level, `lstar` as a level string.
 

@@ -29,10 +29,18 @@ export interface HedgeLevelsBlock {
   L1: LevelHedgeSnapshot;
   L2: LevelHedgeSnapshot;
   L3: LevelHedgeSnapshot;
-  /** Economic recommendation layer (see computeHedgeRecommendationSnapshot). */
+  /**
+   * Economic recommendation layer (see computeHedgeRecommendationSnapshot).
+   * Chosen only among levels with complete inputs; null when none has them.
+   */
   recommended_level?: HedgeRecommendedLevel | null;
   /** Statistical Lstar gate (orthogonal cascade pick). Optional audit field. */
   statistical_lstar?: HedgeRecommendedLevel | null;
+  /**
+   * Levels missing a hedge ratio or their marginal ER. Such a level is never
+   * recommended; the recommendation steps down only through complete levels.
+   */
+  incomplete_levels?: HedgeLevelId[];
 }
 
 /** Subset of V3 wire metric keys consumed by {@link buildHedgeLevels}. */
@@ -113,6 +121,7 @@ export interface HedgeEtfHints {
 export interface BuildHedgeLevelsOptions {
   recommended_level?: HedgeRecommendedLevel | null;
   statistical_lstar?: HedgeRecommendedLevel | null;
+  incomplete_levels?: HedgeLevelId[];
 }
 
 function num(v: unknown): number | null {
@@ -177,6 +186,14 @@ export function buildHedgeLevels(
   }
   if (options?.statistical_lstar !== undefined && options.statistical_lstar !== null) {
     out.statistical_lstar = options.statistical_lstar;
+  }
+  if (options?.incomplete_levels !== undefined) {
+    out.incomplete_levels = [...options.incomplete_levels];
+    // With the recommendation layer in play, "no level has complete inputs" is an
+    // explicit null rather than an absent field.
+    if (options.recommended_level === null && options.incomplete_levels.includes("L1")) {
+      out.recommended_level = null;
+    }
   }
   return out;
 }

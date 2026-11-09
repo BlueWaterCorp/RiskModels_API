@@ -365,6 +365,7 @@ export async function runPortfolioRiskComputation(
       }, {
         recommended_level: hedgeSnap.recommended_hedge_level,
         statistical_lstar: hedgeSnap.lstar,
+        incomplete_levels: hedgeSnap.incomplete_levels,
       });
     }
     perTicker[ticker] = row;

@@ -618,6 +618,7 @@ async function execGetHedgeBasket(args: z.infer<typeof getHedgeBasketArgs>) {
     {
       recommended_level: basket.recommended_hedge_level,
       statistical_lstar: basket.lstar,
+      incomplete_levels: basket.incomplete_levels,
     },
   );
 

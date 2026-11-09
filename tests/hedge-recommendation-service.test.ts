@@ -111,8 +111,10 @@ describe("computeHedgeRecommendationSnapshot — edge cases", () => {
       l3_sub_er: null,
     });
     expect(snap.lstar).toBeNull();
-    expect(snap.recommended_hedge_level).toBe("L1");
-    expect(snap.higher_er_haircut).toBe(0);
+    expect(snap.recommended_hedge_level).toBe("L1"); // L1 is complete (market HR present)
+    // Missing ERs make the combined haircut unknown — null, never a 0 (RMAPI-30).
+    expect(snap.higher_er_haircut).toBeNull();
+    expect(snap.incomplete_levels).toEqual(["L2", "L3"]);
   });
 
   it("partially-null HRs are NaN-safe (treated as 0 contribution)", () => {

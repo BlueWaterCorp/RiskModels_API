@@ -50,8 +50,12 @@ export interface HedgeRecommendationSnapshotInputs {
 export interface HedgeRecommendationSnapshot {
   /** Canonical engine pick; legacy threshold only for explicit overrides or absent columns. */
   lstar: LstarLevel | null;
-  /** Economic pick after leverage cap + haircut floor. Always concrete. */
-  recommended_hedge_level: LStar;
+  /**
+   * Economic pick after leverage cap + haircut floor, chosen only among levels
+   * with complete inputs. Null when no level has complete inputs — then there
+   * is no recommendation, and `incomplete_levels` says why.
+   */
+  recommended_hedge_level: LStar | null;
   /** Echo of the segment that drove the recommendation. */
   user_segment_applied: UserSegment;
   /** Σ |HR_leg| ex-stock at each cascade level. NaN-safe (missing HRs treated as 0). */
@@ -61,8 +65,9 @@ export interface HedgeRecommendationSnapshot {
   /**
    * (l2_sec_er + l3_sub_er) × 0.7 — combined OOS estimate of the sector + subsector
    * variance contribution. Placeholder haircut until Phase B2 walk-forward.
+   * Null when either ER is missing: a partial sum is not this quantity.
    */
-  higher_er_haircut: number;
+  higher_er_haircut: number | null;
   /** Leverage cap applied (echoed for transparency in the API payload). */
   leverage_cap_applied: number;
   /**
@@ -116,7 +121,7 @@ export function computeHedgeRecommendationSnapshot(
   }
   // From L3, a failing gate steps to L2; when L2 is incomplete that step must go
   // straight to L1 rather than test L2 on a 0 that stands in for a missing ER.
-  let recommended = recommendHedgeLevel({
+  let recommended: LStar | null = recommendHedgeLevel({
     lstar: start,
     l1HedgeGross,
     l2HedgeGross,
@@ -126,11 +131,14 @@ export function computeHedgeRecommendationSnapshot(
     userSegment,
   });
   if (recommended !== "L1" && incomplete.includes(recommended)) recommended = "L1";
+  // L1 is the floor of the ladder; if even L1 lacks its market hedge ratio there
+  // is no level to recommend.
+  if (recommended === "L1" && incomplete.includes("L1")) recommended = null;
 
-  // NaN-safe sum of the two higher-layer raw ERs, then haircut.
-  const l2 = inp.l2_sec_er ?? 0;
-  const l3 = inp.l3_sub_er ?? 0;
-  const higherErHaircut = (Number.isFinite(l2) ? l2 : 0) + (Number.isFinite(l3) ? l3 : 0);
+  const higherErHaircut =
+    finiteNum(inp.l2_sec_er) && finiteNum(inp.l3_sub_er)
+      ? (inp.l2_sec_er + inp.l3_sub_er) * DEFAULT_ER_HAIRCUT
+      : null;
 
   return {
     lstar,
@@ -139,7 +147,7 @@ export function computeHedgeRecommendationSnapshot(
     l1_hedge_gross: l1HedgeGross,
     l2_hedge_gross: l2HedgeGross,
     l3_hedge_gross: l3HedgeGross,
-    higher_er_haircut: higherErHaircut * DEFAULT_ER_HAIRCUT,
+    higher_er_haircut: higherErHaircut,
     leverage_cap_applied: SEGMENT_LEVERAGE_CAPS[userSegment],
     incomplete_levels: incomplete,
   };
@@ -221,7 +229,8 @@ export interface HedgeBasket {
   ticker: string;
   as_of: string | null;
   lstar: LstarLevel | null;
-  recommended_hedge_level: LStar;
+  /** Null when no level has complete inputs (flagged hedge_level_inputs_incomplete). */
+  recommended_hedge_level: LStar | null;
   user_segment_applied: UserSegment;
   leverage_cap_applied: number;
   haircut_applied: number;
@@ -232,6 +241,8 @@ export interface HedgeBasket {
   link_betas_as_of: string | null;
   /** Empty when every input was available and current. */
   data_quality_flags: HedgeBasketDataQualityFlag[];
+  /** Levels missing a hedge ratio or their marginal ER (never recommended). */
+  incomplete_levels: LStar[];
   /** Σ|HR| per level; null for a level whose inputs are incomplete. */
   hedge_gross: { L1: number | null; L2: number | null; L3: number | null };
   marginal_er: {
@@ -292,9 +303,12 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
 
   // The basket implements the final recommendation, with that level's entire
   // hedge vector. In particular SPY must not retain its L3 correction at L1/L2.
+  // With no recommendation (no complete level) the basket shows the L1 legs, whose
+  // missing hedge ratio is null and flagged — it never implies a level was chosen.
   const chosen = snap.recommended_hedge_level;
-  const usesSector = chosen !== "L1" && !!inp.sector_etf_ticker && !sectorIsSpy;
-  const usesSubsector = chosen === "L3" && !!inp.subsector_etf_ticker && !subsectorIsSpy;
+  const legLevel: LStar = chosen ?? "L1";
+  const usesSector = legLevel !== "L1" && !!inp.sector_etf_ticker && !sectorIsSpy;
+  const usesSubsector = legLevel === "L3" && !!inp.subsector_etf_ticker && !subsectorIsSpy;
 
   const flags: HedgeBasketDataQualityFlag[] = [];
   const flag = (f: HedgeBasketDataQualityFlag) => {
@@ -306,23 +320,27 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   // they are used and flagged.
   // A link date after `as_of` would put future information into an older basket,
   // and an unknown gap cannot be checked: both are treated as unavailable.
-  let linkBetasTooOld = false;
+  let linkBetasRejected = false;
   if (usesSector || usesSubsector) {
     const gap =
       inp.link_betas_as_of && inp.as_of ? dateGap(inp.link_betas_as_of, inp.as_of) : null;
     if (!inp.link_betas_as_of) {
       flag("link_betas_unavailable");
     } else if (inp.as_of && (!gap || gap.calendar < 0)) {
-      linkBetasTooOld = true;
+      linkBetasRejected = true;
       flag("link_betas_unavailable");
     } else if (gap && gap.calendar > LINK_BETA_MAX_AGE_CALENDAR_DAYS) {
-      linkBetasTooOld = true;
+      linkBetasRejected = true;
     } else if (gap && gap.weekdays > LINK_BETA_STALE_TRADING_DAYS) {
       flag("link_betas_stale");
     }
   }
-  const lambdaSM = sectorIsSpy ? 1.0 : linkBetasTooOld ? null : finiteOrNull(inp.lambda_s_to_m);
-  const lambdaUM = subsectorIsSpy ? 1.0 : linkBetasTooOld ? null : finiteOrNull(inp.lambda_u_to_m);
+  // The date reported is the date of link betas actually used: none when no ETF
+  // leg needs one, or when they were rejected for being too old or from the future.
+  const linkBetasAsOfUsed =
+    (usesSector || usesSubsector) && !linkBetasRejected ? inp.link_betas_as_of ?? null : null;
+  const lambdaSM = sectorIsSpy ? 1.0 : linkBetasRejected ? null : finiteOrNull(inp.lambda_s_to_m);
+  const lambdaUM = subsectorIsSpy ? 1.0 : linkBetasRejected ? null : finiteOrNull(inp.lambda_u_to_m);
   const lambdaSMR2 = lambdaSM !== null && !sectorIsSpy ? finiteOrNull(inp.lambda_s_to_m_r2) : null;
 
   const betaMAapl = finiteOrNull(inp.beta_m_aapl);
@@ -332,8 +350,8 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const sideOf = (p: number | null): "long" | "short" | null =>
     p === null ? null : p <= 0 ? "short" : "long";
 
-  const hrM = finiteOrNull(chosen === "L1" ? inp.l1_mkt_hr : chosen === "L2" ? inp.l2_mkt_hr : inp.l3_mkt_hr);
-  const hrS = finiteOrNull(chosen === "L2" ? inp.l2_sec_hr : inp.l3_sec_hr);
+  const hrM = finiteOrNull(legLevel === "L1" ? inp.l1_mkt_hr : legLevel === "L2" ? inp.l2_mkt_hr : inp.l3_mkt_hr);
+  const hrS = finiteOrNull(legLevel === "L2" ? inp.l2_sec_hr : inp.l3_sec_hr);
   const hrU = finiteOrNull(inp.l3_sub_hr);
   if (hrM === null) flag("market_hedge_ratio_unavailable");
 
@@ -416,7 +434,7 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
   const erHaircut = DEFAULT_ER_HAIRCUT;
   const minHaircut = DEFAULT_MIN_HAIRCUT_ER;
   const incomplete = snap.incomplete_levels;
-  const rank = (l: LStar) => (l === "L1" ? 1 : l === "L2" ? 2 : 3);
+  const rank = (l: LStar | null) => (l === null ? 0 : l === "L1" ? 1 : l === "L2" ? 2 : 3);
   // Walk the candidate ladder mirroring computeHedgeRecommendationSnapshot.
   let candidate: LStar = (lstar ?? "L1") as LStar;
   if (incomplete.some((l) => rank(l) > rank(snap.recommended_hedge_level) && rank(l) <= rank(candidate))) {
@@ -456,7 +474,10 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
       candidate = "L1";
     }
   }
-  trace.push(`Final: ${snap.recommended_hedge_level}`);
+  if (candidate === "L1" && incomplete.includes("L1")) {
+    trace.push(`L1 inputs incomplete (the market hedge ratio is missing) → no level can be recommended`);
+  }
+  trace.push(`Final: ${snap.recommended_hedge_level ?? "none (no level has complete inputs)"}`);
 
   return {
     ticker: inp.ticker.toUpperCase(),
@@ -468,8 +489,9 @@ export function buildHedgeBasket(inp: BuildHedgeBasketInputs): HedgeBasket {
     haircut_applied: erHaircut,
     legs,
     net_market_beta_after_hedge: netMarketBetaAfterHedge,
-    link_betas_as_of: inp.link_betas_as_of ?? null,
+    link_betas_as_of: linkBetasAsOfUsed,
     data_quality_flags: flags,
+    incomplete_levels: [...incomplete],
     hedge_gross: {
       L1: incomplete.includes("L1") ? null : snap.l1_hedge_gross,
       L2: incomplete.includes("L2") ? null : snap.l2_hedge_gross,

@@ -19,7 +19,11 @@
 import { describe, expect, it } from "vitest";
 
 import { mapCohortLinkBetas } from "@/lib/dal/zarr-reader";
-import { buildHedgeBasket } from "@/lib/risk/hedge-recommendation-service";
+import { buildHedgeLevels } from "@/lib/risk/hedge-levels";
+import {
+  buildHedgeBasket,
+  computeHedgeRecommendationSnapshot,
+} from "@/lib/risk/hedge-recommendation-service";
 
 // ── 2026-10-23 (latest teo) ─────────────────────────────────────────────────
 const LATEST_TEO = "2026-10-23";
@@ -133,6 +137,7 @@ describe("buildHedgeBasket — sector leg beta_to_spy (RMAPI-30)", () => {
     expect(basket.legs[2]!.beta_to_spy).toBeNull();
     expect(basket.legs[3]!.beta_to_spy).toBeNull();
     expect(basket.net_market_beta_after_hedge).toBeNull();
+    expect(basket.link_betas_as_of).toBeNull(); // the rejected date is not reported as used
     expect(basket.data_quality_flags).toEqual([
       "link_betas_unavailable",
       "sector_link_beta_unavailable",
@@ -191,6 +196,7 @@ describe("buildHedgeBasket — sector leg beta_to_spy (RMAPI-30)", () => {
 
   it("link betas more than 60 calendar days behind as_of are not used", () => {
     const basket = buildHedgeBasket({ ...aaplL3, as_of: "2026-07-18", ...withLinks(linksAt0518) }); // 61 days
+    expect(basket.link_betas_as_of).toBeNull();
     expect(basket.legs[2]!.beta_to_spy).toBeNull();
     expect(basket.legs[3]!.beta_to_spy).toBeNull();
     expect(basket.net_market_beta_after_hedge).toBeNull();
@@ -200,19 +206,25 @@ describe("buildHedgeBasket — sector leg beta_to_spy (RMAPI-30)", () => {
     ]);
   });
 
-  it("a null market hedge ratio is flagged too", () => {
+  it("a null L1 market hedge ratio leaves no level to recommend", () => {
     const basket = buildHedgeBasket({
       ...aaplL3,
-      user_segment: "family_office",
+      user_segment: "family_office", // the ladder lands on L1, which is incomplete
       l1_mkt_hr: null,
       lambda_s_to_m: null,
       lambda_u_to_m: null,
     });
-    expect(basket.recommended_hedge_level).toBe("L1");
+    expect(basket.recommended_hedge_level).toBeNull();
+    expect(basket.incomplete_levels).toEqual(["L1"]);
+    expect(basket.legs.map((l) => l.leg)).toEqual(["AAPL", "SPY"]);
     expect(basket.legs[1]!.position).toBeNull();
     expect(basket.net_market_beta_after_hedge).toBeNull();
-    expect(basket.data_quality_flags).toEqual(["market_hedge_ratio_unavailable"]);
+    expect(basket.data_quality_flags).toEqual([
+      "market_hedge_ratio_unavailable",
+      "hedge_level_inputs_incomplete",
+    ]);
     expect(basket.hedge_gross.L1).toBeNull();
+    expect(basket.decision_trace[basket.decision_trace.length - 1]).toMatch(/^Final: none/);
   });
 
   it("an L1 basket needs no link betas and stays fully computed", () => {
@@ -257,5 +269,46 @@ describe("level selection never decides on a missing value", () => {
     expect(basket.marginal_er.L2_sector_haircut).toBeCloseTo(0.0049, 9);
     expect(basket.hedge_gross.L3).toBeNull();
     expect(basket.data_quality_flags).toEqual(["hedge_level_inputs_incomplete"]);
+  });
+});
+
+describe("snapshot fields shared by metrics, batch/analyze and portfolio", () => {
+  it("higher_er_haircut is the haircut sum when both ERs are present", () => {
+    const snap = computeHedgeRecommendationSnapshot(aaplL3);
+    expect(snap.higher_er_haircut).toBeCloseTo((0.007 + 0.02) * 0.7, 12);
+    expect(snap.incomplete_levels).toEqual([]);
+  });
+
+  it("higher_er_haircut is null, not a partial sum or 0, when an ER is missing", () => {
+    expect(computeHedgeRecommendationSnapshot({ ...aaplL3, l3_sub_er: null }).higher_er_haircut).toBeNull();
+    expect(computeHedgeRecommendationSnapshot({ ...aaplL3, l2_sec_er: null }).higher_er_haircut).toBeNull();
+  });
+
+  it("the hedge_levels block carries incomplete_levels and an explicit null recommendation", () => {
+    const snap = computeHedgeRecommendationSnapshot({ ...aaplL3, user_segment: "family_office", l1_mkt_hr: null });
+    expect(snap.recommended_hedge_level).toBeNull();
+    const block = buildHedgeLevels(
+      { l1_mkt_hr: null, l2_mkt_hr: -1.396, l2_sec_hr: 0.357, l2_sec_er: 0.007 },
+      { market_etf: "SPY", sector_etf: "XLK", subsector_etf: "SOXX" },
+      {
+        recommended_level: snap.recommended_hedge_level,
+        statistical_lstar: snap.lstar,
+        incomplete_levels: snap.incomplete_levels,
+      },
+    );
+    expect(block.incomplete_levels).toEqual(["L1"]);
+    expect(block.recommended_level).toBeNull();
+    expect("recommended_level" in block).toBe(true);
+  });
+
+  it("a complete snapshot's block lists no incomplete levels", () => {
+    const snap = computeHedgeRecommendationSnapshot(aaplL3);
+    const block = buildHedgeLevels(
+      aaplL3,
+      { market_etf: "SPY", sector_etf: "XLK", subsector_etf: "SOXX" },
+      { recommended_level: snap.recommended_hedge_level, incomplete_levels: snap.incomplete_levels },
+    );
+    expect(block.recommended_level).toBe("L3");
+    expect(block.incomplete_levels).toEqual([]);
   });
 });

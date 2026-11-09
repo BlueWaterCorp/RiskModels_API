@@ -160,6 +160,7 @@ export const GET = withBilling(
       }, {
         recommended_level: basket.recommended_hedge_level,
         statistical_lstar: basket.lstar,
+        incomplete_levels: basket.incomplete_levels,
       });
 
       const metadata = await getRiskMetadata();

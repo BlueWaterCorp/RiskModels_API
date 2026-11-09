@@ -722,7 +722,7 @@
               "L3"
             ],
             "nullable": true,
-            "description": "Economic recommendation when emitted (user-segment hedge gate)."
+            "description": "Economic recommendation (user-segment hedge gate). It is chosen only among levels with complete inputs. Selection starts at the highest complete level at or below `statistical_lstar` and steps down through the leverage-cap and ER-haircut gates. It skips any level listed in `incomplete_levels`, so a missing value never passes or fails a gate. When no level is complete (L1 lacks its market hedge ratio) this is null: there is no recommendation.\n"
           },
           "statistical_lstar": {
             "type": "string",
@@ -733,6 +733,18 @@
             ],
             "nullable": true,
             "description": "Orthogonal cascade statistical layer pick."
+          },
+          "incomplete_levels": {
+            "type": "array",
+            "description": "Levels missing any of their inputs. L1 needs the market hedge ratio. L2 needs the market and sector hedge ratios and the sector marginal ER. L3 needs the market, sector and subsector hedge ratios and the subsector marginal ER. These levels are never recommended. Empty when every level is complete. Emitted alongside `recommended_level`.\n",
+            "items": {
+              "type": "string",
+              "enum": [
+                "L1",
+                "L2",
+                "L3"
+              ]
+            }
           }
         }
       },
@@ -8117,7 +8129,20 @@
                         "L2",
                         "L3"
                       ],
-                      "description": "Level after the leverage cap and ER haircut checks."
+                      "nullable": true,
+                      "description": "Level after the leverage cap and ER haircut checks, chosen only among levels with complete inputs (see HedgeLevelsBlock.recommended_level). Null when no level is complete; `legs` then show the L1 legs with the missing hedge ratio as null.\n"
+                    },
+                    "incomplete_levels": {
+                      "type": "array",
+                      "description": "Levels missing a hedge ratio or their marginal ER (never recommended).",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "L1",
+                          "L2",
+                          "L3"
+                        ]
+                      }
                     },
                     "user_segment_applied": {
                       "type": "string",
@@ -8184,7 +8209,7 @@
                       "type": "string",
                       "format": "date",
                       "nullable": true,
-                      "description": "Date of the link betas the ETF legs used."
+                      "description": "Date of the link betas the ETF legs used. Null when no ETF leg needs one, or when the betas were rejected as too old or dated after `as_of`.\n"
                     },
                     "data_quality_flags": {
                       "type": "array",
