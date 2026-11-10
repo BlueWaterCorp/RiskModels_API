@@ -396,6 +396,7 @@ class RiskModelsClient:
         dollars: float,
         *,
         prices: dict[str, float] | None = None,
+        depth: str = "recommended",
         user_segment: str | None = None,
         whole_shares: bool = True,
     ) -> list[AlphaLeg]:
@@ -403,9 +404,12 @@ class RiskModelsClient:
 
         Calls :meth:`get_hedge_basket` and scales the ratios by ``dollars`` (see :func:`riskmodels.alpha.alpha_legs`).
         A sell multiplies every leg by -1. Pass ``prices`` to get share counts.
+
+        ``depth`` picks the hedge level: ``"recommended"`` (default; the stored L* with the ``user_segment`` leverage cap and
+        explained-risk floor), ``"lstar"`` (the stored L*, no cap), or ``"L1"``, ``"L2"``, ``"L3"`` (a depth chosen directly).
         """
         basket = self.get_hedge_basket(ticker, user_segment=user_segment)
-        return alpha_legs(basket, direction, dollars, prices, whole_shares=whole_shares)
+        return alpha_legs(basket, direction, dollars, prices, depth=depth, whole_shares=whole_shares)
 
     def get_hedge_levels(self, ticker: str) -> dict[str, Any] | None:
         """Return the canonical ``hedge_levels`` object (L1/L2/L3) for one ticker.

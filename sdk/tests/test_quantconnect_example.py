@@ -17,10 +17,11 @@ spec.loader.exec_module(qc)
 BASKET = json.loads((Path(__file__).parent / "fixtures" / "hedge_basket_NVDA_2026-11-09.json").read_text())
 
 
+@pytest.mark.parametrize("depth", ["recommended", "lstar", "L1", "L2", "L3"])
 @pytest.mark.parametrize("direction", ["buy", "sell"])
-def test_helper_matches_sdk(direction):
-    sdk = {leg.symbol: leg.dollars for leg in alpha_legs(BASKET, direction, 20_000)}
-    assert qc.alpha_legs(BASKET, direction, 20_000) == pytest.approx(sdk)
+def test_helper_matches_sdk(direction, depth):
+    sdk = {leg.symbol: leg.dollars for leg in alpha_legs(BASKET, direction, 20_000, depth=depth)}
+    assert qc.alpha_legs(BASKET, direction, 20_000, depth) == pytest.approx(sdk)
 
 
 class _Algo:

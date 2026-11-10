@@ -19,6 +19,45 @@ class AlphaUnavailable(ValueError):
     """The basket cannot be turned into trades (incomplete level, missing ratio, or malformed response)."""
 
 
+_DEPTHS = ("recommended", "lstar", "L1", "L2", "L3")
+
+
+def _depth_pairs(basket: Mapping[str, Any], depth: str) -> list[tuple[str | None, Any]]:
+    """(symbol, ratio per $1 of stock) for the chosen depth, stock leg first."""
+    d = str(depth).strip()
+    if d.lower() in ("recommended", "lstar"):
+        d = d.lower()
+    else:
+        d = d.upper()
+    if d not in _DEPTHS:
+        raise ValueError(f"depth must be one of {_DEPTHS}, got {depth!r}")
+    ticker = basket.get("ticker")
+    if d == "recommended":
+        level = basket.get("recommended_hedge_level")
+        if level and level in (basket.get("incomplete_levels") or []):
+            raise AlphaUnavailable(f"{ticker}: hedge level {level} is incomplete ({basket.get('data_quality_flags')})")
+        raw = basket.get("legs")
+        if not raw:
+            raise AlphaUnavailable(f"{ticker}: response has no legs")
+        return [(leg.get("leg"), leg.get("position")) for leg in raw]
+    level = basket.get("lstar") if d == "lstar" else d
+    if level not in ("L1", "L2", "L3"):
+        raise AlphaUnavailable(f"{ticker}: no stored L* for this name")
+    if level in ((basket.get("hedge_levels") or {}).get("incomplete_levels") or basket.get("incomplete_levels") or []):
+        raise AlphaUnavailable(f"{ticker}: hedge level {level} is incomplete")
+    hl = (basket.get("hedge_levels") or {}).get(level)
+    if not hl:
+        raise AlphaUnavailable(f"{ticker}: response has no hedge_levels for {level}")
+    etfs = hl.get("hedge_etfs") or {}
+    pairs: list[tuple[str | None, Any]] = [(ticker, 1.0)]
+    for layer in ("market", "sector", "subsector"):
+        etf, hr = etfs.get(layer), hl.get(f"{layer}_hr")
+        if etf is None and hr is None:
+            continue
+        pairs.append((etf, hr))
+    return pairs
+
+
 @dataclass(frozen=True)
 class AlphaLeg:
     """One leg of an alpha trade. ``dollars`` is signed (positive long, negative short); ``shares`` is signed or None."""
@@ -36,6 +75,7 @@ def alpha_legs(
     dollars: float,
     prices: Mapping[str, float] | None = None,
     *,
+    depth: str = "recommended",
     whole_shares: bool = True,
 ) -> list[AlphaLeg]:
     """Scale a hedge-basket response to one signal.
@@ -45,6 +85,7 @@ def alpha_legs(
         direction: ``"buy"`` or ``"sell"``.
         dollars: Positive dollar size of the stock leg.
         prices: Optional ``{symbol: price}``. When given, each leg also carries a share count.
+        depth: ``"recommended"`` (default), ``"lstar"``, ``"L1"``, ``"L2"`` or ``"L3"`` (see the module docstring).
         whole_shares: Round share counts toward zero (default) instead of keeping fractions.
 
     Raises:
@@ -59,18 +100,10 @@ def alpha_legs(
         raise ValueError("dollars must be a positive finite number")
     sign = 1.0 if d == "buy" else -1.0
 
-    level = basket.get("recommended_hedge_level")
-    if level and level in (basket.get("incomplete_levels") or []):
-        raise AlphaUnavailable(f"{basket.get('ticker')}: hedge level {level} is incomplete ({basket.get('data_quality_flags')})")
-    raw = basket.get("legs")
-    if not raw:
-        raise AlphaUnavailable(f"{basket.get('ticker')}: response has no legs")
-
     ticker = basket.get("ticker")
+    pairs = _depth_pairs(basket, depth)
     legs: list[AlphaLeg] = []
-    for leg in raw:
-        sym = leg.get("leg")
-        ratio = leg.get("position")
+    for sym, ratio in pairs:
         if sym is None or ratio is None or not math.isfinite(float(ratio)):
             raise AlphaUnavailable(f"{ticker}: leg {sym!r} has no usable position")
         ratio = float(ratio)

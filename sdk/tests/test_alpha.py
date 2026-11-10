@@ -96,3 +96,44 @@ def test_client_get_alpha_calls_hedge_basket_route(monkeypatch):
     legs = client.get_alpha("cat", "buy", 10_000, user_segment="ls_equity")
     assert seen == {"method": "GET", "path": "/hedge-basket/CAT", "params": {"user_segment": "ls_equity"}}
     assert legs[0].symbol == "CAT" and legs[0].dollars == pytest.approx(10_000)
+
+
+def test_depth_recommended_equals_stored_level_ratios():
+    b = _basket("hedge_basket_NVDA_2026-11-09.json")
+    rec = {leg.symbol: leg.dollars for leg in alpha_legs(b, "buy", 1000)}
+    chosen = {leg.symbol: leg.dollars for leg in alpha_legs(b, "buy", 1000, depth=b["recommended_hedge_level"])}
+    assert rec == pytest.approx(chosen)
+
+
+def test_depth_lstar_uses_stored_level_without_cap():
+    b = _basket("hedge_basket_NVDA_2026-11-09.json")
+    b["lstar"] = "L3"  # stored L* deeper than the recommended level
+    lstar = {leg.symbol: leg.dollars for leg in alpha_legs(b, "buy", 1_000_000, depth="lstar")}
+    assert set(lstar) == {"NVDA", "SPY", "XLK", "SMH"}
+    rec = {leg.symbol for leg in alpha_legs(b, "buy", 1_000_000)}
+    assert rec == {"NVDA", "SPY", "XLK"}
+
+
+@pytest.mark.parametrize("level,etfs", [("L1", {"SPY"}), ("L2", {"SPY", "XLK"}), ("L3", {"SPY", "XLK", "SMH"})])
+def test_depth_chosen_directly(level, etfs):
+    b = _basket("hedge_basket_NVDA_2026-11-09.json")
+    legs = alpha_legs(b, "buy", 1_000_000, depth=level)
+    assert {leg.symbol for leg in legs} == {"NVDA"} | etfs
+    assert legs[0].symbol == "NVDA" and legs[0].dollars == pytest.approx(1_000_000)
+    hl = b["hedge_levels"][level]
+    assert next(x for x in legs if x.symbol == "SPY").dollars == pytest.approx(1_000_000 * hl["market_hr"])
+
+
+def test_depth_signed_sector_leg_at_l3_keeps_its_sign():
+    b = _basket("hedge_basket_NVDA_2026-11-09.json")
+    xlk = next(x for x in alpha_legs(b, "buy", 1_000_000, depth="L3") if x.symbol == "XLK")
+    assert xlk.dollars > 0 and xlk.side == "long"
+
+
+def test_bad_depth_and_unavailable_level():
+    b = _basket("hedge_basket_NVDA_2026-11-09.json")
+    with pytest.raises(ValueError):
+        alpha_legs(b, "buy", 1000, depth="L4")
+    b["hedge_levels"]["incomplete_levels"] = ["L3"]
+    with pytest.raises(AlphaUnavailable):
+        alpha_legs(b, "buy", 1000, depth="L3")
