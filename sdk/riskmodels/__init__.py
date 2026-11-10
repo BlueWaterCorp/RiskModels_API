@@ -6,6 +6,7 @@ Contributor recognition is shipped in-package: see ``SDK_CONTRIBUTORS`` and
 
 from . import aom
 from .aom import rm, run
+from .alpha import AlphaLeg, AlphaUnavailable, alpha_legs
 from .client import RiskModelsClient
 from .contributors import SDK_CONTRIBUTORS, SDKContributorDict
 from .enums import DataKind, DataKindLiteral, OutputKind, OutputLiteral, TimeAxis, TimeLiteral
@@ -95,6 +96,9 @@ from .visuals.save import (
 )
 
 __all__ = [
+    "AlphaLeg",
+    "AlphaUnavailable",
+    "alpha_legs",
     "APIError",
     "PUBLIC_COHORTS",
     "decompose_selection_vs_drift",

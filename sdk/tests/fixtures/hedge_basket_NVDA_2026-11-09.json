@@ -1,0 +1,118 @@
+{
+ "ticker": "NVDA",
+ "as_of": "2026-11-09",
+ "lstar": "L2",
+ "recommended_hedge_level": "L2",
+ "user_segment_applied": "stat_arb",
+ "leverage_cap_applied": 5,
+ "haircut_applied": 0.7,
+ "legs": [
+  {
+   "leg": "NVDA",
+   "side": "long",
+   "position": 1,
+   "beta_to_spy": 1.97408843040466,
+   "beta_to_spy_r2": null,
+   "market_beta_contribution": 1.97408843040466
+  },
+  {
+   "leg": "SPY",
+   "side": "short",
+   "position": -0.0183409918099642,
+   "beta_to_spy": 1,
+   "beta_to_spy_r2": null,
+   "market_beta_contribution": -0.0183409918099642
+  },
+  {
+   "leg": "XLK",
+   "side": "short",
+   "position": -1.09338986873627,
+   "beta_to_spy": 1.7887009382247925,
+   "beta_to_spy_r2": 0.7323192358016968,
+   "market_beta_contribution": -1.9557474840540487
+  }
+ ],
+ "net_market_beta_after_hedge": -4.545935294864023e-08,
+ "link_betas_as_of": "2026-11-09",
+ "data_quality_flags": [],
+ "incomplete_levels": [],
+ "hedge_gross": {
+  "L1": 1.97408843040466,
+  "L2": 1.1117308605462342,
+  "L3": 1.212985567748546
+ },
+ "marginal_er": {
+  "L2_sector_raw": 0.111947439610958,
+  "L2_sector_haircut": 0.0783632077276706,
+  "L3_subsector_raw": -0.0038847743999213,
+  "L3_subsector_haircut": -0.00271934207994491
+ },
+ "decision_trace": [
+  "Lstar=L2 (materialized engine selection)",
+  "Final: L2"
+ ],
+ "hedge_levels": {
+  "L1": {
+   "market_hr": -1.97408843040466,
+   "sector_hr": null,
+   "subsector_hr": null,
+   "market_er": 0.42078885436058,
+   "sector_er": null,
+   "subsector_er": null,
+   "residual_er": 0.579211115837097,
+   "hedge_etfs": {
+    "market": "SPY",
+    "sector": null,
+    "subsector": null
+   }
+  },
+  "L2": {
+   "market_hr": -0.0183409918099642,
+   "sector_hr": -1.09338986873627,
+   "subsector_hr": null,
+   "market_er": 0.42078885436058,
+   "sector_er": 0.111947439610958,
+   "subsector_er": null,
+   "residual_er": 0.467263698577881,
+   "hedge_etfs": {
+    "market": "SPY",
+    "sector": "XLK",
+    "subsector": null
+   }
+  },
+  "L3": {
+   "market_hr": -0.629764914512634,
+   "sector_hr": 0.0158021375536919,
+   "subsector_hr": -0.56741851568222,
+   "market_er": 0.42078885436058,
+   "sector_er": 0.111947439610958,
+   "subsector_er": -0.0038847743999213,
+   "residual_er": 0.471148461103439,
+   "hedge_etfs": {
+    "market": "SPY",
+    "sector": "XLK",
+    "subsector": "SMH"
+   }
+  },
+  "recommended_level": "L2",
+  "statistical_lstar": "L2",
+  "incomplete_levels": []
+ },
+ "_metadata": {
+  "model_version": "3.0",
+  "data_as_of": "2026-11-09",
+  "factor_set_id": "SPY_uni_mc_3000",
+  "universe_size": 3290,
+  "wiki_uri": "https://riskmodels.app/docs/methodology",
+  "factors": [
+   "SPY",
+   "XLK",
+   "SMH"
+  ]
+ },
+ "_agent": {
+  "request_id": "req_mwb40wr9_7tir8f",
+  "latency_ms": 392,
+  "provenance": "https://riskmodels.app/docs/methodology"
+ }
+}
