@@ -52,6 +52,7 @@ from urllib.parse import quote
 import httpx
 import pandas as pd
 
+from .alpha import AlphaLeg, alpha_legs
 from .auth import StaticBearerAuth
 from .capabilities import DISCOVER_SPEC, discover_markdown
 from .fundamentals import (
@@ -375,6 +376,36 @@ class RiskModelsClient:
         df = pd.DataFrame([row])
         attach_sdk_metadata(df, lineage, kind="metrics_snapshot")
         return df
+
+    def get_hedge_basket(self, ticker: str, *, user_segment: str | None = None) -> dict[str, Any]:
+        """``GET /hedge-basket/{ticker}``: the stock plus its L* ETF hedge legs as signed ratios per $1 of stock.
+
+        Args:
+            ticker: Stock ticker.
+            user_segment: Optional segment (``stat_arb``, ``ls_equity``, ...) that sets the gross-hedge leverage cap.
+        """
+        t, _ = resolve_ticker(ticker, self)
+        params = {"user_segment": user_segment} if user_segment else None
+        body, _lineage, _r = self._transport.request("GET", f"/hedge-basket/{t}", params=params)
+        return body
+
+    def get_alpha(
+        self,
+        ticker: str,
+        direction: str,
+        dollars: float,
+        *,
+        prices: dict[str, float] | None = None,
+        user_segment: str | None = None,
+        whole_shares: bool = True,
+    ) -> list[AlphaLeg]:
+        """Turn a buy or sell signal into an alpha trade: the stock against its L* ETF hedge basket.
+
+        Calls :meth:`get_hedge_basket` and scales the ratios by ``dollars`` (see :func:`riskmodels.alpha.alpha_legs`).
+        A sell multiplies every leg by -1. Pass ``prices`` to get share counts.
+        """
+        basket = self.get_hedge_basket(ticker, user_segment=user_segment)
+        return alpha_legs(basket, direction, dollars, prices, whole_shares=whole_shares)
 
     def get_hedge_levels(self, ticker: str) -> dict[str, Any] | None:
         """Return the canonical ``hedge_levels`` object (L1/L2/L3) for one ticker.
