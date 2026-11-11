@@ -20,6 +20,10 @@ The ERM3 2026 data model uses a normalized identity registry, long-form temporal
 | ~~**`security_history`**~~ | **STALE — FROZEN 2026-04-14** (table still exists, ~204M rows; nothing writes it; do not read). **Pure Zarr for all history.** As of the pure-Zarr SSOT cutover, all historical time series are served exclusively from Zarr via `lib/dal/zarr-reader.ts`: daily metrics from `ds_daily.zarr`, hedge weights from `ds_erm3_hedge_weights_*.zarr`, returns decomposition from `ds_erm3_returns_*.zarr`, rankings from `ds_rankings_*.zarr`. The wide latest row still lives in `security_history_latest` below. |
 | **`erm3_sync_state_v4`** | Sync health: `table_name`, `max_date`, `last_synced_at`. |
 
+**Closed `symbols` rows.** The ERM3 sync never deletes a `symbols` row for a closed identity. It marks the row closed instead: `metadata.is_delisted = true`, written from the security master each night for every row, including rows whose id is no longer on the published `ds_daily` axis. A closed row also takes the master's `unique_ticker` when that differs from its ticker (`LGTY#1`, `KEEL#2`), so a recycled ticker stays free for the live holder. Only the post-sync trim deletes rows (stocks out of the mask for more than a year). `sector_etf` / `subsector_etf` on rows off the axis are refreshed from the security master mirror (ERM3 board n012).
+
+Ticker resolution (`resolveSymbolByTicker` / `resolveSymbolsByTickers` in `lib/dal/risk-engine-v3.ts`) reads `metadata.is_delisted === true` as closed (`isDeadSymbolRow`). A missing key or `false` counts as live. When several rows share a ticker, a live row is picked before a closed one, and then the lowest `symbol` (`pickLiveRow`). A closed direct row never answers as live. Resolution goes on to the alias mirror and then to the most-recent-holder pass: a servable live holder of the ticker in `security_master` replaces it, and otherwise the closed row stays the answer (`delisted` true in the holder pass).
+
 ### Identity (live, nightly)
 
 | Table | Purpose |
