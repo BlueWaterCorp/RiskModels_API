@@ -15,8 +15,13 @@
  *   - The contract's licensing gate is re-checked here: a row whose payload or
  *     entity carries a restricted identifier key is withheld.
  *   - Verified events, and corrections or withdrawals of earlier events, form
- *     the main tables. Candidates are left out unless includeUnderReview is
- *     set, and then appear only in a section labelled "Under review".
+ *     the main tables. Redistributable candidates appear in a section labelled
+ *     "Under review, not verified" when INCLUDE_UNDER_REVIEW_DEFAULT (or the
+ *     includeUnderReview option) is on.
+ *   - Audience. A "client" edition never carries an internal_only row, whatever
+ *     the other settings. An "internal" edition may, under its own heading
+ *     ("Internal only, not for clients"), and only to INTERNAL_RECIPIENTS;
+ *     buildDigest throws for any other recipient.
  *
  * The attached file holds each delivered envelope exactly as published, one per
  * line, re-serialized canonically (sorted keys, compact separators), the same
@@ -30,6 +35,22 @@ export const DIGEST_DESCRIPTOR_SCHEMA = "riskmodels.event-ledger-digest/1";
 export const DIGEST_CONTACT_EMAIL = "service@riskmodels.app";
 export const ENVELOPE_SCHEMA_VERSION = "1.0.0";
 export const ATTACHMENT_MEDIA_TYPE = "application/x-ndjson";
+
+/**
+ * THE SETTING for the "Under review, not verified" section. On since 2026-11-11 so
+ * Conrad can evaluate it; whether client editions keep it is his call. Flip to
+ * false to leave candidates out by default (the CLI's --no-under-review does the
+ * same for one run).
+ */
+export const INCLUDE_UNDER_REVIEW_DEFAULT = true;
+
+/** Rows shown per review section; the rest are counted, not listed. */
+export const REVIEW_SECTION_CAP = 20;
+
+/** The only addresses an internal edition (with internal_only rows) may go to. */
+export const INTERNAL_RECIPIENTS: readonly string[] = ["conrad@bwmacro.com"];
+
+export type Audience = "client" | "internal";
 
 // ── contract shapes (v1.0.0, loosely typed: adapters own the payload) ────────
 
@@ -115,15 +136,30 @@ function restrictedKeyPaths(obj: unknown, path = ""): string[] {
   return found;
 }
 
-export type WithheldReason = "not_redistributable" | "restricted_identifier_key";
+/**
+ * A RiskModels id built from a 12-character national identifier rather than a FIGI
+ * (FIGIs start BBG). Such ids embed a restricted identifier and never go out.
+ */
+const NATIONAL_ID_FLAVORED_SYM_ID = /\bBW-(?!BBG)[A-Z]{2}[A-Z0-9]{9}\d\b/;
 
-export function withheldReason(env: EventEnvelope): WithheldReason | null {
-  const lic = env.license ?? {};
-  if (lic.redistributable !== true) return "not_redistributable";
-  if (lic.classification !== "public_record" && lic.classification !== "derived") return "not_redistributable";
+export type WithheldReason =
+  | "not_redistributable"
+  | "internal_only_in_client_edition"
+  | "restricted_identifier_key";
+
+export function isInternalOnly(env: EventEnvelope): boolean {
+  return env.license?.classification === "internal_only";
+}
+
+export function withheldReason(env: EventEnvelope, audience: Audience = "client"): WithheldReason | null {
   if (restrictedKeyPaths(env.payload ?? {}).length || restrictedKeyPaths(env.entity ?? {}).length) {
     return "restricted_identifier_key";
   }
+  if (NATIONAL_ID_FLAVORED_SYM_ID.test(JSON.stringify(env))) return "restricted_identifier_key";
+  if (isInternalOnly(env)) return audience === "internal" ? null : "internal_only_in_client_edition";
+  const lic = env.license ?? {};
+  if (lic.redistributable !== true) return "not_redistributable";
+  if (lic.classification !== "public_record" && lic.classification !== "derived") return "not_redistributable";
   return null;
 }
 
@@ -179,6 +215,7 @@ const BASIS_LABELS: Record<string, string> = {
   sec_filed_date: "SEC filing date",
   sec_acceptance_datetime: "SEC acceptance time",
   article_seendate: "article crawl time",
+  rekey_swap_applied: "time the re-key was applied",
 };
 
 export function basisLabel(basis: string | null | undefined): string {
@@ -222,7 +259,7 @@ export interface DigestItem {
 /** A source link is shown only for public-record evidence on https. */
 function sourceLink(env: EventEnvelope): { url: string | null; label: string | null } {
   const url = str(env.source?.url);
-  const label = str(env.source?.accession_number) ?? str(env.source?.source_id);
+  const label = str(env.source?.accession_number) ?? str(env.source?.evidence_ref) ?? str(env.source?.source_id);
   if (!url || env.license?.classification !== "public_record" || !url.startsWith("https://")) {
     return { url: null, label };
   }
@@ -240,6 +277,14 @@ function describe(env: EventEnvelope): { event: string; detail: string | null } 
       .filter(Boolean)
       .join(" · ");
     return { event: what ? `Delisting: ${what}` : "Delisting", detail: detail || null };
+  }
+  if (env.event_type === "identifier_rekey") {
+    const from = str(p.old_bw_sym_id);
+    const to = str(p.new_bw_sym_id);
+    return {
+      event: from && to ? `RiskModels id re-keyed: ${from} → ${to}` : "RiskModels id re-keyed",
+      detail: str(p.rule) ? `Rule ${str(p.rule)}` : null,
+    };
   }
   return { event: str(p.title) ?? str(p.summary) ?? familyOf(env.event_type).label, detail: null };
 }
@@ -300,16 +345,29 @@ export interface FamilyGroup {
   items: DigestItem[];
 }
 
+/** A capped section: the rows shown, and how many more matched. */
+export interface ReviewSection {
+  items: DigestItem[];
+  total: number;
+  notShown: number;
+}
+
 export interface DigestEdition {
   editionDate: string;
+  audience: Audience;
+  includeUnderReview: boolean;
+  /** Subject prefix for samples, e.g. "[Sample 2]". */
+  sampleLabel: string | null;
   sample: boolean;
   /** Shown at the top of a sample edition: why it is a sample and what it covers. */
   sampleNote: string | null;
   window: DigestWindow;
   /** Verified events plus corrections and withdrawals, grouped by family. */
   families: FamilyGroup[];
-  /** Deliverable candidates; empty unless includeUnderReview. */
-  underReview: DigestItem[];
+  /** Redistributable candidates ("Under review, not verified"); empty when the setting is off. */
+  underReview: ReviewSection;
+  /** internal_only rows ("Internal only, not for clients"); always empty in a client edition. */
+  internalOnly: ReviewSection;
   /** Count in the headline and subject: verified events plus corrections. */
   mainCount: number;
   correctionCount: number;
@@ -324,7 +382,20 @@ export interface BuildOptions {
   window: DigestWindow;
   sample?: boolean;
   sampleNote?: string | null;
+  sampleLabel?: string | null;
+  /** Defaults to INCLUDE_UNDER_REVIEW_DEFAULT. */
   includeUnderReview?: boolean;
+  /** Defaults to "client". "internal" requires recipient to be in INTERNAL_RECIPIENTS. */
+  audience?: Audience;
+  recipient?: string;
+  /** Rows shown per review section; defaults to REVIEW_SECTION_CAP. */
+  reviewCap?: number;
+}
+
+export class InternalRecipientError extends Error {
+  constructor() {
+    super("internal_edition_recipient_not_allowed");
+  }
 }
 
 function isMain(env: EventEnvelope): boolean {
@@ -342,18 +413,39 @@ function byKnowledgeThenSeq(a: DigestItem, b: DigestItem): number {
   return ka < kb ? -1 : ka > kb ? 1 : a.seq - b.seq;
 }
 
+function capped(items: DigestItem[], cap: number): ReviewSection {
+  items.sort(byKnowledgeThenSeq);
+  const shown = items.slice(0, Math.max(0, cap));
+  return { items: shown, total: items.length, notShown: items.length - shown.length };
+}
+
 export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): DigestEdition {
-  const withheld: Record<WithheldReason, number> = { not_redistributable: 0, restricted_identifier_key: 0 };
+  const audience: Audience = opts.audience ?? "client";
+  if (audience === "internal" && !INTERNAL_RECIPIENTS.includes(opts.recipient ?? "")) {
+    throw new InternalRecipientError();
+  }
+  const includeUnderReview = opts.includeUnderReview ?? INCLUDE_UNDER_REVIEW_DEFAULT;
+  const cap = opts.reviewCap ?? REVIEW_SECTION_CAP;
+  const withheld: Record<WithheldReason, number> = {
+    not_redistributable: 0,
+    internal_only_in_client_edition: 0,
+    restricted_identifier_key: 0,
+  };
   const main: DigestItem[] = [];
   const review: DigestItem[] = [];
+  const internal: DigestItem[] = [];
   for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
-    const why = withheldReason(row.envelope);
+    const why = withheldReason(row.envelope, audience);
     if (why) {
       withheld[why]++;
       continue;
     }
-    if (isMain(row.envelope)) main.push(toItem(row));
-    else if (opts.includeUnderReview && row.envelope.lifecycle_status === "candidate") review.push(toItem(row));
+    // Belt and braces: whatever withheldReason says, a client edition never carries internal_only.
+    if (isInternalOnly(row.envelope)) {
+      if (audience === "internal") internal.push(toItem(row));
+      else withheld.internal_only_in_client_edition++;
+    } else if (isMain(row.envelope)) main.push(toItem(row));
+    else if (includeUnderReview && row.envelope.lifecycle_status === "candidate") review.push(toItem(row));
   }
 
   const groups = new Map<string, FamilyGroup & { order: number }>();
@@ -366,17 +458,23 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
   const families = [...groups.values()]
     .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
     .map(({ key, label, noun, items }) => ({ key, label, noun, items: items.sort(byKnowledgeThenSeq) }));
-  review.sort(byKnowledgeThenSeq);
+  const underReview = capped(review, cap);
+  const internalOnly = capped(internal, cap);
 
-  const delivered = [...main, ...review].sort((a, b) => a.seq - b.seq);
+  // The attachment holds exactly the rows the email shows.
+  const delivered = [...main, ...underReview.items, ...internalOnly.items].sort((a, b) => a.seq - b.seq);
   const body = delivered.map((i) => canonicalJson(i.envelope) + "\n").join("");
   return {
     editionDate: opts.editionDate,
+    audience,
+    includeUnderReview,
+    sampleLabel: opts.sample ? (opts.sampleLabel ?? "[Sample]") : null,
     sample: Boolean(opts.sample),
     sampleNote: opts.sample ? (opts.sampleNote ?? null) : null,
     window: opts.window,
     families,
-    underReview: review,
+    underReview,
+    internalOnly,
     mainCount: main.length,
     correctionCount: main.filter((i) => i.flag).length,
     withheld,
@@ -405,7 +503,10 @@ export function canonicalJson(value: unknown): string {
 
 export function digestSubject(ed: DigestEdition): string {
   const n = ed.mainCount;
-  return `${ed.sample ? "[Sample] " : ""}RiskModels Event Ledger — ${ed.editionDate} — ${n} ${n === 1 ? "event" : "events"}`;
+  const review = ed.underReview.total + ed.internalOnly.total;
+  return `${ed.sampleLabel ? `${ed.sampleLabel} ` : ""}RiskModels Event Ledger — ${ed.editionDate} — ${n} ${
+    n === 1 ? "event" : "events"
+  }${review ? ` — ${review} under review` : ""}`;
 }
 
 export function windowText(w: DigestWindow): string {
@@ -463,6 +564,7 @@ export function buildDigestDescriptor(ed: DigestEdition) {
     publisher: "RiskModels, a DBA of Blue Water Macro Corp.",
     edition_date: ed.editionDate,
     sample: ed.sample,
+    audience: ed.audience,
     window: ed.window,
     attachment: {
       filename: ed.attachment.filename,
@@ -489,12 +591,24 @@ export function buildDigestDescriptor(ed: DigestEdition) {
       corrections: "a correction is a new event whose supersedes_event_id names the event it replaces",
       timestamps: "ISO-8601 UTC",
     },
-    counts: { by_lifecycle_status: byLifecycle, by_event_type: byType },
+    counts: {
+      by_lifecycle_status: byLifecycle,
+      by_event_type: byType,
+      sections: {
+        main: ed.mainCount,
+        under_review: { shown: ed.underReview.items.length, total: ed.underReview.total },
+        ...(ed.audience === "internal"
+          ? { internal_only: { shown: ed.internalOnly.items.length, total: ed.internalOnly.total } }
+          : {}),
+      },
+    },
     selection: [
-      "Only events whose license is redistributable public record or derived data.",
+      ed.audience === "internal"
+        ? "Internal edition: redistributable events, plus internal_only rows under their own heading. Not for clients."
+        : "Only events whose license is redistributable public record or derived data.",
       "Verified events come from primary sources (SEC filings).",
-      ed.underReview.length
-        ? "Candidates appear in the file with lifecycle_status candidate and in the Under review section."
+      ed.includeUnderReview || ed.internalOnly.total
+        ? "Candidates appear under review, capped per section; the file holds exactly the rows shown."
         : "Candidates are not included.",
     ],
     validate: [
@@ -511,13 +625,34 @@ export function digestDescriptorJson(ed: DigestEdition): string {
   return JSON.stringify(buildDigestDescriptor(ed), null, 2);
 }
 
+// ── review sections (shared by the HTML and text parts) ─────────────────────
+
+export const UNDER_REVIEW_HEADING = "Under review, not verified";
+export const INTERNAL_ONLY_HEADING = "Internal only, not for clients";
+
+export function reviewSectionTitle(kind: "under_review" | "internal_only", sec: ReviewSection): string {
+  const shown = sec.notShown ? ` (showing ${sec.items.length})` : "";
+  return kind === "under_review"
+    ? `${UNDER_REVIEW_HEADING}: ${sec.total}${shown}`
+    : `${INTERNAL_ONLY_HEADING}. ${UNDER_REVIEW_HEADING}: ${sec.total}${shown}`;
+}
+
+export function reviewSectionNote(kind: "under_review" | "internal_only", sec: ReviewSection): string {
+  const more = sec.notShown
+    ? ` ${sec.notShown} more ${sec.notShown === 1 ? "row is" : "rows are"} not shown here or in the attached file.`
+    : "";
+  return kind === "under_review"
+    ? `These are candidates. Do not act on them as facts.${more}`
+    : `These rows are licensed for internal use only and must not be forwarded or sent to clients.${more}`;
+}
+
 // ── plain-text part ──────────────────────────────────────────────────────────
 
 export const DIGEST_FOOTER_LEGAL =
   "RiskModels is a registered DBA of Blue Water Macro Corp., 1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965. Historical record of public filings. Not investment advice.";
 
 function itemText(i: DigestItem): string[] {
-  const who = [i.ticker, i.company].filter(Boolean).join(" · ") || "Unnamed issuer";
+  const who = [i.ticker, i.company].filter(Boolean).join(" · ") || "Name not recorded";
   const lines = [
     `- ${who}${i.identifiers.length ? ` (${i.identifiers.join(", ")})` : ""}`,
     `  Event:     ${i.event}${i.eventDetail ? ` (${i.eventDetail})` : ""}`,
@@ -545,10 +680,12 @@ export function renderDigestText(ed: DigestEdition): string {
     out.push(title, "-".repeat(title.length));
     for (const i of f.items) out.push(...itemText(i), "");
   }
-  if (ed.underReview.length) {
-    out.push(`Under review, not verified: ${ed.underReview.length}`);
-    out.push("These are candidates. Do not act on them as facts.");
-    for (const i of ed.underReview) out.push(...itemText(i), "");
+  for (const kind of ["under_review", "internal_only"] as const) {
+    const sec = kind === "under_review" ? ed.underReview : ed.internalOnly;
+    if (!sec.total) continue;
+    const title = reviewSectionTitle(kind, sec);
+    out.push(title, "-".repeat(title.length), reviewSectionNote(kind, sec), "");
+    for (const i of sec.items) out.push(...itemText(i), "");
   }
   out.push(
     `Attached: ${ed.attachment.filename}, ${ed.attachment.lines} ${ed.attachment.lines === 1 ? "line" : "lines"}, one event per line in the published envelope.`,

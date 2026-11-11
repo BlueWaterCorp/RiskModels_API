@@ -15,6 +15,12 @@
  *   ... npx tsx scripts/event-ledger-digest.ts --knowledge-from 2026-06-11 --knowledge-to 2026-06-15 \
  *     --edition-date 2026-11-10 --sample --sample-note "..." [--send]
  *
+ * Sections: "Under review, not verified" is on by default (INCLUDE_UNDER_REVIEW_DEFAULT in
+ * lib/event-ledger-digest.ts); --no-under-review leaves it out for one run. --internal builds an
+ * internal edition that also lists internal_only rows under "Internal only, not for clients";
+ * it is refused unless the recipient is in INTERNAL_RECIPIENTS. Each review section shows at most
+ * --review-cap rows (default 20) and counts the rest. --sample-label sets the subject prefix.
+ *
  * Window: by default every event with ledger seq above the cursor (the seq of
  * the last edition sent). --since-seq N overrides the cursor for one run.
  * Without --send nothing is sent: the files are written to --out and the paths
@@ -41,6 +47,7 @@ import { render } from "@react-email/render";
 import { EventLedgerDigestEmail } from "../emails/event-ledger-digest";
 import {
   ATTACHMENT_MEDIA_TYPE,
+  INTERNAL_RECIPIENTS,
   buildDigest,
   digestSubject,
   renderDigestText,
@@ -130,6 +137,11 @@ async function main() {
     console.error("refused: recipient is not on the allowed list");
     process.exit(2);
   }
+  const audience = flag("internal") ? "internal" : "client";
+  if (audience === "internal" && !INTERNAL_RECIPIENTS.includes(to)) {
+    console.error("refused: an internal edition may go only to an internal recipient");
+    process.exit(2);
+  }
 
   // Edition date: the day the edition covers, which is the day before the send (Pacific).
   const editionDate = arg("edition-date") ?? ptDate(-1);
@@ -157,7 +169,11 @@ async function main() {
     window,
     sample: flag("sample"),
     sampleNote: arg("sample-note") ?? null,
-    includeUnderReview: flag("include-under-review"),
+    sampleLabel: arg("sample-label") ?? null,
+    includeUnderReview: flag("no-under-review") ? false : flag("include-under-review") ? true : undefined,
+    audience,
+    recipient: to,
+    reviewCap: arg("review-cap") !== undefined ? Number(arg("review-cap")) : undefined,
   });
   const html = await render(EventLedgerDigestEmail({ edition }));
   const text = renderDigestText(edition);
@@ -189,7 +205,9 @@ async function main() {
     rows_read: rows.length,
     main: edition.mainCount,
     corrections: edition.correctionCount,
-    under_review: edition.underReview.length,
+    audience,
+    under_review: { shown: edition.underReview.items.length, total: edition.underReview.total },
+    internal_only: { shown: edition.internalOnly.items.length, total: edition.internalOnly.total },
     withheld: edition.withheld,
     families: Object.fromEntries(edition.families.map((f) => [f.label, f.items.length])),
     attachment: { filename: edition.attachment.filename, lines: edition.attachment.lines, sha256: edition.attachment.sha256 },

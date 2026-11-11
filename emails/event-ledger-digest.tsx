@@ -6,6 +6,8 @@ import {
   DIGEST_FOOTER_LEGAL,
   digestDescriptorJson,
   headline,
+  reviewSectionNote,
+  reviewSectionTitle,
   windowText,
   type DigestEdition,
   type DigestItem,
@@ -42,6 +44,14 @@ const s = {
     borderBottom: "2px solid #d97706",
     paddingBottom: "4px",
   },
+  internalHeading: {
+    color: "#ffffff",
+    backgroundColor: "#7f1d1d",
+    fontSize: "15px",
+    fontWeight: "600",
+    margin: "22px 0 4px",
+    padding: "6px 10px",
+  },
   table: { width: "100%", tableLayout: "fixed" as const, borderCollapse: "collapse" as const, fontSize: "12px", lineHeight: "1.45" },
   th: {
     textAlign: "left" as const,
@@ -72,8 +82,8 @@ const COLUMNS: ReadonlyArray<[string, string]> = [
   ["Effective", "13%"],
   ["Known", "12%"],
   ["Ticker / company", "18%"],
-  ["Event", "29%"],
-  ["Status", "8%"],
+  ["Event", "27%"],
+  ["Status", "10%"],
   ["Source role", "8%"],
   ["Source", "12%"],
 ];
@@ -98,7 +108,7 @@ const Row = ({ i }: { i: DigestItem }) => (
     </td>
     <td style={s.td}>
       {i.ticker ? <strong>{i.ticker} </strong> : null}
-      {i.company ?? "Unnamed issuer"}
+      {i.company ?? "Name not recorded"}
       {i.identifiers.length ? (
         <>
           <br />
@@ -121,8 +131,8 @@ const Row = ({ i }: { i: DigestItem }) => (
         </>
       ) : null}
     </td>
-    <td style={{ ...s.td, ...(i.status === "verified" ? s.verified : s.candidate) }}>{i.status}</td>
-    <td style={s.td}>{i.sourceRole}</td>
+    <td style={{ ...s.td, wordBreak: "normal", ...(i.status === "verified" ? s.verified : s.candidate) }}>{i.status}</td>
+    <td style={{ ...s.td, wordBreak: "normal" }}>{i.sourceRole.replace(/_/g, " ")}</td>
     <td style={s.td}>
       {i.sourceUrl ? (
         <Link href={i.sourceUrl} style={s.link}>
@@ -189,13 +199,19 @@ export const EventLedgerDigestEmail = ({ edition, logoSrc = FEED_LOGO_URL }: Eve
           </Section>
         ))}
 
-        {edition.underReview.length ? (
-          <Section>
-            <Text style={s.reviewHeading}>Under review, not verified: {edition.underReview.length}</Text>
-            <Text style={s.window}>These are candidates. Do not act on them as facts.</Text>
-            <EventTable items={edition.underReview} />
-          </Section>
-        ) : null}
+        {(["under_review", "internal_only"] as const).map((kind) => {
+          const sec = kind === "under_review" ? edition.underReview : edition.internalOnly;
+          if (!sec.total) return null;
+          return (
+            <Section key={kind}>
+              <Text style={kind === "internal_only" ? s.internalHeading : s.reviewHeading}>
+                {reviewSectionTitle(kind, sec)}
+              </Text>
+              <Text style={s.window}>{reviewSectionNote(kind, sec)}</Text>
+              <EventTable items={sec.items} />
+            </Section>
+          );
+        })}
 
         <Text style={{ ...s.paragraph, marginTop: "22px", fontSize: "13px" }}>
           Attached: <strong>{edition.attachment.filename}</strong>, {edition.attachment.lines}{" "}

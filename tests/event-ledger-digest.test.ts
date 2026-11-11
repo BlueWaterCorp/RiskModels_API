@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 import { EventLedgerDigestEmail } from "@/emails/event-ledger-digest";
 import {
   ENVELOPE_REQUIRED_FIELDS,
+  INCLUDE_UNDER_REVIEW_DEFAULT,
+  INTERNAL_ONLY_HEADING,
+  InternalRecipientError,
   buildDigest,
   buildDigestDescriptor,
   canonicalJson,
@@ -98,7 +101,7 @@ describe("event ledger digest", () => {
     internal.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
     const ed = build([internal, ...ROWS.slice(1)]);
     expect(ed.mainCount).toBe(6);
-    expect(ed.withheld.not_redistributable).toBe(1);
+    expect(ed.withheld.internal_only_in_client_edition).toBe(1);
     const html = await render(EventLedgerDigestEmail({ edition: ed }));
     const text = renderDigestText(ed);
     const name = internal.envelope.payload!.issuer_name as string;
@@ -127,16 +130,64 @@ describe("event ledger digest", () => {
     expect(renderDigestText(ed)).toContain("FLAG:");
   });
 
-  it("leaves candidates out by default and labels them under review when asked", () => {
-    const cand = clone(ROWS[0]);
-    cand.envelope.lifecycle_status = "candidate";
-    expect(build([cand]).mainCount).toBe(0);
-    expect(build([cand]).attachment.lines).toBe(0);
-    const ed = build([cand], { includeUnderReview: true });
+  it("shows candidates under review by default, behind one setting, and capped", () => {
+    expect(INCLUDE_UNDER_REVIEW_DEFAULT).toBe(true);
+    const cands = ROWS.map((r) => {
+      const c = clone(r);
+      c.envelope.lifecycle_status = "candidate";
+      return c;
+    });
+    const ed = build(cands, { reviewCap: 3 });
     expect(ed.mainCount).toBe(0);
-    expect(ed.underReview).toHaveLength(1);
-    expect(ed.attachment.lines).toBe(1);
-    expect(renderDigestText(ed)).toContain("Under review, not verified: 1");
+    expect(ed.underReview).toMatchObject({ total: 7, notShown: 4 });
+    expect(ed.underReview.items).toHaveLength(3);
+    expect(ed.attachment.lines).toBe(3);
+    const text = renderDigestText(ed);
+    expect(text).toContain("Under review, not verified: 7 (showing 3)");
+    expect(text).toContain("4 more rows are not shown");
+    expect(digestSubject(ed)).toBe("RiskModels Event Ledger — 2026-11-10 — 0 events — 7 under review");
+    const off = build(cands, { includeUnderReview: false });
+    expect(off.underReview.total).toBe(0);
+    expect(off.attachment.lines).toBe(0);
+  });
+
+  it("never puts an internal_only row in a client edition, whatever the settings", async () => {
+    // A real row relicensed internal_only, as every current identifier_rekey candidate is.
+    const internal = clone(ROWS[0]);
+    internal.envelope.lifecycle_status = "candidate";
+    internal.envelope.source_role = "internal_derived";
+    internal.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
+    const name = internal.envelope.payload!.issuer_name as string;
+    for (const includeUnderReview of [true, false]) {
+      const ed = build([internal], { includeUnderReview, audience: "client", reviewCap: 100 });
+      expect(ed.internalOnly.total).toBe(0);
+      expect(ed.underReview.total).toBe(0);
+      expect(ed.attachment.lines).toBe(0);
+      const html = await render(EventLedgerDigestEmail({ edition: ed }));
+      for (const body of [html, renderDigestText(ed), ed.attachment.body]) {
+        expect(body).not.toContain(name);
+        expect(body).not.toContain(INTERNAL_ONLY_HEADING);
+      }
+    }
+    // Default audience is client.
+    expect(build([internal]).internalOnly.total).toBe(0);
+  });
+
+  it("shows internal_only rows only in an internal edition to the internal recipient", async () => {
+    const internal = clone(ROWS[0]);
+    internal.envelope.lifecycle_status = "candidate";
+    internal.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
+    expect(() => build([internal], { audience: "internal" })).toThrow(InternalRecipientError);
+    expect(() => build([internal], { audience: "internal", recipient: "analyst@example.com" })).toThrow(
+      InternalRecipientError,
+    );
+    const ed = build([internal, ...ROWS.slice(1)], { audience: "internal", recipient: "conrad@bwmacro.com" });
+    expect(ed.mainCount).toBe(6);
+    expect(ed.internalOnly.total).toBe(1);
+    expect(ed.attachment.lines).toBe(7);
+    const html = await render(EventLedgerDigestEmail({ edition: ed }));
+    expect(html).toContain("Internal only, not for clients. Under review, not verified: 1");
+    expect(renderDigestText(ed)).toContain("must not be forwarded or sent to clients");
   });
 
   it("says an empty day plainly", async () => {
@@ -156,7 +207,11 @@ describe("event ledger digest", () => {
     expect(descriptorFrom(html)).toEqual(expected);
     expect(descriptorFrom(text)).toEqual(expected);
     expect(expected.attachment).toMatchObject({ lines: 7, sha256: ed.attachment.sha256, format: "jsonl" });
-    expect(expected.counts).toEqual({ by_lifecycle_status: { verified: 7 }, by_event_type: { delisting: 7 } });
+    expect(expected.counts).toEqual({
+      by_lifecycle_status: { verified: 7 },
+      by_event_type: { delisting: 7 },
+      sections: { main: 7, under_review: { shown: 0, total: 0 } },
+    });
     for (const re of FORBIDDEN) {
       expect(html).not.toMatch(re);
       expect(text).not.toMatch(re);
