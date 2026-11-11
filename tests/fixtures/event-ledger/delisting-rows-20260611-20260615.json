@@ -1,0 +1,495 @@
+{
+ "_comment": "Seven real public.event_ledger rows (Form 25 delistings, SEC public record), read 2026-11-11 from production. Columns seq, published_at, envelope exactly as PostgREST returned them. Do not edit; tests derive variants from them in code.",
+ "rows": [
+  {
+   "seq": 4598,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0001348911",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/1348911/000135445726000565/xslF25X02/primary_doc.xml",
+     "source_id": "0001354457-26-000565",
+     "evidence_ref": "0001354457-26-000565",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0001354457-26-000565"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.95,
+     "file_number": "001-36830",
+     "issuer_name": "KalVista Pharmaceuticals, Inc.",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(a)(3)",
+     "security_description": "Common Stock",
+     "rule_12d2_2_effective_estimate": "2026-06-21"
+    },
+    "affected": {},
+    "event_id": "04d171ad-1467-58bf-aa22-3ac55f07b50b",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.95,
+    "dedupe_key": "9205549f0c7c2a10655b151c81a327c795b66dd7011df1ffe189a747d32be048",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.704524+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-11T00:00:00+00:00",
+    "knowledge_at": "2026-06-11T14:25:31+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  },
+  {
+   "seq": 4599,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0002029492",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/2029492/000135445726000567/xslF25X02/primary_doc.xml",
+     "source_id": "0001354457-26-000567",
+     "evidence_ref": "0001354457-26-000567",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0001354457-26-000567"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.7,
+     "file_number": "001-42436",
+     "issuer_name": "Mountain Lake Acquisition Corp.",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(a)(3)",
+     "security_description": "class a ordinary shares; rights; units",
+     "rule_12d2_2_effective_estimate": "2026-06-21"
+    },
+    "affected": {},
+    "event_id": "baa36414-eb71-5ccf-b587-e8f8951aaf13",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.7,
+    "dedupe_key": "086614002992913827e5cae1b90915e367af367ad3883f2bea3fc86e4faad665",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.704679+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-11T00:00:00+00:00",
+    "knowledge_at": "2026-06-11T19:06:57+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  },
+  {
+   "seq": 4600,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0002032950",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/2032950/000135445726000570/xslF25X02/primary_doc.xml",
+     "source_id": "0001354457-26-000570",
+     "evidence_ref": "0001354457-26-000570",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0001354457-26-000570"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.7,
+     "file_number": "333-282758",
+     "issuer_name": "Horizon Space Acquisition II Corp.",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(a)(3)",
+     "security_description": "Ordinary Shares, Rights, Units",
+     "rule_12d2_2_effective_estimate": "2026-06-22"
+    },
+    "affected": {},
+    "event_id": "cc40afac-f2aa-5124-a240-ec25aa068677",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.7,
+    "dedupe_key": "005bd37cbbf9bd4a9b3e63bde49356dd4fb6d565ac99bf07e40771462ccee931",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.704831+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-12T00:00:00+00:00",
+    "knowledge_at": "2026-06-12T16:10:40+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  },
+  {
+   "seq": 4601,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0001590364",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/1590364/000135445726000572/xslF25X02/primary_doc.xml",
+     "source_id": "0001354457-26-000572",
+     "evidence_ref": "0001354457-26-000572",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0001354457-26-000572"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.95,
+     "file_number": "001-37386",
+     "issuer_name": "FTAI Aviation Ltd.",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(a)(1)",
+     "security_description": "8.25% Fixed-Rate Reset Series C Cumulative Perpetual Redeemable Preferred Shares",
+     "rule_12d2_2_effective_estimate": "2026-06-22"
+    },
+    "affected": {},
+    "event_id": "1a40eecd-a4fe-5b06-86d5-c38d0fe1cb0f",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.95,
+    "dedupe_key": "0aeea5472d4119302dc8c6bac9d5dcfff7277ef1de57ba54bfa64ed9507e2887",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.705007+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-12T00:00:00+00:00",
+    "knowledge_at": "2026-06-12T16:14:46+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  },
+  {
+   "seq": 4602,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0000898174",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/898174/000087666126000529/xslF25X02/primary_doc.xml",
+     "source_id": "0000876661-26-000529",
+     "evidence_ref": "0000876661-26-000529",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0000876661-26-000529"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.7,
+     "file_number": "001-11848",
+     "issuer_name": "REINSURANCE GROUP OF AMERICA INC",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(a)(1)",
+     "security_description": "5.75% Fixed-To-Floating Rate Subordinated Debentures due 2056",
+     "rule_12d2_2_effective_estimate": "2026-06-25"
+    },
+    "affected": {},
+    "event_id": "30d50757-537a-5555-9058-2d9d4479d5f8",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.7,
+    "dedupe_key": "1e71a3b72d81e2b3804e443c7c9b2b92f83affaad971b9ca73aa08322b27b3a8",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.705157+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-15T00:00:00+00:00",
+    "knowledge_at": "2026-06-15T11:37:57+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  },
+  {
+   "seq": 4603,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0001403161",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/1403161/000087666126000531/xslF25X02/primary_doc.xml",
+     "source_id": "0000876661-26-000531",
+     "evidence_ref": "0000876661-26-000531",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0000876661-26-000531"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.7,
+     "file_number": "001-33977",
+     "issuer_name": "VISA INC.",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(a)(2)",
+     "security_description": "1.500% Senior Notes due 2026",
+     "rule_12d2_2_effective_estimate": "2026-06-25"
+    },
+    "affected": {},
+    "event_id": "71a9f0bd-1bb6-5d96-8fd6-60fdb2463a36",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.7,
+    "dedupe_key": "e4c1f406c602b606f36462f68e639b0dd369b6df090df45520d7d540d27e926b",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.705310+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-15T00:00:00+00:00",
+    "knowledge_at": "2026-06-15T11:47:46+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  },
+  {
+   "seq": 4604,
+   "published_at": "2026-07-28T18:11:57.355362+00:00",
+   "envelope": {
+    "entity": {
+     "cik": "0001984014",
+     "figi": null,
+     "ticker": null,
+     "bw_sym_id": null,
+     "match_tier": null,
+     "entity_name": null,
+     "quarantined": false,
+     "mapping_confidence": null
+    },
+    "source": {
+     "url": "https://www.sec.gov/Archives/edgar/data/1984014/000135445726000573/xslF25X02/primary_doc.xml",
+     "source_id": "0001354457-26-000573",
+     "evidence_ref": "0001354457-26-000573",
+     "source_system": "edgar_corporate_actions",
+     "evidence_sha256": null,
+     "accession_number": "0001354457-26-000573"
+    },
+    "license": {
+     "basis": "sec_public_record",
+     "classification": "public_record",
+     "redistributable": true
+    },
+    "payload": {
+     "confidence": 0.95,
+     "file_number": "333-275223",
+     "issuer_name": "Harrison Global Holdings Inc.",
+     "source_form": "25-NSE",
+     "source_item": null,
+     "entity_mapping": "unmapped_cik",
+     "rule_provision": "17 CFR 240.12d2-2(b)",
+     "security_description": "Ordinary Shares",
+     "rule_12d2_2_effective_estimate": "2026-06-25"
+    },
+    "affected": {},
+    "event_id": "4a756f60-5ba5-5715-9e44-7e829de9b3cc",
+    "programs": [
+     "changefeed"
+    ],
+    "confidence": 0.95,
+    "dedupe_key": "6288b7cd84589152eabab386d94d064c863b3a7d586e2baee4595aa5dd538f4b",
+    "event_type": "delisting",
+    "provenance": {
+     "run_id": "ledger-20260728T181126Z",
+     "adapter": "edgar_delisting",
+     "contributor": null,
+     "adapter_version": "1.1.0"
+    },
+    "ingested_at": "2026-07-28T18:11:28.705460+00:00",
+    "risk_layers": [],
+    "source_role": "primary",
+    "effective_at": "2026-06-15T00:00:00+00:00",
+    "knowledge_at": "2026-06-15T11:11:37+00:00",
+    "schema_version": "1.0.0",
+    "effective_basis": "form25_signature_date",
+    "knowledge_basis": "sec_acceptance_datetime",
+    "lifecycle_status": "verified",
+    "validation_state": null,
+    "correction_reason": null,
+    "first_observed_at": null,
+    "source_published_at": null,
+    "supersedes_event_id": null,
+    "first_observed_basis": "not_recorded_pre_ledger",
+    "corroborates_event_id": null
+   }
+  }
+ ]
+}

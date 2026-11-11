@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Daily Event Ledger edition at 07:00 local time (Pacific on the M4).
+  OFF: Disabled is true and the file is not installed. Turning it on is
+  Conrad's decision; the steps are in the header of
+  scripts/event-ledger-digest.ts ("Turning the schedule on").
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>app.riskmodels.event-ledger-digest</string>
+  <key>Disabled</key>
+  <true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd ~/BW_Code/RiskModels_API &amp;&amp; doppler run --project erm3 --config prd -- npx tsx scripts/event-ledger-digest.ts --send --advance-cursor &gt;&gt; ~/Library/Logs/event-ledger-digest.log 2&gt;&amp;1</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
