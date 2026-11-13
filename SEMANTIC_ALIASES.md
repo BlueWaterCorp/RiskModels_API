@@ -271,7 +271,7 @@ Applying `l2_sector_beta` to `cohort_factor_return` double-counts the market. Ap
 | Field | Unit | Description |
 |---|---|---|
 | `linked_beta` | dimensionless | Beta of this cohort's factor to its parent's, from a 252-day rolling regression (`min_periods` 126). Orthogonal basis: it multiplies the **cleaned** parent level, never the raw parent instrument. Equal to `beta_parent_orth` at both levels. |
-| `link_fit_resid_sd` | decimal (daily) | Residual standard deviation of that 252-day link regression — how much of the cohort factor its parent does **not** explain, in return units. See the caution below. |
+| `link_fit_resid_sd` | dimensionless | Classical OLS standard error of `linked_beta`, from that same 252-day link regression on the window's common sample. See the note below. |
 | `linked_beta_r2` | decimal_fraction | R² of that regression — the **cohort factor's** fit on its parent. **Not** the same quantity as `cohort_ER`. |
 | `linked_beta_roll63` | dimensionless | 63-day variant of `linked_beta`. Divergence from `linked_beta` is beta *instability*, which is itself informative. |
 | `cohort_factor_return` | decimal (daily) | The cohort's proxy instrument's own total return, **raw** — not net of the market. See the note above. |
@@ -279,7 +279,7 @@ Applying `l2_sector_beta` to `cohort_factor_return` double-counts the market. Ap
 | `cohort_ER` | decimal_fraction | Mean **member's** explained risk attributed to this cohort's level. Incremental, can be slightly negative — see below. |
 | `factor_source` | integer code | Provenance of the factor return that day. `0` = native; non-zero means a substitute instrument backed it. |
 
-**`link_fit_resid_sd` is not a standard error of `linked_beta`.** It is the residual SD of the link regression — a fit-quality / dispersion measure in daily-return units. Nothing in the store carries the sampling uncertainty of `linked_beta`; do not build confidence intervals from this field. (The former name `linked_beta_se` was removed on 2026-08-25; it was never a standard error.)
+**`link_fit_resid_sd` is the OLS standard error of `linked_beta`.** It is `sqrt(SSE / ((n − 2) · Sxx))` for the link slope, with n, SSE and Sxx taken on the window's common sample of dates where the cohort factor and its orthogonalized parent are both observed (n − 2 residual degrees of freedom; n is between 126 and 252). It is homoskedastic and conditional on the realized parent series, so it does not include parent-construction or beta-drift uncertainty. Like `linked_beta`, it is held at the prior week-end fit within each week. The name is unchanged for compatibility (ERM3-10, 2026-10-26). The former name `linked_beta_se` was removed on 2026-08-25.
 
 **`cohort_ER` is an incremental attribution (`er_level − er_prev`), not an R² share.** It can be slightly negative and does **not** sum to 1 — do not clamp it to [0, 1] or render it as a percentage of a total. It is a different quantity from `linked_beta_r2` (measured correlation ≈ **−0.15**): `cohort_ER` is the *average member stock's* explained variance at this level, while `linked_beta_r2` is the *cohort factor's* explained variance against its parent factor. Never write "explained variance" for either without saying **whose**.
 
