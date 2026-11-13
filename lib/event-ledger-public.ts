@@ -132,3 +132,23 @@ export function buildPublicLatest(
     events: verified.map(toPublic),
   };
 }
+
+/**
+ * Queries the public file is built from. Verified events alone are not enough: a withdrawal
+ * (rejected) or correction that supersedes an event must be read too, or the original it replaces
+ * would be shown unflagged.
+ */
+export const PUBLIC_LATEST_QUERIES = [
+  "envelope->>lifecycle_status=in.(verified,rejected,superseded)",
+  "envelope->>supersedes_event_id=not.is.null",
+] as const;
+
+/** Fetches with `getRows` (one PostgREST filter per call), merges by seq, and builds the file. */
+export async function loadPublicLatest(
+  getRows: (query: string) => Promise<LedgerRow[]>,
+  opts: { generatedAt: string; count?: number },
+): Promise<PublicLatestFile> {
+  const bySeq = new Map<number, LedgerRow>();
+  for (const q of PUBLIC_LATEST_QUERIES) for (const r of await getRows(q)) bySeq.set(r.seq, r);
+  return buildPublicLatest([...bySeq.values()], opts);
+}

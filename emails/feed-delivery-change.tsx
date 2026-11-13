@@ -16,6 +16,8 @@ export interface FeedDeliveryChangeEmailProps {
   inbox: string;
   /** Whether the request also stops delivery to the contact's own address once the inbox confirms. */
   stopContact: boolean;
+  /** "footer": someone used the link in an edition; "operator": RiskModels set it up at the contact's request. */
+  requestedBy?: "footer" | "operator";
   /** Page with the confirm button; carries the single-use token. */
   confirmUrl: string;
   unsubscribeUrl: string;
@@ -28,6 +30,7 @@ export const FeedDeliveryChangeEmail = ({
   name = null,
   inbox = "your team inbox",
   stopContact = false,
+  requestedBy = "footer",
   confirmUrl = `${BASE_URL}/security-master-feed/delivery/confirm`,
   unsubscribeUrl = `${BASE_URL}/security-master-feed/unsubscribe`,
   logoSrc = FEED_LOGO_URL,
@@ -43,7 +46,9 @@ export const FeedDeliveryChangeEmail = ({
         <Text style={styles.paragraph}>{name ? `Hello ${name},` : "Hello,"}</Text>
 
         <Text style={styles.paragraph}>
-          Someone used the link in your copy of the Event Ledger to ask for the editions to go to{" "}
+          {requestedBy === "operator"
+            ? "RiskModels has set up a request, on your behalf, for your Event Ledger editions to go to "
+            : "Someone used the link in your copy of the Event Ledger to ask for the editions to go to "}
           <strong>{inbox}</strong>.
           {stopContact
             ? " Once that inbox confirms, editions will stop coming to this address."

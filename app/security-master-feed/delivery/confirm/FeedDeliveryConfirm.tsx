@@ -6,11 +6,8 @@ import { useFeedSecret } from "@/components/feed/useFeedSecret";
 type State = "ready" | "saving" | "done" | "invalid" | "error";
 
 export function FeedDeliveryConfirm() {
-  // Read from the stash, not the URL: the head script removed them before analytics loaded.
+  // Read from the stash, not the URL: the head script removed it before analytics loaded.
   const token = useFeedSecret("token");
-  // The inbox the email named, shown so the reader knows what they confirm. The server acts on the
-  // inbox stored with the request, never on this value.
-  const inbox = useFeedSecret("inbox");
   const [state, setState] = useState<State>("ready");
 
   async function confirm() {
@@ -40,8 +37,7 @@ export function FeedDeliveryConfirm() {
       ) : (
         <>
           <p className="mb-6">
-            Confirm that editions of the Event Ledger should go to{" "}
-            {inbox ? <strong className="text-white break-all">{inbox}</strong> : "the team inbox named in your email"}.
+            Confirm that editions of the Event Ledger should go to the team inbox named in your email.
           </p>
           <button
             type="button"

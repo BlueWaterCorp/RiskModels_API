@@ -16,8 +16,9 @@
  *
  * - invite: the existing personal invitation (lib/feed-invite.ts). Never records consent.
  * - resend-confirm: a new confirmation email for a pending address, through the same atomic,
- *   throttled claim as a signup. It is not a submission, so it applies the terms, marketing and
- *   referral values of the signup that is already pending, and changes none of them.
+ *   throttled claim as a signup. For a contact it is not a submission: it keeps the terms,
+ *   marketing and referral values of the signup already pending (the email states the marketing
+ *   choice). For a delivery address it resets them, as every delivery claim does.
  * - unsubscribe: sets unsubscribed_at (first use only) and clears the marketing opt-in.
  * - add-delivery: the same request as the edition footer's "Send this to your team inbox instead":
  *   the CONTACT's own address gets the confirmation email, and only their click links the inbox,
@@ -38,6 +39,7 @@ import {
   sendFeedDeliveryChangeConfirmation,
   type FeedConfirmRow,
 } from "../lib/feed-email";
+import { DELIVERY_CLAIM_VALUES } from "../lib/feed-delivery";
 import {
   CONFIRM_MAX_SENDS,
   CONFIRM_MIN_INTERVAL_SEC,
@@ -72,15 +74,20 @@ function email(v: Values, name: string): string {
 
 async function resendConfirm(v: Values): Promise<string> {
   const admin = createAdminClient();
+  const address = email(v, "email");
+  const { data: r, error: readError } = await admin.from("feed_waitlist").select("purpose").eq("email", address).maybeSingle();
+  if (readError) throw new AdminError("read_failed");
+  // A delivery address never carries marketing, terms or referral: reset anything pending on it.
+  const values = (r as { purpose?: string } | null)?.purpose === "feed" ? DELIVERY_CLAIM_VALUES : { p_from_submission: false };
   const fresh = newConfirmToken();
   const { data, error } = await admin.rpc("feed_waitlist_claim_confirmation", {
-    p_email: email(v, "email"),
+    p_email: address,
     p_token_hash: fresh.hash,
     p_expires_at: new Date(Date.now() + CONFIRM_TOKEN_TTL_MS).toISOString(),
     p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
     p_max_sends: CONFIRM_MAX_SENDS,
     p_window_seconds: CONFIRM_WINDOW_SEC,
-    p_from_submission: false,
+    ...values,
   });
   if (error) throw new AdminError("claim_failed");
   const row = Array.isArray(data) && data.length > 0 ? (data[0] as FeedConfirmRow) : null;
@@ -151,7 +158,7 @@ async function addDelivery(v: Values): Promise<string> {
     await sendFeedDeliveryChangeConfirmation(
       { email: claim.email, name: claim.name, unsubscribe_token: claim.unsubscribe_token },
       fresh.token,
-      { inbox: claim.delivery_change_email ?? inbox, stopContact: false },
+      { inbox: claim.delivery_change_email ?? inbox, stopContact: false, requestedBy: "operator" },
     );
   } catch {
     throw new AdminError("send_failed");

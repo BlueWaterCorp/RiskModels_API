@@ -87,7 +87,7 @@ import {
   type FooterRecipient,
   type LedgerRow,
 } from "../lib/event-ledger-digest";
-import { buildPublicLatest } from "../lib/event-ledger-public";
+import { loadPublicLatest } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
 
 /** The only addresses a single-address edition may go to. List sends go to the list. */
@@ -274,8 +274,8 @@ function readSentLog(path: string, edition: DigestEdition): SentLog["sent"] {
 }
 
 async function writePublicJson(path: string) {
-  const rows = await getRows("envelope->>lifecycle_status=eq.verified");
-  const file = buildPublicLatest(rows, { generatedAt: new Date().toISOString() });
+  // Verified events plus every withdrawal or correction, so superseded originals are dropped.
+  const file = await loadPublicLatest(getRows, { generatedAt: new Date().toISOString() });
   const body = JSON.stringify(file, null, 2) + "\n";
   if (restrictedWordHits(body).length || priceOrCapHits(body).length) throw new Error("refused_public_json_output_check");
   writeFileSync(resolve(path), body);

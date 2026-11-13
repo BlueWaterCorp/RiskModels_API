@@ -38,10 +38,9 @@ import { FeedDeliveryChangeEmail, FEED_DELIVERY_CHANGE_SUBJECT } from "@/emails/
 
 export { FEED_PAGE_URL };
 
-/** The inbox rides along for display only; the server acts on the inbox stored with the request. */
-export function feedDeliveryChangeConfirmPageUrl(token: string, inbox?: string): string {
-  const shown = inbox ? `&inbox=${encodeURIComponent(inbox)}` : "";
-  return `${FEED_PAGE_URL}/delivery/confirm?token=${encodeURIComponent(token)}${shown}`;
+/** Token only: the inbox is named in the email text, and the server acts on the inbox stored with the request. */
+export function feedDeliveryChangeConfirmPageUrl(token: string): string {
+  return `${FEED_PAGE_URL}/delivery/confirm?token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -51,14 +50,15 @@ export function feedDeliveryChangeConfirmPageUrl(token: string, inbox?: string):
 export async function sendFeedDeliveryChangeConfirmation(
   row: { email: string; name: string | null; unsubscribe_token: string },
   token: string,
-  change: { inbox: string; stopContact: boolean },
+  change: { inbox: string; stopContact: boolean; requestedBy?: "footer" | "operator" },
 ): Promise<{ id: string }> {
   const { html, text } = await renderBoth(
     FeedDeliveryChangeEmail({
       name: row.name,
       inbox: change.inbox,
       stopContact: change.stopContact,
-      confirmUrl: feedDeliveryChangeConfirmPageUrl(token, change.inbox),
+      requestedBy: change.requestedBy ?? "footer",
+      confirmUrl: feedDeliveryChangeConfirmPageUrl(token),
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
     }),
   );

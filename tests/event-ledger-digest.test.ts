@@ -12,6 +12,7 @@ import {
   editionFooter,
   internalFooter,
   priceOrCapHits,
+  valueViolations,
   licenseLabel,
   marketCapHits,
   INCLUDE_UNDER_REVIEW_DEFAULT,
@@ -27,7 +28,7 @@ import {
   type LedgerRow,
 } from "@/lib/event-ledger-digest";
 import { buildMimeMessage } from "@/lib/event-ledger-digest-mime";
-import { buildPublicLatest } from "@/lib/event-ledger-public";
+import { PUBLIC_LATEST_QUERIES, buildPublicLatest, loadPublicLatest } from "@/lib/event-ledger-public";
 
 // Seven real production rows (Form 25 delistings, knowledge dates 2026-06-11..15) and the
 // bytes ERM3's contract.to_json produces for them. Variants below change one field of a real row.
@@ -371,6 +372,51 @@ describe("event ledger digest", () => {
       expect(marketCapHits('{"marketCapUsd":1}')).not.toEqual([]);
     });
 
+    it("checks values at allowed paths: fixed sets, numbers, a ticker pattern, strings elsewhere", () => {
+      for (const r of ROWS) expect(valueViolations(r.envelope)).toEqual([]);
+      const variants: Array<[string, (r: LedgerRow) => void]> = [
+        ["validation_state", (r) => ((r.envelope as Record<string, unknown>).validation_state = "close 12.41")],
+        ["provenance.contributor", (r) => ((r.envelope.provenance as Record<string, unknown>).contributor = "someone")],
+        ["confidence", (r) => ((r.envelope as Record<string, unknown>).confidence = "0.95")],
+        ["payload.confidence", (r) => ((r.envelope.payload as Record<string, unknown>).confidence = 95)],
+        ["entity.ticker", (r) => ((r.envelope.entity as Record<string, unknown>).ticker = "12.41 USD")],
+        ["payload.issuer_name", (r) => ((r.envelope.payload as Record<string, unknown>).issuer_name = 12.41)],
+        ["programs[]", (r) => ((r.envelope as Record<string, unknown>).programs = ["changefeed", "prices"])],
+      ];
+      for (const [label, mutate] of variants) {
+        const bad = clone(ROWS[0]);
+        mutate(bad);
+        expect(valueViolations(bad.envelope), label).toContain(label);
+        expect(build([bad]).withheld.value_not_allowed, label).toBe(1);
+      }
+      const ok = clone(ROWS[0]);
+      ok.envelope.entity = { ...ok.envelope.entity, ticker: "BRK.B" };
+      expect(valueViolations(ok.envelope)).toEqual([]);
+    });
+
+    it("scans filing text for price and market value prose, after NFKC and zero-width stripping", () => {
+      for (const text of [
+        "Common Stock; last price $12.41",
+        "Common Stock (last sale 12.41)",
+        "aggregate market value of $40 million",
+        "Common Stock, mkt cap 1.2B",
+        "Common Stock at a share price of $3",
+        "Common Stock, market\u200Bcap 1.2B",
+        "Common Stock, ｍａｒｋｅｔ ｃａｐ 1.2B",
+        "Common Stock, last\u00ADprice 9",
+      ]) {
+        expect(priceOrCapHits(JSON.stringify({ security_description: text })), text).not.toEqual([]);
+        const ed = build([withPayload({ security_description: text })]);
+        expect(ed.withheld.market_cap_or_price, text).toBe(1);
+      }
+      for (const text of [
+        "Warrants, each exercisable for one share at an exercise price of $11.50",
+        "MCAP Acquisition Corporation Unit",
+      ]) {
+        expect(priceOrCapHits(JSON.stringify({ security_description: text })), text).toEqual([]);
+      }
+    });
+
     it("applies the allow-list and the scan to client editions only (internal goes to INTERNAL_RECIPIENTS)", () => {
       const ed = build([withPayload({ market_cap: 1 })], { audience: "internal", recipient: "conrad@bwmacro.com" });
       expect(ed.mainCount).toBe(1);
@@ -499,6 +545,37 @@ describe("event ledger digest", () => {
       wd.envelope.lifecycle_status = "rejected";
       wd.envelope.correction_reason = "filing withdrawn";
       expect(buildPublicLatest([wd], { generatedAt: "2026-11-13T18:00:00Z" }).events[0].flag).toBe("Withdrawn: filing withdrawn");
+    });
+
+    it("fetches withdrawals and corrections as well as verified events, so the original is dropped", async () => {
+      // A real row withdrawn by a later rejected event that supersedes it.
+      const wd = clone(ROWS[3]);
+      wd.seq = 99998;
+      wd.envelope.event_id = "a0c0ffee-0000-5000-8000-000000000002";
+      wd.envelope.lifecycle_status = "rejected";
+      wd.envelope.supersedes_event_id = ROWS[2].envelope.event_id;
+      wd.envelope.correction_reason = "filing withdrawn";
+      const table = [...ROWS, wd];
+      const queries: string[] = [];
+      // A stand-in for the PostgREST read that honours the two filters the loader sends.
+      const getRows = async (q: string) => {
+        queries.push(q);
+        if (q === PUBLIC_LATEST_QUERIES[0]) {
+          return table.filter((r) => ["verified", "rejected", "superseded"].includes(String(r.envelope.lifecycle_status)));
+        }
+        if (q === PUBLIC_LATEST_QUERIES[1]) return table.filter((r) => r.envelope.supersedes_event_id);
+        throw new Error(`unexpected query ${q}`);
+      };
+      const file = await loadPublicLatest(getRows, { generatedAt: "2026-11-13T18:00:00Z" });
+      expect(queries).toEqual([...PUBLIC_LATEST_QUERIES]);
+      const ids = file.events.map((e) => e.event_id);
+      expect(ids).not.toContain(ROWS[2].envelope.event_id);
+      expect(file.events.find((e) => e.event_id === wd.envelope.event_id)?.flag).toContain("Correction of event");
+      // The old verified-only read would have shown the original unflagged.
+      const verifiedOnly = buildPublicLatest(table.filter((r) => r.envelope.lifecycle_status === "verified"), {
+        generatedAt: "2026-11-13T18:00:00Z",
+      });
+      expect(verifiedOnly.events.map((e) => e.event_id)).toContain(ROWS[2].envelope.event_id);
     });
 
     it("states in its selection text that ticker and company name are derived", () => {

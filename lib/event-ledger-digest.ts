@@ -174,6 +174,7 @@ export type WithheldReason =
   | "internal_only_in_client_edition"
   | "restricted_identifier_key"
   | "path_not_on_allow_list"
+  | "value_not_allowed"
   | "market_cap_or_price";
 
 /**
@@ -184,16 +185,19 @@ export type WithheldReason =
  * received, a vendor code). Figures computed from market cap (weights, ranks, buckets, size factors,
  * risk metrics) are derived data.
  *
- * Two layers, both client-only; an event that fails either is withheld whole (the published envelope
+ * Three layers, all client-only; an event that fails any is withheld whole (the published envelope
  * is never edited):
  *   1. ALLOW-LIST. Every key path of the envelope, top-level keys, source, provenance, risk_layers and
  *      payload included, must be on CLIENT_ALLOWED_PATHS for its event_type. An event type with no list
  *      never reaches a client. A new field reaches clients only after it is traced in the internal
  *      source register (BWMACRO docs/EVENT_LEDGER_SOURCE_REGISTER.md) and added here.
- *   2. SCAN. priceOrCapHits() looks through the whole serialized envelope, and again through every
+ *   2. VALUES. valueViolations(): fixed sets, numbers and a ticker pattern where the register says so;
+ *      every other allowed leaf must be a string or null.
+ *   3. SCAN. priceOrCapHits() looks through the whole serialized envelope, and again through every
  *      rendered copy and the attachment, for identifiers that name an exact market cap or a price,
  *      case-aware (marketCapUsd, market_cap_log, weighted_market_cap, market_value, float_cap,
- *      closePrice, lastPrice, px_last, ...), and for the phrase "market cap". Ordinary prose such as a
+ *      closePrice, lastPrice, px_last, ...), and for prose such as "market cap", "aggregate market value",
+ *      "last price", "last sale" and "share price", after NFKC and zero-width stripping. Ordinary prose such as a
  *      warrant's "exercise price" in a Form 25 security description is public-record text and passes.
  */
 
@@ -291,6 +295,54 @@ export function allowListViolations(env: EventEnvelope): string[] {
   return allowed ? out : ["event_type"];
 }
 
+const isNull = (v: unknown) => v === null || v === undefined;
+const nullOr = (test: (v: unknown) => boolean) => (v: unknown) => isNull(v) || test(v);
+const unitNumber = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+const oneOf = (...xs: readonly unknown[]) => (v: unknown) => xs.includes(v);
+const isString = (v: unknown) => typeof v === "string";
+
+/**
+ * Value rules at allowed paths (client). Sets are the values seen in live data on 2026-11-13; a new
+ * value is withheld until it is reviewed and added. Every other allowed scalar leaf must be a
+ * string or null (filing text, ids, dates), so a number, object or array cannot hide there.
+ */
+const VALUE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
+  validation_state: isNull,
+  "provenance.contributor": isNull,
+  confidence: nullOr(unitNumber),
+  "payload.confidence": nullOr(unitNumber),
+  "entity.mapping_confidence": nullOr(unitNumber),
+  "entity.quarantined": (v) => typeof v === "boolean",
+  "license.redistributable": (v) => typeof v === "boolean",
+  "entity.ticker": nullOr((v) => typeof v === "string" && /^[A-Z][A-Z0-9]{0,5}([.-][A-Z0-9]{1,3})?$/.test(v)),
+  "programs[]": oneOf("changefeed"),
+  schema_version: oneOf("1.0.0"),
+  lifecycle_status: oneOf("candidate", "verified", "rejected", "superseded"),
+  source_role: oneOf("discovery", "primary", "corroborating", "contributor", "internal_derived"),
+};
+
+/** Allowed paths whose value breaks VALUE_RULES (or is not a string/null where no rule is set). */
+export function valueViolations(env: EventEnvelope): string[] {
+  const out: string[] = [];
+  const walk = (v: unknown, path: string) => {
+    if (Array.isArray(v)) {
+      for (const item of v) walk(item, `${path}[]`);
+    } else if (v && typeof v === "object") {
+      for (const [k, child] of Object.entries(v as Record<string, unknown>)) walk(child, path ? `${path}.${k}` : k);
+    } else {
+      const rule = VALUE_RULES[path] ?? nullOr(isString);
+      if (!rule(v)) out.push(path);
+    }
+  };
+  walk(env, "");
+  return out;
+}
+
+/** NFKC, zero-width characters and soft hyphens removed: what a reader actually sees. */
+export function normalizeForScan(s: string): string {
+  return s.normalize("NFKC").replace(/[\u200B-\u200D\u2060\uFEFF\u00AD]/g, "");
+}
+
 /** camelCase and kebab to snake_case, lowercased: marketCapUsd -> market_cap_usd. */
 function snake(ident: string): string {
   return ident
@@ -306,14 +358,26 @@ const CAP_DERIVED_AFTER_RE =
   /(market_?cap(s|itali[sz]ation)?|mkt_?cap|mcap|market_?value|float_?cap)_(.*_)?(weight|weights|rank|ranks|ranking|bucket|buckets|band|bands|tier|decile|quintile|percentile|factor|exposure|beta|z|zscore|score)(_|$)/;
 const PRICE_IDENT_RE =
   /(^|_)(close_price|closing_price|last_price|price_close|price_last|px_last|px_close|last_px|close_px|adj_close|adjusted_close|vwap|ohlc|ohlcv|last_trade_date|last_traded_date|market_price)(_|$)/;
-const CAP_PHRASE_RE =
-  /\bmarket\s+cap(s|itali[sz]ation)?\b(?!\s+(weight|weights|rank|ranks|bucket|buckets|band|bands|tier|decile|quintile|percentile|factor|exposure))/i;
+const DERIVED_NEXT = String.raw`(?!\s+(weight|weights|rank|ranks|bucket|buckets|band|bands|tier|decile|quintile|percentile|factor|exposure))`;
+/**
+ * Prose that names a market value or a trade price. None of these occurs in the live filing text;
+ * a warrant's "exercise price of $11.50" (107 live Form 25 descriptions) is not among them.
+ */
+const PROSE_RES: ReadonlyArray<[string, RegExp]> = [
+  ["market cap", new RegExp(String.raw`\bmarket\s*cap(s|itali[sz]ation)?\b` + DERIVED_NEXT, "i")],
+  ["mkt cap", new RegExp(String.raw`\bmkt\.?\s*cap\b` + DERIVED_NEXT, "i")],
+  ["aggregate market value", /\baggregate\s*market\s*value\b/i],
+  ["last price", /\blast\s*(traded\s*)?price\b/i],
+  ["last sale", /\blast\s*sale(\s*price)?\b/i],
+  ["share price", /\bshare\s*price\b/i],
+];
 
 /** Market cap or price identifiers (case-aware) and the phrase "market cap" in the bodies; empty means none. */
 export function priceOrCapHits(...bodies: string[]): string[] {
   const hits = new Set<string>();
-  for (const body of bodies) {
-    if (CAP_PHRASE_RE.test(body)) hits.add("phrase:market cap");
+  for (const raw of bodies) {
+    const body = normalizeForScan(raw);
+    for (const [label, re] of PROSE_RES) if (re.test(body)) hits.add(`phrase:${label}`);
     // JSON keys are checked whatever their form; elsewhere only compound identifiers (snake_case,
     // camelCase), so a company called "MCAP Acquisition Corporation" (a live Form 25 issuer) passes.
     const keys = [...body.matchAll(/"([A-Za-z][A-Za-z0-9_-]*)"\s*:/g)].map((m) => m[1]);
@@ -392,6 +456,7 @@ export function withheldReason(env: EventEnvelope, audience: Audience = "client"
   if (RESTRICTED_OUTPUT_RES.some((re) => re.test(serialized))) return "restricted_identifier_key";
   if (isInternalOnly(env)) return audience === "internal" ? null : "internal_only_in_client_edition";
   if (audience === "client" && allowListViolations(env).length) return "path_not_on_allow_list";
+  if (audience === "client" && valueViolations(env).length) return "value_not_allowed";
   if (audience === "client" && priceOrCapHits(serialized).length) return "market_cap_or_price";
   const lic = env.license ?? {};
   if (lic.redistributable !== true) return "not_redistributable";
@@ -669,6 +734,7 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
     internal_only_in_client_edition: 0,
     restricted_identifier_key: 0,
     path_not_on_allow_list: 0,
+    value_not_allowed: 0,
     market_cap_or_price: 0,
   };
   const main: DigestItem[] = [];

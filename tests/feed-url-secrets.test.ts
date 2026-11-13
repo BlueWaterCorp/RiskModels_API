@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FEED_SECRET_STASH_SCRIPT, sanitizeFeedSecrets, stripFeedSecrets } from "@/lib/feed-url-secrets";
+import { FEED_SECRET_STASH_SCRIPT, readFeedSecret, sanitizeFeedSecrets, stripFeedSecrets } from "@/lib/feed-url-secrets";
 
 const TOKEN = "3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f";
 
@@ -47,5 +47,33 @@ describe("feed link secrets never reach analytics", () => {
     );
     expect(replaced).toBe("/security-master-feed/unsubscribe?utm_source=x");
     expect(Object.values(store)).toEqual([TOKEN]);
+  });
+
+  it("keeps the page working when the browser blocks storage: the token stays in memory", () => {
+    let replaced: string | null = null;
+    const fakeWindow: Record<string, unknown> = {
+      location: { pathname: "/security-master-feed/unsubscribe", search: `?token=${TOKEN}`, hash: "" },
+    };
+    const blocked = {
+      setItem: () => {
+        throw new Error("SecurityError");
+      },
+      getItem: () => {
+        throw new Error("SecurityError");
+      },
+    };
+    const run = new Function("window", "sessionStorage", "history", "URLSearchParams", FEED_SECRET_STASH_SCRIPT);
+    run(fakeWindow, blocked, { state: null, replaceState: (_s: unknown, _t: string, url: string) => (replaced = url) }, URLSearchParams);
+    expect(replaced).toBe("/security-master-feed/unsubscribe");
+    // The page reads it back from memory even though storage throws and the URL no longer has it.
+    (fakeWindow.location as { search: string }).search = "";
+    const g = globalThis as unknown as { window?: unknown };
+    const before = g.window;
+    g.window = { ...fakeWindow, sessionStorage: blocked };
+    try {
+      expect(readFeedSecret("token")).toBe(TOKEN);
+    } finally {
+      g.window = before;
+    }
   });
 });

@@ -24,6 +24,19 @@ import {
 
 export type DeliveryConfirmOutcome = "confirmation_sent" | "not_sent";
 
+/**
+ * Claim arguments for a delivery address: it is a submission that records NO marketing opt-in, no
+ * terms and no referral. Passing it resets anything pending on the row, so a marketing opt-in a
+ * stranger planted on the address (by signing it up with the box ticked) is never applied when the
+ * address later confirms as someone's team inbox.
+ */
+export const DELIVERY_CLAIM_VALUES = {
+  p_from_submission: true,
+  p_marketing_opt_in: false,
+  p_terms_version: null,
+  p_referred_by: null,
+} as const;
+
 export class FeedDeliveryError extends Error {
   readonly event: "delivery_claim_failed" | "delivery_send_failed";
   constructor(event: "delivery_claim_failed" | "delivery_send_failed") {
@@ -50,6 +63,7 @@ export async function askDeliveryAddressToConfirm(
     p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
     p_max_sends: CONFIRM_MAX_SENDS,
     p_window_seconds: CONFIRM_WINDOW_SEC,
+    ...DELIVERY_CLAIM_VALUES,
   });
   if (error) throw new FeedDeliveryError("delivery_claim_failed");
   const target = Array.isArray(data) && data.length > 0 ? (data[0] as FeedConfirmRow) : null;
