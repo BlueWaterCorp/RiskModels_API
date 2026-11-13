@@ -95,6 +95,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // linked false: the address already belongs to a contact of its own, so it is never linked as someone's inbox.
-  return NextResponse.json({ ok: true, linked: row.linked }, { headers: NO_STORE });
+  // The same reply whether or not the address was linked (linked is false when it already belongs to a
+  // contact of its own), so the page cannot be used to learn who is on the list.
+  return NextResponse.json({ ok: true }, { headers: NO_STORE });
 }

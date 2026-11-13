@@ -82,7 +82,7 @@ const sections: Section[] = [
       },
       {
         label: 'Marketing email',
-        text: 'Only if you tick the separate marketing box, and only after you confirm your address. It is independent of feed consent: you can have either without the other and stop either at any time.',
+        text: 'Only if the signup you confirm ticked the separate marketing box; the confirmation email says whether it did. Unsubscribing from the feed turns it off too.',
       },
       {
         label: 'Improve the product',
@@ -143,7 +143,7 @@ const sections: Section[] = [
       { label: 'Brokerage connections', text: 'Disconnect through your account or the Plaid Portal.' },
       {
         label: 'Feed and marketing email',
-        text: 'Every feed email has an unsubscribe link, which stops all feed email to that address. To stop marketing email only, or to delete your feed list record and profile entirely, email service@riskmodels.app; we complete deletion within 30 days.',
+        text: 'Every feed email has an unsubscribe link, which stops all feed email to that address and turns off marketing email for it too. To stop marketing email only, or to delete your feed list record and profile entirely, email service@riskmodels.app; we complete deletion within 30 days.',
       },
       { label: 'Cookies', text: 'Visitors in the EEA, UK and Switzerland choose whether to allow analytics and advertising cookies in a banner; until they accept, those tags run without cookies. Anyone can block or delete cookies in their browser settings; the API and connector do not need them.' },
     ],

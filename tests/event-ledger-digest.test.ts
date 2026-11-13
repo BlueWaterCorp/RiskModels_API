@@ -8,7 +8,10 @@ import {
   ENVELOPE_REQUIRED_FIELDS,
   FEED_TERMS_URL,
   GDELT_CREDIT,
+  allowListViolations,
   editionFooter,
+  internalFooter,
+  priceOrCapHits,
   licenseLabel,
   marketCapHits,
   INCLUDE_UNDER_REVIEW_DEFAULT,
@@ -272,65 +275,104 @@ describe("event ledger digest", () => {
     expect(provisionLabel(null)).toBeNull();
   });
 
-  describe("licensed data: derived fields allowed and labelled, exact market cap and raw values never", () => {
-    const MARKET_CAP_VARIANTS: Array<[string, unknown]> = [
-      ["market_cap", 1.23e9],
-      ["market_cap_usd", 1.23e9],
-      ["mkt_cap", 1.23e9],
-      ["mcap", 1.23e9],
-      ["market_value", 1.23e9],
-    ];
-    // Computed from market cap: our own derived data, allowed anywhere.
-    const DERIVED_CAP_FIELDS: Array<[string, unknown]> = [
-      ["market_cap_weight", 0.012],
-      ["cap_weight", 0.012],
-      ["market_cap_rank", 412],
-      ["size_bucket", "mid"],
-      ["cap_band", "large"],
-      ["size_factor_exposure", -0.4],
-      ["log_market_cap_z", 1.1],
-    ];
+  describe("licensed data: allow-list per event type, then a case-aware market cap and price scan", () => {
+    const withPayload = (extra: Record<string, unknown>) => {
+      const r = clone(ROWS[0]);
+      r.envelope.payload = { ...r.envelope.payload, ...extra };
+      return r;
+    };
 
-    it("withholds any event carrying an exact market cap value from the client edition and its file", async () => {
-      for (const [key, value] of MARKET_CAP_VARIANTS) {
-        for (const where of ["payload", "entity"] as const) {
-          const bad = clone(ROWS[0]);
-          (bad.envelope[where] as Record<string, unknown>)[key] = value;
-          const ed = build([bad, ...ROWS.slice(1)]);
-          expect(ed.withheld.market_cap_in_client_edition).toBe(1);
-          expect(ed.mainCount).toBe(6);
-          const html = await render(EventLedgerDigestEmail({ edition: ed }));
-          const text = renderDigestText(ed);
-          for (const body of [html, text, ed.attachment.body]) {
-            expect(body).not.toContain(key);
-            expect(body).not.toContain(bad.envelope.payload!.issuer_name as string);
-          }
-          expect(marketCapHits(html, text, ed.attachment.body)).toEqual([]);
-        }
-      }
+    it("passes every real verified row: all their paths are on the delisting allow-list", () => {
+      for (const r of ROWS) expect(allowListViolations(r.envelope)).toEqual([]);
+      const ed = build();
+      expect(ed.withheld.path_not_on_allow_list).toBe(0);
+      expect(ed.withheld.market_cap_or_price).toBe(0);
     });
 
-    it("withholds shares outstanding when a price travels with it, and allows shares alone", () => {
-      const both = clone(ROWS[0]);
-      both.envelope.payload = { ...both.envelope.payload, shares_outstanding: 1000, last_price: 12.5 };
-      expect(build([both]).withheld.market_cap_in_client_edition).toBe(1);
-      const shares = clone(ROWS[0]);
-      shares.envelope.payload = { ...shares.envelope.payload, shares_outstanding: 1000 };
-      expect(build([shares]).mainCount).toBe(1);
-    });
-
-    it("withholds raw licensed values (prices, volumes, bar dates, vendor codes)", () => {
-      for (const key of ["close", "volume", "last_trade_date", "vendor_code", "adj_close"]) {
+    it("withholds an event with any key off the list: payload, nested, top-level, source, provenance, risk_layers, affected", async () => {
+      const variants: Array<[string, (r: LedgerRow) => void]> = [
+        ["payload key", (r) => ((r.envelope.payload as Record<string, unknown>).note = "x")],
+        ["nested value", (r) => ((r.envelope.payload as Record<string, unknown>).security_description = { text: "Common Stock", px: 12 })],
+        ["top-level key", (r) => ((r.envelope as Record<string, unknown>).extra = "x")],
+        ["source key", (r) => ((r.envelope.source as Record<string, unknown>).vendor_id = "x")],
+        ["provenance key", (r) => ((r.envelope.provenance as Record<string, unknown>).host = "x")],
+        ["risk_layers element", (r) => ((r.envelope as Record<string, unknown>).risk_layers = [{ layer: "l1" }])],
+        ["affected child", (r) => ((r.envelope as Record<string, unknown>).affected = { bw_sym_id: "x" })],
+        ["entity key", (r) => ((r.envelope.entity as Record<string, unknown>).exchange = "x")],
+      ];
+      for (const [label, mutate] of variants) {
         const bad = clone(ROWS[0]);
-        bad.envelope.payload = { ...bad.envelope.payload, [key]: "1" };
-        expect(build([bad]).withheld.raw_vendor_value_in_client_edition).toBe(1);
+        mutate(bad);
+        const ed = build([bad, ...ROWS.slice(1)]);
+        expect(ed.withheld.path_not_on_allow_list, label).toBe(1);
+        expect(ed.mainCount, label).toBe(6);
+        expect(ed.attachment.body, label).not.toContain(bad.envelope.payload!.issuer_name as string);
       }
     });
 
-    it("applies the market cap and raw-value withholding to client editions only (internal goes to INTERNAL_RECIPIENTS)", () => {
-      const bad = clone(ROWS[0]);
-      bad.envelope.payload = { ...bad.envelope.payload, market_cap: 1 };
-      const ed = build([bad], { audience: "internal", recipient: "conrad@bwmacro.com" });
+    it("never lets an event type without a client list reach a client", () => {
+      const other = clone(ROWS[0]);
+      other.envelope.event_type = "rename";
+      expect(allowListViolations(other.envelope)).toEqual(["event_type"]);
+      expect(build([other]).withheld.path_not_on_allow_list).toBe(1);
+    });
+
+    it("catches exact market cap and price identifiers, case-aware, including log and weighted names", () => {
+      for (const id of [
+        "marketCapUsd",
+        "market_cap",
+        "MarketCap",
+        "MCAP",
+        "mkt_cap",
+        "mcap",
+        "market_cap_log",
+        "weighted_market_cap",
+        "market_value",
+        "marketValue",
+        "float_cap",
+        "closePrice",
+        "lastPrice",
+        "px_last",
+        "PX_LAST",
+        "adj_close",
+        "last_trade_date",
+      ]) {
+        expect(priceOrCapHits(`{"${id}":1}`), id).not.toEqual([]);
+      }
+      expect(priceOrCapHits("Market cap: $1.2B")).not.toEqual([]);
+    });
+
+    it("does not flag figures computed from market cap, or a warrant's exercise price in filing text", () => {
+      for (const id of ["market_cap_weight", "capWeight", "market_cap_rank", "size_bucket", "log_market_cap_z", "mcap_decile"]) {
+        expect(priceOrCapHits(`{"${id}":1}`), id).toEqual([]);
+      }
+      expect(priceOrCapHits("Warrants, each exercisable for one share at an exercise price of $11.50")).toEqual([]);
+      expect(priceOrCapHits("market cap weight 1.2%")).toEqual([]);
+      // A live Form 25 issuer name.
+      expect(priceOrCapHits('{"security_description":"MCAP Acquisition Corporation Unit"}')).toEqual([]);
+    });
+
+    it("withholds an event whose string value carries a price or a market cap", () => {
+      for (const text of ["Common Stock (closePrice 12.41)", "Common Stock px_last=12.41", "Common Stock, market cap $1.2B"]) {
+        const ed = build([withPayload({ security_description: text }), ...ROWS.slice(1)]);
+        expect(ed.withheld.market_cap_or_price, text).toBe(1);
+        expect(ed.attachment.body).not.toContain(text);
+      }
+    });
+
+    it("keeps exact market cap out of the client edition and its file, and refuses output that labels one", async () => {
+      const bad = withPayload({ marketCapUsd: 1.23e9 });
+      const ed = build([bad, ...ROWS.slice(1)]);
+      expect(ed.mainCount).toBe(6);
+      const html = await render(EventLedgerDigestEmail({ edition: ed }));
+      const text = renderDigestText(ed);
+      for (const body of [html, text, ed.attachment.body]) expect(body).not.toMatch(/marketCap/i);
+      expect(priceOrCapHits(html, text, ed.attachment.body)).toEqual([]);
+      expect(marketCapHits('{"marketCapUsd":1}')).not.toEqual([]);
+    });
+
+    it("applies the allow-list and the scan to client editions only (internal goes to INTERNAL_RECIPIENTS)", () => {
+      const ed = build([withPayload({ market_cap: 1 })], { audience: "internal", recipient: "conrad@bwmacro.com" });
       expect(ed.mainCount).toBe(1);
     });
 
@@ -342,35 +384,6 @@ describe("event ledger digest", () => {
       const line = JSON.parse(ed.attachment.body);
       expect(line.license_label).toContain("Fields entity.ticker, entity.entity_name are derived by RiskModels.");
       expect(licenseLabel(ROWS[0].envelope)).not.toContain("derived");
-    });
-
-    it("allows figures computed from market cap: weights, ranks, buckets, size factors", async () => {
-      for (const [key, value] of DERIVED_CAP_FIELDS) {
-        const row = clone(ROWS[0]);
-        row.envelope.payload = { ...row.envelope.payload, [key]: value };
-        const ed = build([row]);
-        expect(ed.withheld.market_cap_in_client_edition).toBe(0);
-        expect(ed.mainCount).toBe(1);
-        expect(ed.attachment.body).toContain(key);
-        const html = await render(EventLedgerDigestEmail({ edition: ed }));
-        expect(marketCapHits(html, renderDigestText(ed), ed.attachment.body)).toEqual([]);
-      }
-    });
-
-    it("refuses rendered output that labels an exact market cap value, not a derived figure", () => {
-      expect(marketCapHits("Market cap: $1.2B")).not.toEqual([]);
-      expect(marketCapHits('{"mkt_cap":1}')).not.toEqual([]);
-      expect(marketCapHits('{"market_cap_usd":1}')).not.toEqual([]);
-      expect(marketCapHits("market cap weight 1.2%")).toEqual([]);
-      expect(marketCapHits('{"market_cap_rank":412,"cap_band":"large"}')).toEqual([]);
-      expect(marketCapHits(renderDigestText(build()))).toEqual([]);
-    });
-
-    it("finds no market cap or raw licensed value in any of the real verified rows", () => {
-      const ed = build();
-      expect(ed.withheld.market_cap_in_client_edition).toBe(0);
-      expect(ed.withheld.raw_vendor_value_in_client_edition).toBe(0);
-      expect(marketCapHits(ed.attachment.body)).toEqual([]);
     });
   });
 
@@ -394,7 +407,7 @@ describe("event ledger digest", () => {
         expect(body).toContain("Forward to a colleague");
       }
       expect(text).toContain("stop delivery to this address once the team inbox confirms");
-      // The unsubscribe link is the human page with a confirm button, never the one-click endpoint.
+      // The footer link is the unsubscribe page (one button); one-click unsubscribe rides in the headers.
       expect(html).not.toContain("/api/feed-waitlist/unsubscribe");
     });
 
@@ -408,6 +421,19 @@ describe("event ledger digest", () => {
       const text = renderDigestText(build(), none);
       expect(text).not.toContain("Send this to your team inbox instead");
       expect(text).not.toContain("Unsubscribe:");
+    });
+
+    it("gives the internal edition no forward link and no personal token", async () => {
+      const f = internalFooter();
+      expect(f).toMatchObject({ forwardUrl: null, teamInboxUrl: null, unsubscribeUrl: null });
+      const ed = build([], { audience: "internal", recipient: "conrad@bwmacro.com" });
+      const html = await render(EventLedgerDigestEmail({ edition: ed, footer: f }));
+      const text = renderDigestText(ed, f);
+      for (const body of [html, text]) {
+        expect(body).not.toContain("Forward to a colleague");
+        expect(body).not.toContain("token=");
+        expect(body).toContain(FEED_TERMS_URL);
+      }
     });
 
     it("drops a malformed referral code instead of putting it in a link", () => {
@@ -444,7 +470,40 @@ describe("event ledger digest", () => {
       expect(file.latest_known_date).toBe("2026-06-15");
       for (const e of file.events) expect(e.license_label).toContain("Public record (SEC filing).");
       expect(restrictedWordHits(JSON.stringify(file))).toEqual([]);
-      expect(marketCapHits(JSON.stringify(file))).toEqual([]);
+      expect(priceOrCapHits(JSON.stringify(file))).toEqual([]);
+    });
+
+    it("never shows a superseded original unflagged: the correction is shown flagged and the original dropped", () => {
+      const corr = clone(ROWS[6]);
+      corr.seq = 99999;
+      corr.envelope.event_id = "a0c0ffee-0000-5000-8000-000000000001";
+      corr.envelope.supersedes_event_id = ROWS[5].envelope.event_id;
+      corr.envelope.correction_reason = "accession re-read";
+      const file = buildPublicLatest([...ROWS, corr], { generatedAt: "2026-11-13T18:00:00Z" });
+      const ids = file.events.map((e) => e.event_id);
+      expect(ids).not.toContain(ROWS[5].envelope.event_id);
+      const shown = file.events.find((e) => e.event_id === corr.envelope.event_id)!;
+      expect(shown.flag).toBe(`Correction of event ${ROWS[5].envelope.event_id.slice(0, 8)}: accession re-read`);
+      // A withheld correction still removes the original it replaces.
+      const hidden = clone(corr);
+      hidden.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
+      const file2 = buildPublicLatest([...ROWS, hidden], { generatedAt: "2026-11-13T18:00:00Z" });
+      expect(file2.events.map((e) => e.event_id)).not.toContain(ROWS[5].envelope.event_id);
+      // A row whose own status is superseded is never shown.
+      const sup = clone(ROWS[4]);
+      sup.envelope.lifecycle_status = "superseded";
+      const file3 = buildPublicLatest([sup], { generatedAt: "2026-11-13T18:00:00Z" });
+      expect(file3.events).toHaveLength(0);
+      // A withdrawal is shown flagged.
+      const wd = clone(ROWS[3]);
+      wd.envelope.lifecycle_status = "rejected";
+      wd.envelope.correction_reason = "filing withdrawn";
+      expect(buildPublicLatest([wd], { generatedAt: "2026-11-13T18:00:00Z" }).events[0].flag).toBe("Withdrawn: filing withdrawn");
+    });
+
+    it("states in its selection text that ticker and company name are derived", () => {
+      const file = buildPublicLatest(ROWS, { generatedAt: "2026-11-13T18:00:00Z" });
+      expect(file.selection).toContain("Ticker and company name, when present, are derived by RiskModels");
     });
 
     it("leaves out candidates, internal rows and market cap rows", () => {

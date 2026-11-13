@@ -15,10 +15,13 @@
  *               (consented, not unsubscribed, confirmed delivery inboxes; one copy per address),
  *               each with its own footer (referral link, team-inbox link for contacts,
  *               unsubscribe, terms) and List-Unsubscribe headers. Refused with --internal.
- *               Without --send it is a dry run: it reads the recipient list, renders the first
- *               copy, writes it to --out and prints counts; nothing is sent.
- *               A real list send needs --send AND --confirm-list-send <N>, where N is the exact
- *               number of recipients; any other value refuses before anything is sent.
+ *               Without --send it is a dry run: it reads the recipient list, renders and checks
+ *               every copy, writes a preview with no personal links to --out and prints counts;
+ *               nothing is sent. A real list send needs --send AND --confirm-list-send <N>, where N
+ *               is the exact number of recipients; any other value refuses before anything is sent.
+ *               An empty window (no main event, nothing under review) sends nothing in --list mode:
+ *               it logs "skipped_empty" and leaves the cursor alone. The single-address mode still
+ *               sends its "No new events" note.
  *   --public-json <path>
  *               also write the public "latest events" file for riskmodels.org/events
  *               (lib/event-ledger-public.ts): the newest 20 verified, client-deliverable events,
@@ -29,7 +32,13 @@
  *     restricted identifier keys withheld; internal_only only in an internal edition, only
  *     to INTERNAL_RECIPIENTS; market cap and raw licensed values withheld from client editions);
  *   - restrictedWordHits() on the HTML, the text and the attachment of EVERY copy;
- *   - marketCapHits() on every client copy (a market cap value must never appear).
+ *   - priceOrCapHits() on every client copy (an exact market cap value or a price must never appear).
+ *
+ * Sending. Each copy carries a Resend idempotency key built from the recipient, the edition date and
+ * the sha256 of the attached events, never the window, so a rerun of the same events to the same
+ * address is dropped by the provider. sent.json in the edition folder is rewritten after every
+ * successful send; a rerun reads it and skips addresses already sent for the same events. A 429 is
+ * retried with exponential backoff (1, 2, 4, 8, 16 s).
  *
  * Cursors. The single-address run and the list run keep separate cursors
  * (~/.riskmodels/event-ledger-digest/cursor.json and cursor-list.json), so the internal
@@ -68,7 +77,8 @@ import {
   buildDigest,
   digestSubject,
   editionFooter,
-  marketCapHits,
+  internalFooter,
+  priceOrCapHits,
   renderDigestText,
   restrictedWordHits,
   type DigestEdition,
@@ -188,8 +198,8 @@ async function renderCopy(edition: DigestEdition, to: string, footer: EditionFoo
   const html = await render(EventLedgerDigestEmail({ edition, footer }));
   const text = renderDigestText(edition, footer);
   if (restrictedWordHits(html, text, edition.attachment.body).length) throw new Error("refused_restricted_words");
-  if (edition.audience === "client" && marketCapHits(html, text, edition.attachment.body).length) {
-    throw new Error("refused_market_cap");
+  if (edition.audience === "client" && priceOrCapHits(html, text, edition.attachment.body).length) {
+    throw new Error("refused_market_cap_or_price");
   }
   return { to, html, text, headers: unsubscribeHeaders(token) };
 }
@@ -198,12 +208,28 @@ function fromAddress(): string {
   return process.env.RESEND_FROM_EMAIL?.trim() || DEFAULT_RESEND_FROM;
 }
 
-/** One Resend send. No audit BCC (see header). The idempotency key makes a rerun of the same edition a no-op per address. */
-async function sendCopy(resend: Resend, edition: DigestEdition, subject: string, c: Copy): Promise<string> {
-  const idem = createHash("sha256")
-    .update(`${edition.editionDate}|${JSON.stringify(edition.window)}|${edition.audience}|${c.to}`)
+/** Per recipient, per edition date, per set of events: not tied to the window. */
+function idempotencyKey(edition: DigestEdition, to: string): string {
+  return createHash("sha256")
+    .update(`${edition.editionDate}|${edition.audience}|${edition.attachment.sha256}|${to.toLowerCase()}`)
     .digest("hex")
     .slice(0, 48);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** One Resend send. No audit BCC (see header). Retries a 429 with exponential backoff. */
+async function sendCopy(resend: Resend, edition: DigestEdition, subject: string, c: Copy): Promise<string> {
+  const idem = idempotencyKey(edition, c.to);
+  for (let attempt = 0; ; attempt++) {
+    const id = await sendOnce(resend, edition, subject, c, idem);
+    if (id !== "rate_limited") return id;
+    if (attempt >= 5) throw new Error("send_failed_rate_limited");
+    await sleep(1000 * 2 ** attempt);
+  }
+}
+
+async function sendOnce(resend: Resend, edition: DigestEdition, subject: string, c: Copy, idem: string): Promise<string> {
   const result = await resend.emails.send(
     {
       from: fromAddress(),
@@ -224,15 +250,34 @@ async function sendCopy(resend: Resend, edition: DigestEdition, subject: string,
     },
     { idempotencyKey: `event-ledger/${idem}` },
   );
-  if (result.error || !result.data?.id) throw new Error("send_failed");
+  const err = result.error as { name?: string; statusCode?: number } | null;
+  if (err && (err.statusCode === 429 || err.name === "rate_limit_exceeded")) return "rate_limited";
+  if (err || !result.data?.id) throw new Error("send_failed");
   return result.data.id;
+}
+
+interface SentLog {
+  subject: string;
+  attachment_sha256: string;
+  sent: { to: string; id: string }[];
+  failed: string[];
+}
+
+function readSentLog(path: string, edition: DigestEdition): SentLog["sent"] {
+  if (!existsSync(path)) return [];
+  try {
+    const log = JSON.parse(readFileSync(path, "utf8")) as SentLog;
+    return log.attachment_sha256 === edition.attachment.sha256 && Array.isArray(log.sent) ? log.sent : [];
+  } catch {
+    return [];
+  }
 }
 
 async function writePublicJson(path: string) {
   const rows = await getRows("envelope->>lifecycle_status=eq.verified");
   const file = buildPublicLatest(rows, { generatedAt: new Date().toISOString() });
   const body = JSON.stringify(file, null, 2) + "\n";
-  if (restrictedWordHits(body).length || marketCapHits(body).length) throw new Error("refused_public_json_output_check");
+  if (restrictedWordHits(body).length || priceOrCapHits(body).length) throw new Error("refused_public_json_output_check");
   writeFileSync(resolve(path), body);
   return { path: resolve(path), events: file.count, latest_known_date: file.latest_known_date };
 }
@@ -308,6 +353,9 @@ async function main() {
   try {
     if (list) {
       for (const r of recipients) copies.push(await renderCopy(edition, r.email, editionFooter(r), r.unsubscribe_token));
+    } else if (audience === "internal") {
+      // No forward link and no personal token in an internal edition.
+      copies.push(await renderCopy(edition, to, internalFooter(), null));
     } else {
       const footer = await footerFor(to);
       const token = footer.unsubscribeUrl ? new URL(footer.unsubscribeUrl).searchParams.get("token") : null;
@@ -322,7 +370,8 @@ async function main() {
     arg("out") ?? join(STATE_DIR, "editions", `${editionDate}${list ? "_list" : ""}${edition.sample ? "_sample" : ""}`),
   );
   mkdirSync(outDir, { recursive: true });
-  const preview = copies[0];
+  // A list preview carries no recipient's links or tokens.
+  const preview = list ? (copies.length ? await renderCopy(edition, "list-preview", editionFooter(null), null) : null) : copies[0];
   if (preview) {
     writeFileSync(join(outDir, "edition.html"), preview.html);
     writeFileSync(join(outDir, "edition.txt"), preview.text);
@@ -362,6 +411,11 @@ async function main() {
     out: outDir,
   };
 
+  const empty = edition.mainCount === 0 && edition.underReview.total === 0;
+  if (list && empty) {
+    console.log(JSON.stringify({ ...summary, sent: 0, skipped_empty: true }, null, 2));
+    return;
+  }
   if (!flag("send")) {
     console.log(JSON.stringify({ ...summary, sent: false, dry_run: true }, null, 2));
     return;
@@ -376,19 +430,29 @@ async function main() {
   }
 
   const resend = new Resend(process.env.RESEND_API_KEY);
-  const sent: { to: string; id: string }[] = [];
+  const logPath = join(outDir, "sent.json");
+  const sent = readSentLog(logPath, edition);
+  const already = new Set(sent.map((x) => x.to.toLowerCase()));
   const failed: string[] = [];
+  const writeLog = () =>
+    writeFileSync(
+      logPath,
+      JSON.stringify(
+        { updated_at: new Date().toISOString(), subject, attachment_sha256: edition.attachment.sha256, sent, failed },
+        null,
+        2,
+      ) + "\n",
+    );
   for (const c of copies) {
+    if (already.has(c.to.toLowerCase())) continue;
     try {
       sent.push({ to: c.to, id: await sendCopy(resend, edition, subject, c) });
+      writeLog();
     } catch {
       failed.push(c.to);
     }
   }
-  writeFileSync(
-    join(outDir, "sent.json"),
-    JSON.stringify({ sent_at: new Date().toISOString(), subject, sent, failed }, null, 2) + "\n",
-  );
+  writeLog();
 
   if (!failed.length && flag("advance-cursor") && window.basis === "ledger_seq") {
     writeCursor(cursorPath, window.through_seq, { edition_date: editionDate, sent: sent.length, mode: summary.mode });

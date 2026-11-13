@@ -18,7 +18,7 @@ const sections: { title: string; body: string[] }[] = [
   {
     title: '1. What these terms cover',
     body: [
-      `These terms apply to the free edition of the RiskModels Event Ledger: the daily email edition, its attached data file (events_YYYY-MM-DD.jsonl) and the latest-events list on riskmodels.org, together "the free edition". RiskModels is a registered DBA of ${LEGAL_ENTITY} ("we"). By joining the list you accept them. Paid licences and the RiskModels API are covered by their own terms.`,
+      `These terms apply to the free edition of the RiskModels Event Ledger: the daily email edition, its attached data file (events_YYYY-MM-DD.jsonl) and the latest-events list on riskmodels.org, together "the free edition". RiskModels is a registered DBA of ${LEGAL_ENTITY} ("we"). The signup form asks you to accept these terms, and the version you accepted is recorded when you confirm your address. Paid licences and the RiskModels API are covered by their own terms.`,
     ],
   },
   {
@@ -42,9 +42,9 @@ const sections: { title: string; body: string[] }[] = [
   {
     title: '4. What is in it, and what is not',
     body: [
-      'Events come from public SEC filings (EDGAR) and from fields RiskModels derives from them and from its own records. Each line of the data file carries a license_label saying what it is.',
+      'Events come from public SEC filings (EDGAR) and from fields RiskModels derives from them and from its own records. Only fields on a published list for each event type are included. Each line of the data file carries a license_label saying what it is and naming any derived fields.',
       'The free edition never contains exact market capitalisation values, or prices. Figures RiskModels computes from market data (for example size buckets, ranks, weights and risk metrics) are its own derived data and may appear. The free edition is not a source of prices or market data.',
-      'Credit for third-party sources is shown where their terms ask for it.',
+      'If an edition includes an event first discovered through the GDELT Project, the edition credits it.',
     ],
   },
   {

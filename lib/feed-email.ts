@@ -38,8 +38,10 @@ import { FeedDeliveryChangeEmail, FEED_DELIVERY_CHANGE_SUBJECT } from "@/emails/
 
 export { FEED_PAGE_URL };
 
-export function feedDeliveryChangeConfirmPageUrl(token: string): string {
-  return `${FEED_PAGE_URL}/delivery/confirm?token=${encodeURIComponent(token)}`;
+/** The inbox rides along for display only; the server acts on the inbox stored with the request. */
+export function feedDeliveryChangeConfirmPageUrl(token: string, inbox?: string): string {
+  const shown = inbox ? `&inbox=${encodeURIComponent(inbox)}` : "";
+  return `${FEED_PAGE_URL}/delivery/confirm?token=${encodeURIComponent(token)}${shown}`;
 }
 
 /**
@@ -56,7 +58,7 @@ export async function sendFeedDeliveryChangeConfirmation(
       name: row.name,
       inbox: change.inbox,
       stopContact: change.stopContact,
-      confirmUrl: feedDeliveryChangeConfirmPageUrl(token),
+      confirmUrl: feedDeliveryChangeConfirmPageUrl(token, change.inbox),
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
     }),
   );
@@ -133,6 +135,8 @@ export interface FeedConfirmRow {
   unsubscribe_token: string;
   /** The delivery address STORED on the row, if any. The confirmation email names this one, never a request's. */
   requested_feed_email?: string | null;
+  /** The marketing choice the pending claim will apply on confirmation (migration 20261113120000). */
+  marketing_opt_in?: boolean | null;
 }
 
 export function feedConfirmPageUrl(token: string): string {
@@ -142,7 +146,7 @@ export function feedConfirmPageUrl(token: string): string {
 export async function sendFeedConfirmation(
   row: FeedConfirmRow,
   token: string,
-  opts: { requestedFeedEmail?: string | null } = {},
+  opts: { requestedFeedEmail?: string | null; marketingOptIn?: boolean } = {},
 ): Promise<{ id: string }> {
   const { html, text } = await renderBoth(
     FeedConfirmEmail({
@@ -150,6 +154,7 @@ export async function sendFeedConfirmation(
       confirmUrl: feedConfirmPageUrl(token),
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
       requestedFeedEmail: opts.requestedFeedEmail ?? null,
+      marketingOptIn: opts.marketingOptIn === true,
     }),
   );
   const sent = await sendResendEmail(resendClient(), {

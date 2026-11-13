@@ -212,7 +212,7 @@ describe("POST /api/feed-waitlist", () => {
       await runAfter();
       expect(sendFeedConfirmation).toHaveBeenCalledTimes(1);
       expect(sendFeedConfirmation.mock.calls[0]![0]).toMatchObject({ email: "analyst@corp.com" });
-      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "ops@corp.com" });
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "ops@corp.com", marketingOptIn: false });
     });
 
     it("names the STORED delivery address even when a repeat signup omits it, so the warning cannot be hidden", async () => {
@@ -220,21 +220,21 @@ describe("POST /api/feed-waitlist", () => {
       rpc.mockResolvedValue({ data: [claimedRow({ email: "victim@corp.com", requested_feed_email: "attacker@evil.com" })], error: null });
       await POST(request({ email: "victim@corp.com", consent_feed_emails: true }));
       await runAfter();
-      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com" });
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com", marketingOptIn: false });
     });
 
     it("names the stored address, not a different one submitted by a repeat signup", async () => {
       rpc.mockResolvedValue({ data: [claimedRow({ email: "victim@corp.com", requested_feed_email: "attacker@evil.com" })], error: null });
       await POST(request({ email: "victim@corp.com", feed_email: "friendly@corp.com", consent_feed_emails: true }));
       await runAfter();
-      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com" });
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com", marketingOptIn: false });
     });
 
     it("names no delivery address when none is stored, even if this request submitted one", async () => {
       rpc.mockResolvedValue({ data: [claimedRow({ requested_feed_email: null })], error: null });
       await POST(request({ email: "new@example.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
       await runAfter();
-      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: null });
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: null, marketingOptIn: false });
     });
 
     it("treats a delivery address equal to the contact address as one address", async () => {
@@ -280,11 +280,48 @@ describe("POST /api/feed-waitlist", () => {
       expect(rpc).not.toHaveBeenCalled();
     });
 
-    it("stores the terms version and acceptance time on the new row", async () => {
-      await POST(request({ email: "a@example.com" }));
+    it("never writes terms, marketing or referral on the row: they ride on this submission's claim", async () => {
+      referralLookup.mockResolvedValue({ data: { id: "referrer-row" }, error: null });
+      await POST(request({ email: "a@example.com", consent_feed_emails: true, marketing_opt_in: true, ref: "9018ddd80c6a" }));
       const [row] = upsert.mock.calls[0]!;
-      expect(row.terms_version).toBe("2026-11-13");
-      expect(typeof row.terms_accepted_at).toBe("string");
+      for (const k of ["terms_version", "terms_accepted_at", "marketing_opt_in", "marketing_opt_in_at", "referred_by", "deliver_to_contact"]) {
+        expect(row).not.toHaveProperty(k);
+      }
+      const [fn, args] = rpc.mock.calls[0]!;
+      expect(fn).toBe("feed_waitlist_claim_confirmation");
+      expect(args).toMatchObject({
+        p_from_submission: true,
+        p_terms_version: "2026-11-13",
+        p_marketing_opt_in: true,
+        p_referred_by: "referrer-row",
+      });
+    });
+
+    it("attack sequence: a stranger's values are only pending; the owner's own submission replaces them, and the email states the choice", async () => {
+      // 1. A third party submits the victim's address with marketing ticked and their own referral code.
+      referralLookup.mockResolvedValue({ data: { id: "stranger-row" }, error: null });
+      rpc.mockResolvedValueOnce({ data: [claimedRow({ email: "victim@example.com", marketing_opt_in: true })], error: null });
+      await POST(request({ email: "victim@example.com", consent_feed_emails: true, marketing_opt_in: true, ref: "0000aaaa1111" }));
+      expect(upsert.mock.calls[0]![0]).not.toHaveProperty("marketing_opt_in");
+      expect(rpc.mock.calls[0]![1]).toMatchObject({ p_from_submission: true, p_marketing_opt_in: true, p_referred_by: "stranger-row" });
+      await runAfter();
+      // The email the victim receives says confirming would turn marketing on.
+      expect(sendFeedConfirmation.mock.calls[0]![2]).toMatchObject({ marketingOptIn: true });
+      // 2. The victim signs up themself, without marketing or a referral: their claim carries their own values.
+      referralLookup.mockResolvedValue({ data: null, error: null });
+      rpc.mockResolvedValueOnce({ data: [claimedRow({ email: "victim@example.com", marketing_opt_in: false })], error: null });
+      await POST(request({ email: "victim@example.com", consent_feed_emails: true }));
+      expect(rpc.mock.calls[1]![1]).toMatchObject({ p_from_submission: true, p_marketing_opt_in: false, p_referred_by: null });
+      await runAfter();
+      expect(sendFeedConfirmation.mock.calls[1]![2]).toMatchObject({ marketingOptIn: false });
+      // Nothing consent-like was ever written by either request (the database test covers the confirm step).
+      for (const [row] of upsert.mock.calls) expect(row).not.toHaveProperty("referred_by");
+    });
+
+    it("records no terms, marketing or referral when no confirmation email is asked for", async () => {
+      await POST(request({ email: "a@example.com", marketing_opt_in: true, ref: "9018ddd80c6a" }));
+      expect(rpc).not.toHaveBeenCalled();
+      expect(upsert.mock.calls[0]![0]).not.toHaveProperty("marketing_opt_in");
     });
 
     it("stores the optional profile answers", async () => {
@@ -330,30 +367,18 @@ describe("POST /api/feed-waitlist", () => {
       expect(upsert).not.toHaveBeenCalled();
     });
 
-    it("records the marketing opt-in as asked, separate from feed consent, never as consent", async () => {
-      await POST(request({ email: "a@example.com", marketing_opt_in: true }));
-      await POST(request({ email: "b@example.com", consent_feed_emails: true }));
-      const [first] = upsert.mock.calls[0]!;
-      const [second] = upsert.mock.calls[1]!;
-      expect(first).toMatchObject({ marketing_opt_in: true, consent_feed_emails: false });
-      expect(first).not.toHaveProperty("marketing_opt_in_at");
-      expect(second).toMatchObject({ marketing_opt_in: false });
-    });
-
-    it("records referred_by from a known referral code", async () => {
+    it("passes the referrer of a known code to the claim, and ignores an unknown or malformed one", async () => {
       referralLookup.mockResolvedValue({ data: { id: "referrer-row" }, error: null });
-      await POST(request({ email: "a@example.com", ref: "9018ddd80c6a" }));
+      await POST(request({ email: "a@example.com", consent_feed_emails: true, ref: "9018ddd80c6a" }));
       expect(referralLookup).toHaveBeenCalledWith("9018ddd80c6a");
-      expect(upsert.mock.calls[0]![0].referred_by).toBe("referrer-row");
-    });
-
-    it("ignores an unknown or malformed referral code without failing the signup", async () => {
-      const ok = await POST(request({ email: "a@example.com", ref: "0000aaaa1111" }));
+      expect(rpc.mock.calls[0]![1].p_referred_by).toBe("referrer-row");
+      referralLookup.mockResolvedValue({ data: null, error: null });
+      const ok = await POST(request({ email: "b@example.com", consent_feed_emails: true, ref: "0000aaaa1111" }));
       expect(ok.status).toBe(200);
-      expect(upsert.mock.calls[0]![0].referred_by).toBeNull();
-      await POST(request({ email: "b@example.com", ref: "x'); drop" }));
-      expect(referralLookup).toHaveBeenCalledTimes(1);
-      expect(upsert.mock.calls[1]![0].referred_by).toBeNull();
+      expect(rpc.mock.calls[1]![1].p_referred_by).toBeNull();
+      await POST(request({ email: "c@example.com", consent_feed_emails: true, ref: "x'); drop" }));
+      expect(referralLookup).toHaveBeenCalledTimes(2);
+      expect(rpc.mock.calls[2]![1].p_referred_by).toBeNull();
     });
 
     it("keeps a referral lookup error out of the reply and the logs", async () => {
@@ -365,12 +390,6 @@ describe("POST /api/feed-waitlist", () => {
       err.mockRestore();
     });
 
-    it("marks a signup that names a separate delivery address as not delivering to the contact", async () => {
-      await POST(request({ email: "a@example.com", feed_email: "desk@example.com", consent_feed_emails: true }));
-      await POST(request({ email: "b@example.com", consent_feed_emails: true }));
-      expect(upsert.mock.calls[0]![0].deliver_to_contact).toBe(false);
-      expect(upsert.mock.calls[1]![0].deliver_to_contact).toBe(true);
-    });
   });
 
   describe("validation and abuse controls", () => {

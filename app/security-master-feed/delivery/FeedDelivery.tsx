@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useFeedSecret } from "@/components/feed/useFeedSecret";
 import { Input } from "@/components/ui/Input";
 
 type State = "ready" | "saving" | "done" | "invalid" | "error";
 
 export function FeedDelivery() {
-  const token = useSearchParams().get("token");
+  // Read from the stash, not the URL: the head script removed it before analytics loaded.
+  const token = useFeedSecret("token");
   const [state, setState] = useState<State>("ready");
   const [message, setMessage] = useState<string | null>(null);
 

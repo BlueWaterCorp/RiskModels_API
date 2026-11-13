@@ -7,7 +7,8 @@
  *   - The /security-master-feed/unsubscribe page POSTs JSON { token }.
  *
  * Sets unsubscribed_at on the matching public.feed_waitlist row (first use
- * only). The reply is the same whether or not the token matched a row, so it
+ * only) and clears the marketing opt-in with it (the database trigger from
+ * migration 20261113120000 does the same for any other writer). The reply is the same whether or not the token matched a row, so it
  * cannot be used to test which tokens exist. GET is not supported: link
  * scanners fetch URLs, and a GET must never unsubscribe anyone.
  */
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
   try {
     const { error } = await createAdminClient()
       .from("feed_waitlist")
-      .update({ unsubscribed_at: new Date().toISOString() })
+      .update({ unsubscribed_at: new Date().toISOString(), marketing_opt_in: false, marketing_opt_in_at: null })
       .eq("unsubscribe_token", token.toLowerCase())
       .is("unsubscribed_at", null);
     if (error) {

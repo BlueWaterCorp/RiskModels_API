@@ -10,11 +10,13 @@
  * links the inbox (POST /api/feed-waitlist/delivery/confirm), and the inbox
  * then has to confirm for itself through the existing double opt-in.
  *
- * feed_waitlist_claim_delivery_change() (migration 20261113120000) is one
- * atomic UPDATE: it matches only a confirmed, subscribed contact row, never
- * the contact's own address as the inbox, and applies the signup throttle.
- * The reply is the same whether or not anything was sent, so the route cannot
- * be used to test tokens or list state; the email is queued with after().
+ * feed_waitlist_claim_delivery_change() (migration 20261113120000) locks the
+ * row and returns a status: 'claimed' only for a confirmed, subscribed contact,
+ * never with the contact's own address as the inbox, within the signup throttle;
+ * 'pending' when an unexpired request is already waiting (it is never
+ * overwritten; the reply says so, 409); 'not_sent' otherwise. 'claimed' and
+ * 'not_sent' get the same reply, so the route cannot be used to test tokens or
+ * list state; the email is queued with after().
  */
 
 import { after, NextRequest, NextResponse } from "next/server";
@@ -41,7 +43,11 @@ const RATE_WINDOW_SEC = 3600;
 const DELIVERY_REQUEST_MESSAGE =
   "Check the inbox this edition was sent to. We emailed it a link to confirm the team inbox; nothing changes until that link is used.";
 
+const PENDING_MESSAGE =
+  "A team inbox request for this address is already waiting for confirmation. Use the link in that email, or wait until it expires (seven days) to ask again.";
+
 interface Claimed {
+  status: "claimed" | "pending" | "not_sent";
   id: string;
   email: string;
   name: string | null;
@@ -101,6 +107,10 @@ export async function POST(req: NextRequest) {
       );
     }
     claimed = Array.isArray(data) && data.length > 0 ? (data[0] as Claimed) : null;
+    if (claimed?.status === "pending") {
+      return NextResponse.json({ error: "Request pending", message: PENDING_MESSAGE }, { status: 409, headers: NO_STORE });
+    }
+    if (claimed?.status !== "claimed") claimed = null;
   } catch (err) {
     console.error("[feed-waitlist/delivery] unexpected_error", safeErrorCode(err));
     return NextResponse.json(

@@ -244,12 +244,14 @@ export const EventLedgerDigestEmail = ({
         {edition.gdeltCredit ? <Text style={s.small}>{GDELT_CREDIT}</Text> : null}
 
         <Hr style={s.hr} />
-        <Text style={s.small}>
-          <Link href={footer.forwardUrl} style={s.link}>
-            {FOOTER_FORWARD_TEXT}
-          </Link>
-          .
-        </Text>
+        {footer.forwardUrl ? (
+          <Text style={s.small}>
+            <Link href={footer.forwardUrl} style={s.link}>
+              {FOOTER_FORWARD_TEXT}
+            </Link>
+            .
+          </Text>
+        ) : null}
         {footer.teamInboxUrl ? (
           <Text style={s.small}>
             <Link href={footer.teamInboxUrl} style={s.link}>

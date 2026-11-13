@@ -43,6 +43,7 @@ async function runAfter() {
 
 // The contact row shape feed_waitlist_claim_delivery_change returns (migration 20261113120000).
 const claimed = {
+  status: "claimed",
   id: "row-1",
   email: "conrad@bwmacro.com",
   name: "Conrad Gann",
@@ -74,7 +75,16 @@ describe("POST /api/feed-waitlist/delivery (edition footer: send to a team inbox
     expect(change).toEqual({ inbox: "desk@example.com", stopContact: true });
   });
 
+  it("refuses, and says so, while an earlier request is still pending; never overwrites it", async () => {
+    rpc.mockResolvedValue({ data: [{ status: "pending", id: null, email: null, name: null, unsubscribe_token: null, delivery_change_email: null }], error: null });
+    const res = await requestChange(post("/api/feed-waitlist/delivery", { token: TOKEN, feed_email: "other@example.com" }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).message).toContain("already waiting for confirmation");
+    expect(afterTasks).toHaveLength(0);
+  });
+
   it("gives the same reply when the claim matches nothing (unknown token, unconfirmed, throttled)", async () => {
+    rpc.mockResolvedValue({ data: [{ status: "not_sent", id: null, email: null, name: null, unsubscribe_token: null, delivery_change_email: null }], error: null });
     const a = await requestChange(post("/api/feed-waitlist/delivery", { token: TOKEN, feed_email: "desk@example.com" }));
     rpc.mockResolvedValue({ data: [claimed], error: null });
     const b = await requestChange(post("/api/feed-waitlist/delivery", { token: TOKEN, feed_email: "desk@example.com" }));
@@ -114,7 +124,7 @@ describe("POST /api/feed-waitlist/delivery/confirm", () => {
     });
     const res = await confirmChange(post("/api/feed-waitlist/delivery/confirm", { token: CONFIRM_TOKEN }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, linked: true });
+    expect(await res.json()).toEqual({ ok: true });
     expect(rpc.mock.calls[0]![0]).toBe("feed_waitlist_confirm_delivery_change");
     expect(rpc.mock.calls[0]![1].p_token_hash).toMatch(/^[0-9a-f]{64}$/);
     await runAfter();
@@ -122,10 +132,13 @@ describe("POST /api/feed-waitlist/delivery/confirm", () => {
     expect(askDeliveryAddressToConfirm.mock.calls[0]![2]).toEqual({ email: "conrad@bwmacro.com", name: "Conrad Gann" });
   });
 
-  it("sends nothing when the address belongs to a contact and was not linked", async () => {
+  it("gives the same reply when the address belongs to a contact, and sends nothing", async () => {
+    rpc.mockResolvedValue({ data: [{ ...claimed, feed_email: "desk@example.com", linked: true }], error: null });
+    const linked = await (await confirmChange(post("/api/feed-waitlist/delivery/confirm", { token: CONFIRM_TOKEN }))).json();
+    afterTasks.length = 0;
     rpc.mockResolvedValue({ data: [{ ...claimed, feed_email: "someone@example.com", linked: false }], error: null });
-    const res = await confirmChange(post("/api/feed-waitlist/delivery/confirm", { token: CONFIRM_TOKEN }));
-    expect(await res.json()).toEqual({ ok: true, linked: false });
+    const notLinked = await (await confirmChange(post("/api/feed-waitlist/delivery/confirm", { token: CONFIRM_TOKEN }))).json();
+    expect(notLinked).toEqual(linked);
     expect(afterTasks).toHaveLength(0);
   });
 

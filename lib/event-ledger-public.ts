@@ -7,10 +7,18 @@
  *
  * Same gate as a client edition, nothing looser: buildDigest(audience
  * "client") decides what is deliverable (redistributable public_record or
- * derived only; internal_only, restricted identifier keys and vendor-traceable
- * values withheld), and only VERIFIED events are listed here (no candidates,
- * no corrections-only rows). The caller runs restrictedWordHits() on the
- * serialized file before writing it.
+ * derived only; internal_only rows, restricted identifier keys, paths off the
+ * client allow-list, exact market cap values and prices withheld). Candidates
+ * are never listed.
+ *
+ * Corrections. An event that a later event supersedes (supersedes_event_id), or
+ * whose status is superseded, is dropped: a superseded original is never shown.
+ * The correction, or a withdrawal, is listed with its flag. The supersession is
+ * read from every input row, even one the gate withholds, so a withheld
+ * correction still removes the original it replaces.
+ *
+ * The caller runs restrictedWordHits() and priceOrCapHits() on the serialized
+ * file before writing it.
  */
 
 import {
@@ -43,6 +51,10 @@ export interface PublicLatestEvent {
   source_url: string | null;
   source_label: string | null;
   license_label: string;
+  /** lifecycle_status: verified, or rejected for a withdrawal. */
+  status: string;
+  /** "Correction of event ...", "Withdrawn: ..."; null for an ordinary event. */
+  flag: string | null;
 }
 
 export interface PublicLatestFile {
@@ -75,10 +87,12 @@ function toPublic(i: DigestItem): PublicLatestEvent {
     source_url: i.sourceUrl,
     source_label: i.sourceLabel,
     license_label: licenseLabel(i.envelope),
+    status: i.status,
+    flag: i.flag,
   };
 }
 
-/** The newest `count` verified, client-deliverable events by knowledge time (ties: ledger seq). */
+/** The newest `count` client-deliverable events by knowledge time (ties: ledger seq), superseded originals dropped. */
 export function buildPublicLatest(
   rows: readonly LedgerRow[],
   opts: { generatedAt: string; count?: number },
@@ -90,9 +104,13 @@ export function buildPublicLatest(
     audience: "client",
     includeUnderReview: false,
   });
+  const superseded = new Set(
+    rows.map((r) => r.envelope.supersedes_event_id).filter((id): id is string => typeof id === "string" && id !== ""),
+  );
   const verified = ed.families
     .flatMap((f) => f.items)
-    .filter((i) => i.status === "verified" && !i.flag)
+    .filter((i) => !superseded.has(i.eventId) && i.status !== "superseded")
+    .filter((i) => i.status === "verified" || (i.status === "rejected" && i.flag !== null))
     .sort((a, b) => {
       const ka = a.envelope.knowledge_at ?? "";
       const kb = b.envelope.knowledge_at ?? "";
@@ -105,7 +123,7 @@ export function buildPublicLatest(
     description:
       "The latest verified events in the RiskModels Event Ledger: US equity identity and listing-status events, each tied to the SEC filing behind it.",
     selection:
-      "Verified events whose licence is redistributable public record or derived data, newest first by the time they became publicly knowable. Candidates, internal rows and anything traced to licensed data are left out.",
+      "Verified events whose licence is redistributable public record or derived data, newest first by the time they became publicly knowable. Corrections and withdrawals are flagged, and an event they replace is left out. Candidates and internal rows are left out, as is any event with a field outside the published allow-list or carrying a licensed market value such as a price. Ticker and company name, when present, are derived by RiskModels from its security master.",
     count: verified.length,
     latest_known_date: verified[0]?.knowledgeDate ?? null,
     terms: FEED_TERMS_URL,

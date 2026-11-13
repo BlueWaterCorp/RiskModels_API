@@ -6,15 +6,19 @@
  *     firm_type?, firm_size?, uses?, audience?, heard_about?, marketing_opt_in?,
  *     consent_feed_emails?, ref?, website? }
  *
- * Everything except email and terms_accepted is optional. terms_accepted must be
- * true (the form's required box); terms_version and terms_accepted_at are stored
- * on a NEW row. marketing_opt_in is a separate, unticked-by-default box; it is
- * stored as asked and only counts once the address is confirmed
- * (feed_waitlist_confirm sets marketing_opt_in_at). `ref` is the referral code
- * from a "Forward to a colleague" link; a new row records referred_by. A bad or
- * unknown code is ignored, never an error. Profile values outside the allowed
- * lists are rejected with 400 (lib/feed-waitlist.ts mirrors the CHECK
- * constraints of migration 20261113120000).
+ * Everything except email and terms_accepted is optional; terms_accepted must be
+ * true (the form's required box). Profile answers are written on a NEW row only
+ * and activate nothing. Values outside the allowed lists get a 400
+ * (lib/feed-waitlist.ts mirrors the CHECK constraints of migration 20261113120000).
+ *
+ * Terms, the marketing opt-in (a separate, unticked box) and the referral code
+ * (`ref`, from a "Forward to a colleague" link) are consent-like: a value a third
+ * party typed for someone's address must never take effect. They are never
+ * written on insert. They go with the confirmation CLAIM of this submission
+ * (p_from_submission), the confirmation email states the marketing choice, and
+ * feed_waitlist_confirm applies them only when the owner clicks that email. A
+ * signup without the email box sends no confirmation and records none of them.
+ * A bad or unknown referral code is ignored, never an error.
  *
  * Two addresses. `email` is the contact: the person, who gets the relationship
  * email. `feed_email` is an optional separate DELIVERY address for the feed itself,
@@ -239,12 +243,6 @@ export async function POST(req: NextRequest) {
         uses,
         audience,
         heard_about: optionalText(body.heard_about),
-        marketing_opt_in: body.marketing_opt_in === true,
-        terms_version: FEED_TERMS_VERSION,
-        terms_accepted_at: new Date().toISOString(),
-        referred_by: referredBy,
-        // A separate delivery address at signup means editions go there once it confirms.
-        deliver_to_contact: !(wantsEmails && feedEmail),
         consent_feed_emails: false,
         consented_at: null,
         // Only when the box is ticked, and only ever on a new row: an existing row is never changed.
@@ -274,6 +272,11 @@ export async function POST(req: NextRequest) {
         p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
         p_max_sends: CONFIRM_MAX_SENDS,
         p_window_seconds: CONFIRM_WINDOW_SEC,
+        // Applied only if the owner confirms the email this claim sends.
+        p_from_submission: true,
+        p_terms_version: FEED_TERMS_VERSION,
+        p_marketing_opt_in: body.marketing_opt_in === true,
+        p_referred_by: referredBy,
       });
       if (claimError) {
         console.error("[feed-waitlist] claim_failed", safeErrorCode(claimError));
@@ -300,7 +303,11 @@ export async function POST(req: NextRequest) {
     // repeat one, and the difference would reveal who is already listed.
     after(async () => {
       try {
-        await sendFeedConfirmation(row, confirmToken, { requestedFeedEmail: pendingFeed });
+        await sendFeedConfirmation(row, confirmToken, {
+          requestedFeedEmail: pendingFeed,
+          // The choice this email's link will apply, as stored by the claim.
+          marketingOptIn: row.marketing_opt_in === true,
+        });
       } catch (err) {
         console.error("[feed-waitlist] confirmation_email_failed", safeErrorCode(err));
       }
