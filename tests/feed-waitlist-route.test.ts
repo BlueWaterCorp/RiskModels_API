@@ -9,7 +9,12 @@ const rpc = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({
   data: [] as unknown,
   error: null as unknown,
 }));
-const from = vi.fn(() => ({ upsert }));
+// Referral lookup: from("feed_waitlist").select("id").eq("referral_code", code).maybeSingle()
+const referralLookup = vi.fn(async (_code: string) => ({ data: null as unknown, error: null as unknown }));
+const select = vi.fn((_cols: string) => ({
+  eq: (_col: string, code: string) => ({ maybeSingle: () => referralLookup(code) }),
+}));
+const from = vi.fn(() => ({ upsert, select }));
 const sendFeedConfirmation = vi.fn();
 const getUser = vi.fn();
 const rateLimit = vi.fn();
@@ -44,11 +49,16 @@ import { POST } from "@/app/api/feed-waitlist/route";
 const URL = "http://localhost/api/feed-waitlist";
 const TOKEN_HASH_RE = /^[0-9a-f]{64}$/;
 
+/** The form's required terms box is ticked unless a test says otherwise. */
 function request(body: unknown): NextRequest {
+  const withTerms =
+    body && typeof body === "object" && !Array.isArray(body) && !("terms_accepted" in body)
+      ? { ...(body as Record<string, unknown>), terms_accepted: true }
+      : body;
   return new NextRequest(URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: typeof body === "string" ? body : JSON.stringify(body),
+    body: typeof withTerms === "string" ? withTerms : JSON.stringify(withTerms),
   });
 }
 
@@ -69,6 +79,8 @@ describe("POST /api/feed-waitlist", () => {
     upsert.mockReset().mockResolvedValue({ error: null });
     rpc.mockReset().mockResolvedValue({ data: [], error: null });
     from.mockClear();
+    select.mockClear();
+    referralLookup.mockReset().mockResolvedValue({ data: null, error: null });
     sendFeedConfirmation.mockReset().mockResolvedValue({ id: "email-1" });
     afterTasks.length = 0;
     getUser.mockReset().mockResolvedValue({ data: { user: null } });
@@ -255,6 +267,109 @@ describe("POST /api/feed-waitlist", () => {
       await POST(request({ email: "a@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
       expect(from).toHaveBeenCalledTimes(1);
       expect(rpc.mock.calls.every(([fn]) => fn === "feed_waitlist_claim_confirmation")).toBe(true);
+    });
+  });
+
+  describe("terms, profile, marketing opt-in and referrals", () => {
+    it("refuses a signup without the terms box, and writes nothing", async () => {
+      for (const terms_accepted of [false, undefined, "yes"]) {
+        const res = await POST(request({ email: "a@example.com", consent_feed_emails: true, terms_accepted }));
+        expect(res.status).toBe(400);
+      }
+      expect(upsert).not.toHaveBeenCalled();
+      expect(rpc).not.toHaveBeenCalled();
+    });
+
+    it("stores the terms version and acceptance time on the new row", async () => {
+      await POST(request({ email: "a@example.com" }));
+      const [row] = upsert.mock.calls[0]!;
+      expect(row.terms_version).toBe("2026-11-13");
+      expect(typeof row.terms_accepted_at).toBe("string");
+    });
+
+    it("stores the optional profile answers", async () => {
+      await POST(
+        request({
+          email: "a@example.com",
+          company: "Example Capital",
+          firm_type: "hedge_fund",
+          firm_size: "1b_10b",
+          uses: ["reconciliation", "compliance", "reconciliation"],
+          audience: "automated",
+          heard_about: "A colleague",
+        }),
+      );
+      const [row] = upsert.mock.calls[0]!;
+      expect(row).toMatchObject({
+        company: "Example Capital",
+        firm_type: "hedge_fund",
+        firm_size: "1b_10b",
+        uses: ["reconciliation", "compliance"],
+        audience: "automated",
+        heard_about: "A colleague",
+      });
+    });
+
+    it("leaves every profile answer empty when none is given", async () => {
+      await POST(request({ email: "a@example.com" }));
+      const [row] = upsert.mock.calls[0]!;
+      expect(row).toMatchObject({ firm_type: null, firm_size: null, uses: [], audience: null, heard_about: null });
+    });
+
+    it("rejects profile values that are not on the lists", async () => {
+      for (const extra of [
+        { firm_type: "family_office" },
+        { firm_size: "huge" },
+        { audience: "everyone" },
+        { uses: ["reconciliation", "nope"] },
+        { uses: "reconciliation" },
+      ]) {
+        const res = await POST(request({ email: "a@example.com", ...extra }));
+        expect(res.status).toBe(400);
+      }
+      expect(upsert).not.toHaveBeenCalled();
+    });
+
+    it("records the marketing opt-in as asked, separate from feed consent, never as consent", async () => {
+      await POST(request({ email: "a@example.com", marketing_opt_in: true }));
+      await POST(request({ email: "b@example.com", consent_feed_emails: true }));
+      const [first] = upsert.mock.calls[0]!;
+      const [second] = upsert.mock.calls[1]!;
+      expect(first).toMatchObject({ marketing_opt_in: true, consent_feed_emails: false });
+      expect(first).not.toHaveProperty("marketing_opt_in_at");
+      expect(second).toMatchObject({ marketing_opt_in: false });
+    });
+
+    it("records referred_by from a known referral code", async () => {
+      referralLookup.mockResolvedValue({ data: { id: "referrer-row" }, error: null });
+      await POST(request({ email: "a@example.com", ref: "9018ddd80c6a" }));
+      expect(referralLookup).toHaveBeenCalledWith("9018ddd80c6a");
+      expect(upsert.mock.calls[0]![0].referred_by).toBe("referrer-row");
+    });
+
+    it("ignores an unknown or malformed referral code without failing the signup", async () => {
+      const ok = await POST(request({ email: "a@example.com", ref: "0000aaaa1111" }));
+      expect(ok.status).toBe(200);
+      expect(upsert.mock.calls[0]![0].referred_by).toBeNull();
+      await POST(request({ email: "b@example.com", ref: "x'); drop" }));
+      expect(referralLookup).toHaveBeenCalledTimes(1);
+      expect(upsert.mock.calls[1]![0].referred_by).toBeNull();
+    });
+
+    it("keeps a referral lookup error out of the reply and the logs", async () => {
+      const err = vi.spyOn(console, "error").mockImplementation(() => {});
+      referralLookup.mockResolvedValue({ data: null, error: { message: "row a@example.com" } });
+      const res = await POST(request({ email: "a@example.com", ref: "9018ddd80c6a" }));
+      expect(res.status).toBe(200);
+      expect(JSON.stringify(err.mock.calls)).not.toContain("a@example.com");
+      err.mockRestore();
+    });
+
+    it("marks a signup that names a separate delivery address as not delivering to the contact", async () => {
+      await POST(request({ email: "a@example.com", feed_email: "desk@example.com", consent_feed_emails: true }));
+      await POST(request({ email: "b@example.com", consent_feed_emails: true }));
+      expect(upsert.mock.calls[0]![0].deliver_to_contact).toBe(false);
+      expect(upsert.mock.calls[1]![0].deliver_to_contact).toBe(true);
     });
   });
 

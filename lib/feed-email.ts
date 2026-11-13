@@ -34,8 +34,44 @@ import {
   type FeedLaunchNoticeEmailProps,
 } from "@/emails/feed-launch-notice";
 import { FeedInviteEmail, feedInviteSubject } from "@/emails/feed-invite";
+import { FeedDeliveryChangeEmail, FEED_DELIVERY_CHANGE_SUBJECT } from "@/emails/feed-delivery-change";
 
 export { FEED_PAGE_URL };
+
+export function feedDeliveryChangeConfirmPageUrl(token: string): string {
+  return `${FEED_PAGE_URL}/delivery/confirm?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Team-inbox request from an edition footer: asks the CONTACT (never the inbox) to confirm. The inbox and
+ * the stop choice named here are the ones stored on the row by feed_waitlist_claim_delivery_change.
+ */
+export async function sendFeedDeliveryChangeConfirmation(
+  row: { email: string; name: string | null; unsubscribe_token: string },
+  token: string,
+  change: { inbox: string; stopContact: boolean },
+): Promise<{ id: string }> {
+  const { html, text } = await renderBoth(
+    FeedDeliveryChangeEmail({
+      name: row.name,
+      inbox: change.inbox,
+      stopContact: change.stopContact,
+      confirmUrl: feedDeliveryChangeConfirmPageUrl(token),
+      unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+    }),
+  );
+  const sent = await sendResendEmail(resendClient(), {
+    from: fromAddress(),
+    to: row.email,
+    replyTo: SUPPORT_EMAIL,
+    subject: FEED_DELIVERY_CHANGE_SUBJECT,
+    html,
+    text,
+    headers: feedUnsubscribeHeaders(row.unsubscribe_token),
+    tags: [{ name: "category", value: "feed_delivery_change" }],
+  });
+  return { id: sent.id };
+}
 
 /** Human page: shows a confirm button, so link scanners cannot unsubscribe anyone. */
 export function feedUnsubscribePageUrl(token: string): string {

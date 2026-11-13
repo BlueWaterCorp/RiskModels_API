@@ -23,9 +23,23 @@
  *     ("Internal only, not for clients"), and only to INTERNAL_RECIPIENTS;
  *     buildDigest throws for any other recipient.
  *
- * The attached file holds each delivered envelope exactly as published, one per
- * line, re-serialized canonically (sorted keys, compact separators), the same
- * byte form as contract.to_json in ERM3.
+ * The attached file holds each delivered envelope as published, one per line,
+ * re-serialized canonically (sorted keys, compact separators), the byte form of
+ * contract.to_json in ERM3, with ONE added top-level key: license_label, the
+ * plain-language licence of that event (licenseLabel()). Removing that key gives
+ * back the contract bytes exactly.
+ *
+ * GDELT. Events discovered through GDELT are internal_only in ERM3
+ * (erm3/events/gdelt/discovery.py), so they never reach a client edition. If one
+ * ever reaches an edition (internal, or a future derived classification), the
+ * edition carries the GDELT credit line (GDELT_CREDIT) automatically.
+ *
+ * Footer. Each copy of an edition is built for one recipient (EditionFooter):
+ * "Forward to a colleague" (signup link with the recipient's referral code),
+ * "Send this to your team inbox instead" (contact addresses only; the change is
+ * confirmed by email to that address), the unsubscribe page (a human page with a
+ * confirm button, so a forwarded copy cannot unsubscribe anyone by a click), and
+ * the free-edition terms.
  */
 
 import { createHash } from "node:crypto";
@@ -35,6 +49,16 @@ export const DIGEST_DESCRIPTOR_SCHEMA = "riskmodels.event-ledger-digest/1";
 export const DIGEST_CONTACT_EMAIL = "service@riskmodels.app";
 export const ENVELOPE_SCHEMA_VERSION = "1.0.0";
 export const ATTACHMENT_MEDIA_TYPE = "application/x-ndjson";
+
+/** Free-edition terms every edition and data file points to (app/legal/feed-terms). */
+export const FEED_TERMS_URL = `${CANONICAL_SITE_URL}/legal/feed-terms`;
+export { FEED_TERMS_VERSION } from "@/lib/feed-waitlist";
+/** Signup page; the "Forward to a colleague" link carries ?ref=<referral_code>. */
+export const FEED_SIGNUP_URL = `${CANONICAL_SITE_URL}/security-master-feed`;
+
+/** Credit the GDELT Project's terms ask for wherever GDELT-derived data is shown. */
+export const GDELT_CREDIT =
+  "Some events in this edition were first discovered through the GDELT Project (https://www.gdeltproject.org/).";
 
 /**
  * THE SETTING for the "Under review, not verified" section. On since 2026-11-11 so
@@ -145,10 +169,122 @@ const NATIONAL_ID_FLAVORED_SYM_ID = /\bBW-(?!BBG)[A-Z]{2}[A-Z0-9]{9}\d\b/;
 export type WithheldReason =
   | "not_redistributable"
   | "internal_only_in_client_edition"
-  | "restricted_identifier_key";
+  | "restricted_identifier_key"
+  | "market_cap_in_client_edition"
+  | "raw_vendor_value_in_client_edition";
+
+/**
+ * Licensed-data guard for client editions (docs/EVENT_LEDGER_SOURCE_REGISTER.md).
+ *
+ * The rule (Conrad, 2026-11-13): RiskModels may redistribute data DERIVED from its licensed market
+ * data, with one exception, market capitalisation. So a client edition, and its attached file:
+ *   - never carries a market cap value, or anything a reader could rebuild one from: market cap,
+ *     size or cap bands, cap ranks, cap-weighted figures, or shares together with a price;
+ *   - never carries a RAW licensed value (a price, volume or other bar field as received, a vendor
+ *     code), only values RiskModels derived;
+ *   - may carry derived fields, which are traced and labelled (derivedFieldPaths(), and the
+ *     license_label of each line names them).
+ * An event carrying either kind is withheld whole from client editions; the published envelope is
+ * never edited. On 2026-11-13 none of the 4,604 verified events carried any of these keys.
+ */
+export const MARKET_CAP_KEY_RE =
+  /(^|_)(market_?cap(s|italisation|italization)?|mkt_?cap|mcap|market_value|cap_(band|bucket|rank|ranking|tier|weight|weighted|pct|percentile)|size_(band|bucket|rank|tier|decile|quintile)|cap_weighted|capweight|float_cap)($|_)/i;
+const RAW_VENDOR_KEY_RE =
+  /(^|_)(price|prices|close|open|high|low|adj_close|adjusted_close|vwap|volume|bar|bars|ohlc|ohlcv|vendor|vendor_code|exchange_code|last_trade_date|last_traded|last_price)($|_)/i;
+/** Shares outstanding alone is a filing fact; with any price it rebuilds market cap. */
+const SHARES_KEY_RE = /(^|_)(shares|shares_outstanding|shares_out|share_count)($|_)/i;
+
+function keyPaths(obj: unknown, re: RegExp, path: string, out: string[]) {
+  if (Array.isArray(obj)) obj.forEach((v, i) => keyPaths(v, re, `${path}[${i}]`, out));
+  else if (obj && typeof obj === "object") {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      const pth = `${path}.${k}`;
+      if (re.test(k) && v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length)) out.push(pth);
+      else keyPaths(v, re, pth, out);
+    }
+  }
+}
+
+function envelopeKeyPaths(env: EventEnvelope, re: RegExp): string[] {
+  const out: string[] = [];
+  keyPaths(env.payload ?? {}, re, "payload", out);
+  keyPaths(env.entity ?? {}, re, "entity", out);
+  keyPaths((env as Record<string, unknown>).affected ?? {}, re, "affected", out);
+  return out;
+}
+
+/** Paths of market cap values (or a shares-plus-price pair) in an envelope. */
+export function marketCapPaths(env: EventEnvelope): string[] {
+  const cap = envelopeKeyPaths(env, MARKET_CAP_KEY_RE);
+  const shares = envelopeKeyPaths(env, SHARES_KEY_RE);
+  const raw = envelopeKeyPaths(env, RAW_VENDOR_KEY_RE);
+  return shares.length && raw.length ? [...cap, ...shares] : cap;
+}
+
+/** Paths of raw licensed values (prices, volumes, bar fields, vendor codes) in an envelope. */
+export function rawVendorPaths(env: EventEnvelope): string[] {
+  return envelopeKeyPaths(env, RAW_VENDOR_KEY_RE);
+}
+
+/**
+ * Entity fields RiskModels fills from its security master, whose inputs include licensed market
+ * data. Derived, so allowed in client editions, but labelled in each line's license_label.
+ */
+export const DERIVED_ENTITY_KEYS = ["ticker", "figi", "bw_sym_id", "entity_name"] as const;
+
+export function derivedFieldPaths(env: EventEnvelope): string[] {
+  const ent = (env.entity ?? {}) as Record<string, unknown>;
+  const out = DERIVED_ENTITY_KEYS.filter((k) => ent[k] !== null && ent[k] !== undefined && ent[k] !== "").map(
+    (k) => `entity.${k}`,
+  );
+  const affected = (env.payload ?? {}).affected_bw_sym_ids;
+  if (Array.isArray(affected) && affected.length) out.push("payload.affected_bw_sym_ids");
+  return out;
+}
+
+/** Words that mean market cap in rendered output. A client edition containing one is refused. */
+export const MARKET_CAP_OUTPUT_RES = [
+  /\bmarket[\s_-]?cap(s|italisation|italization)?\b/i,
+  /\bmkt[\s_-]?cap\b/i,
+  /\bmcap\b/i,
+  /\bcap[\s_-](band|bucket|rank|tier|weight(ed)?)\b/i,
+  /\bsize[\s_-](band|bucket|decile|quintile)\b/i,
+];
+
+/** Patterns of MARKET_CAP_OUTPUT_RES found in the rendered bodies; empty means none. */
+export function marketCapHits(...bodies: string[]): string[] {
+  return MARKET_CAP_OUTPUT_RES.filter((re) => bodies.some((b) => re.test(b))).map((re) => re.source);
+}
 
 export function isInternalOnly(env: EventEnvelope): boolean {
   return env.license?.classification === "internal_only";
+}
+
+/** True for an event whose source, licence basis or knowledge basis is GDELT. */
+export function isGdeltDerived(env: EventEnvelope): boolean {
+  const hay = [env.source?.source_system, env.license?.basis, env.knowledge_basis]
+    .filter((v): v is string => typeof v === "string")
+    .join(" ");
+  return /gdelt/i.test(hay);
+}
+
+/**
+ * Plain-language licence of one event, written into its line of the attached file. It restates the
+ * envelope's license block for a reader; the block itself is unchanged.
+ */
+export function licenseLabel(env: EventEnvelope): string {
+  const lic = env.license ?? {};
+  const terms = `free edition terms (${FEED_TERMS_URL})`;
+  const derived = derivedFieldPaths(env);
+  const note = derived.length ? ` Fields ${derived.join(", ")} are derived by RiskModels.` : "";
+  if (lic.classification === "public_record" && lic.redistributable === true) {
+    return `Public record (SEC filing).${note} Use and quote under the ${terms}.`;
+  }
+  if (lic.classification === "derived" && lic.redistributable === true) {
+    return `Derived by RiskModels.${note} Use and quote under the ${terms}.`;
+  }
+  if (lic.classification === "internal_only") return "Internal only. Not for clients; do not forward.";
+  return "Not redistributable.";
 }
 
 export function withheldReason(env: EventEnvelope, audience: Audience = "client"): WithheldReason | null {
@@ -156,7 +292,12 @@ export function withheldReason(env: EventEnvelope, audience: Audience = "client"
     return "restricted_identifier_key";
   }
   if (NATIONAL_ID_FLAVORED_SYM_ID.test(JSON.stringify(env))) return "restricted_identifier_key";
+  // A restricted word inside a value (4 live Form 25 security descriptions quote one) withholds that row,
+  // rather than refusing the whole edition at the output scan, which stays as the last check.
+  if (RESTRICTED_OUTPUT_RES.some((re) => re.test(JSON.stringify(env)))) return "restricted_identifier_key";
   if (isInternalOnly(env)) return audience === "internal" ? null : "internal_only_in_client_edition";
+  if (audience === "client" && marketCapPaths(env).length) return "market_cap_in_client_edition";
+  if (audience === "client" && rawVendorPaths(env).length) return "raw_vendor_value_in_client_edition";
   const lic = env.license ?? {};
   if (lic.redistributable !== true) return "not_redistributable";
   if (lic.classification !== "public_record" && lic.classification !== "derived") return "not_redistributable";
@@ -371,6 +512,8 @@ export interface DigestEdition {
   /** Count in the headline and subject: verified events plus corrections. */
   mainCount: number;
   correctionCount: number;
+  /** True when any delivered event is GDELT-derived; the edition then shows GDELT_CREDIT. */
+  gdeltCredit: boolean;
   /** Withheld rows, by reason. Operator log only; never rendered. */
   withheld: Record<WithheldReason, number>;
   /** Exactly the lines of the attachment. */
@@ -430,6 +573,8 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
     not_redistributable: 0,
     internal_only_in_client_edition: 0,
     restricted_identifier_key: 0,
+    market_cap_in_client_edition: 0,
+    raw_vendor_value_in_client_edition: 0,
   };
   const main: DigestItem[] = [];
   const review: DigestItem[] = [];
@@ -463,7 +608,7 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
 
   // The attachment holds exactly the rows the email shows.
   const delivered = [...main, ...underReview.items, ...internalOnly.items].sort((a, b) => a.seq - b.seq);
-  const body = delivered.map((i) => canonicalJson(i.envelope) + "\n").join("");
+  const body = delivered.map((i) => attachmentLine(i.envelope)).join("");
   return {
     editionDate: opts.editionDate,
     audience,
@@ -477,6 +622,7 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
     internalOnly,
     mainCount: main.length,
     correctionCount: main.filter((i) => i.flag).length,
+    gdeltCredit: delivered.some((i) => isGdeltDerived(i.envelope)),
     withheld,
     attachment: {
       filename: `events_${opts.editionDate}.jsonl`,
@@ -485,6 +631,11 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
       sha256: createHash("sha256").update(body, "utf8").digest("hex"),
     },
   };
+}
+
+/** One line of the attached file: the canonical envelope plus its license_label. */
+export function attachmentLine(env: EventEnvelope): string {
+  return canonicalJson({ ...env, license_label: licenseLabel(env) }) + "\n";
 }
 
 /** Sorted keys, compact separators, non-ASCII kept: the byte form of ERM3 contract.to_json. */
@@ -577,7 +728,9 @@ export function buildDigestDescriptor(ed: DigestEdition) {
     record: {
       envelope: "RiskModels event contract",
       schema_version: ENVELOPE_SCHEMA_VERSION,
-      serialization: "one envelope per line, canonical JSON: sorted keys, compact separators",
+      serialization:
+        "one envelope per line, canonical JSON: sorted keys, compact separators, plus one added key, license_label; removing license_label gives the contract bytes",
+      license_label: "plain-language licence of the event; the license object holds classification, redistributable and basis",
       required_fields: ENVELOPE_REQUIRED_FIELDS,
       time_axes: {
         effective_at: "valid time: when the real-world state changes (basis in effective_basis)",
@@ -616,7 +769,9 @@ export function buildDigestDescriptor(ed: DigestEdition) {
       "line count equals attachment.lines",
       "every line parses as JSON and has schema_version 1.0.0 and every required field",
     ],
-    links: { about: `${CANONICAL_SITE_URL}/security-master-feed` },
+    terms: FEED_TERMS_URL,
+    ...(ed.gdeltCredit ? { credits: [GDELT_CREDIT] } : {}),
+    links: { about: `${CANONICAL_SITE_URL}/security-master-feed`, terms: FEED_TERMS_URL },
     contact: DIGEST_CONTACT_EMAIL,
   };
 }
@@ -646,10 +801,66 @@ export function reviewSectionNote(kind: "under_review" | "internal_only", sec: R
     : `These rows are licensed for internal use only and must not be forwarded or sent to clients.${more}`;
 }
 
-// ── plain-text part ──────────────────────────────────────────────────────────
+// ── per-recipient footer ─────────────────────────────────────────────────────
 
 export const DIGEST_FOOTER_LEGAL =
-  "RiskModels is a registered DBA of Blue Water Macro Corp., 1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965. Historical record of public filings. Not investment advice.";
+  "RiskModels is a registered DBA of Blue Water Macro Corp., 1001 Bridgeway, P.O. Box 510, Sausalito, CA 94965. Historical record of public filings. General and impersonal information, not investment advice.";
+
+/** The links at the foot of one recipient's copy. */
+export interface EditionFooter {
+  /** Signup page carrying the recipient's referral code, or the plain signup page. */
+  forwardUrl: string;
+  /** "Send this to your team inbox instead"; null for a delivery (team) address or an unlisted recipient. */
+  teamInboxUrl: string | null;
+  /** Human unsubscribe page; null for a recipient who is not on the list. */
+  unsubscribeUrl: string | null;
+  termsUrl: string;
+}
+
+/** Recipient as feed_waitlist_edition_recipients() returns it (purpose and referral_code since 20261113120000). */
+export interface FooterRecipient {
+  unsubscribe_token: string;
+  purpose?: "contact" | "feed" | string | null;
+  referral_code?: string | null;
+}
+
+const REFERRAL_CODE_RE = /^[a-z0-9]{8,32}$/;
+
+export function forwardUrl(referralCode?: string | null): string {
+  return referralCode && REFERRAL_CODE_RE.test(referralCode)
+    ? `${FEED_SIGNUP_URL}?ref=${referralCode}#join`
+    : `${FEED_SIGNUP_URL}#join`;
+}
+
+export function editionFooter(r: FooterRecipient | null): EditionFooter {
+  if (!r) return { forwardUrl: forwardUrl(null), teamInboxUrl: null, unsubscribeUrl: null, termsUrl: FEED_TERMS_URL };
+  const t = encodeURIComponent(r.unsubscribe_token);
+  return {
+    forwardUrl: forwardUrl(r.referral_code),
+    teamInboxUrl: r.purpose === "feed" ? null : `${FEED_SIGNUP_URL}/delivery?token=${t}`,
+    unsubscribeUrl: `${FEED_SIGNUP_URL}/unsubscribe?token=${t}`,
+    termsUrl: FEED_TERMS_URL,
+  };
+}
+
+export const FOOTER_FORWARD_TEXT = "Forward to a colleague: they can sign up for their own copy here";
+export const FOOTER_TEAM_INBOX_TEXT = "Send this to your team inbox instead";
+export const FOOTER_TERMS_TEXT =
+  "Free edition: use inside your firm and quote with attribution. No bulk redistribution or resale; see the terms";
+
+function footerText(f: EditionFooter): string[] {
+  const out = [`${FOOTER_FORWARD_TEXT}: ${f.forwardUrl}`];
+  if (f.teamInboxUrl) {
+    out.push(
+      `${FOOTER_TEAM_INBOX_TEXT}: ${f.teamInboxUrl} (you can also stop delivery to this address once the team inbox confirms)`,
+    );
+  }
+  if (f.unsubscribeUrl) out.push(`Unsubscribe: ${f.unsubscribeUrl}`);
+  out.push(`${FOOTER_TERMS_TEXT}: ${f.termsUrl}`);
+  return out;
+}
+
+// ── plain-text part ──────────────────────────────────────────────────────────
 
 function itemText(i: DigestItem): string[] {
   const who = [i.ticker, i.company].filter(Boolean).join(" · ") || "Name not recorded";
@@ -667,7 +878,7 @@ function itemText(i: DigestItem): string[] {
   return lines;
 }
 
-export function renderDigestText(ed: DigestEdition): string {
+export function renderDigestText(ed: DigestEdition, footer: EditionFooter = editionFooter(null)): string {
   const out: string[] = [];
   out.push(`RiskModels Event Ledger — ${ed.editionDate}${ed.sample ? " (review sample)" : ""}`);
   out.push("");
@@ -695,7 +906,9 @@ export function renderDigestText(ed: DigestEdition): string {
   out.push("You can ignore this block. It describes the attached file so an agent can find and validate it.");
   out.push(digestDescriptorJson(ed));
   out.push("");
+  if (ed.gdeltCredit) out.push(GDELT_CREDIT, "");
   out.push(`Questions or corrections: reply to this email or write to ${DIGEST_CONTACT_EMAIL}.`);
+  out.push(...footerText(footer));
   out.push(DIGEST_FOOTER_LEGAL);
   return out.join("\n") + "\n";
 }

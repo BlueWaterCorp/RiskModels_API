@@ -2,7 +2,19 @@
  * Security master feed early-access list
  *
  * POST /api/feed-waitlist
- *   { email, feed_email?, name?, company?, role?, intended_use?, consent_feed_emails?, website? }
+ *   { email, terms_accepted, feed_email?, name?, company?, role?, intended_use?,
+ *     firm_type?, firm_size?, uses?, audience?, heard_about?, marketing_opt_in?,
+ *     consent_feed_emails?, ref?, website? }
+ *
+ * Everything except email and terms_accepted is optional. terms_accepted must be
+ * true (the form's required box); terms_version and terms_accepted_at are stored
+ * on a NEW row. marketing_opt_in is a separate, unticked-by-default box; it is
+ * stored as asked and only counts once the address is confirmed
+ * (feed_waitlist_confirm sets marketing_opt_in_at). `ref` is the referral code
+ * from a "Forward to a colleague" link; a new row records referred_by. A bad or
+ * unknown code is ignored, never an error. Profile values outside the allowed
+ * lists are rejected with 400 (lib/feed-waitlist.ts mirrors the CHECK
+ * constraints of migration 20261113120000).
  *
  * Two addresses. `email` is the contact: the person, who gets the relationship
  * email. `feed_email` is an optional separate DELIVERY address for the feed itself,
@@ -41,7 +53,16 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
-import { FEED_INTENDED_USE_VALUES, type FeedIntendedUse } from "@/lib/feed-waitlist";
+import {
+  FEED_AUDIENCE_VALUES,
+  FEED_FIRM_SIZE_VALUES,
+  FEED_FIRM_TYPE_VALUES,
+  FEED_INTENDED_USE_VALUES,
+  FEED_USE_VALUES,
+  FEED_TERMS_VERSION,
+  REFERRAL_CODE_RE,
+  type FeedIntendedUse,
+} from "@/lib/feed-waitlist";
 import { sendFeedConfirmation, type FeedConfirmRow } from "@/lib/feed-email";
 import {
   CONFIRM_MAX_SENDS,
@@ -68,6 +89,14 @@ const CONFIRM_MESSAGE_WITH_FEED =
   "Check your email. We sent a link to confirm your contact address. When you confirm it, we will ask the feed delivery address to confirm too.";
 const INTEREST_MESSAGE =
   "Thank you. We have noted your interest. We will not email you about the feed unless you tick the email box.";
+
+const TERMS_MESSAGE = "Please accept the free edition terms to join.";
+
+/** null for an absent value; undefined for a value outside `allowed` (the caller answers 400). */
+function optionalChoice(v: unknown, allowed: readonly string[]): string | null | undefined {
+  if (v == null || v === "") return null;
+  return typeof v === "string" && allowed.includes(v) ? v : undefined;
+}
 
 function optionalText(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -151,6 +180,28 @@ export async function POST(req: NextRequest) {
     intendedUse = body.intended_use as FeedIntendedUse;
   }
 
+  if (body.terms_accepted !== true) {
+    return NextResponse.json({ error: "Terms not accepted", message: TERMS_MESSAGE }, { status: 400, headers: NO_STORE });
+  }
+
+  const firmType = optionalChoice(body.firm_type, FEED_FIRM_TYPE_VALUES);
+  const firmSize = optionalChoice(body.firm_size, FEED_FIRM_SIZE_VALUES);
+  const audience = optionalChoice(body.audience, FEED_AUDIENCE_VALUES);
+  const usesRaw = body.uses == null ? [] : body.uses;
+  const uses =
+    Array.isArray(usesRaw) && usesRaw.every((u) => typeof u === "string" && FEED_USE_VALUES.includes(u))
+      ? [...new Set(usesRaw as string[])]
+      : undefined;
+  if (firmType === undefined || firmSize === undefined || audience === undefined || uses === undefined) {
+    return NextResponse.json(
+      { error: "Invalid profile", message: "One of the profile answers is not on the list. Please choose again." },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  const refCode = typeof body.ref === "string" && REFERRAL_CODE_RE.test(body.ref.trim().toLowerCase())
+    ? body.ref.trim().toLowerCase()
+    : null;
+
   const userId = await sessionUserId();
   const unavailable = () =>
     NextResponse.json(
@@ -163,6 +214,18 @@ export async function POST(req: NextRequest) {
   try {
     const admin = createAdminClient();
 
+    // Referral: the referrer's row id, when the code exists. A lookup failure only drops the referral.
+    let referredBy: string | null = null;
+    if (refCode) {
+      const { data: refRow, error: refError } = await admin
+        .from("feed_waitlist")
+        .select("id")
+        .eq("referral_code", refCode)
+        .maybeSingle();
+      if (refError) console.error("[feed-waitlist] referral_lookup_failed", safeErrorCode(refError));
+      referredBy = (refRow as { id?: string } | null)?.id ?? null;
+    }
+
     // A new row never carries consent. An existing row is left exactly as it was.
     const { error } = await admin.from("feed_waitlist").upsert(
       {
@@ -171,6 +234,17 @@ export async function POST(req: NextRequest) {
         company: optionalText(body.company),
         role: optionalText(body.role),
         intended_use: intendedUse,
+        firm_type: firmType,
+        firm_size: firmSize,
+        uses,
+        audience,
+        heard_about: optionalText(body.heard_about),
+        marketing_opt_in: body.marketing_opt_in === true,
+        terms_version: FEED_TERMS_VERSION,
+        terms_accepted_at: new Date().toISOString(),
+        referred_by: referredBy,
+        // A separate delivery address at signup means editions go there once it confirms.
+        deliver_to_contact: !(wantsEmails && feedEmail),
         consent_feed_emails: false,
         consented_at: null,
         // Only when the box is ticked, and only ever on a new row: an existing row is never changed.

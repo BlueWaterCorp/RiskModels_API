@@ -6,6 +6,11 @@ import { describe, expect, it } from "vitest";
 import { EventLedgerDigestEmail } from "@/emails/event-ledger-digest";
 import {
   ENVELOPE_REQUIRED_FIELDS,
+  FEED_TERMS_URL,
+  GDELT_CREDIT,
+  editionFooter,
+  licenseLabel,
+  marketCapHits,
   INCLUDE_UNDER_REVIEW_DEFAULT,
   INTERNAL_ONLY_HEADING,
   InternalRecipientError,
@@ -19,6 +24,7 @@ import {
   type LedgerRow,
 } from "@/lib/event-ledger-digest";
 import { buildMimeMessage } from "@/lib/event-ledger-digest-mime";
+import { buildPublicLatest } from "@/lib/event-ledger-public";
 
 // Seven real production rows (Form 25 delistings, knowledge dates 2026-06-11..15) and the
 // bytes ERM3's contract.to_json produces for them. Variants below change one field of a real row.
@@ -73,18 +79,25 @@ describe("event ledger digest", () => {
     expect(visa.identifiers).toEqual(["CIK 0001403161"]);
   });
 
-  it("writes each envelope with the same bytes as ERM3 contract.to_json", () => {
+  it("writes each envelope with the bytes of ERM3 contract.to_json plus one license_label key", () => {
     const ed = build();
-    expect(ed.attachment.body).toBe(PY_JSONL);
     expect(ed.attachment.lines).toBe(7);
     expect(ed.attachment.filename).toBe("events_2026-11-10.jsonl");
-    expect(ed.attachment.sha256).toBe(createHash("sha256").update(PY_JSONL).digest("hex"));
-    for (const line of ed.attachment.body.trim().split("\n")) {
+    expect(ed.attachment.sha256).toBe(createHash("sha256").update(ed.attachment.body).digest("hex"));
+    const lines = ed.attachment.body.trim().split("\n");
+    const stripped = lines.map((line) => {
       const env = JSON.parse(line);
       expect(env.schema_version).toBe("1.0.0");
       for (const f of ENVELOPE_REQUIRED_FIELDS) expect(env).toHaveProperty(f);
       expect(canonicalJson(env)).toBe(line);
-    }
+      expect(env.license_label).toBe(
+        `Public record (SEC filing). Use and quote under the free edition terms (${FEED_TERMS_URL}).`,
+      );
+      delete env.license_label;
+      return canonicalJson(env) + "\n";
+    });
+    // Removing license_label gives back the contract bytes exactly.
+    expect(stripped.join("")).toBe(PY_JSONL);
   });
 
   it("uses a stable subject", () => {
@@ -116,6 +129,18 @@ describe("event ledger digest", () => {
     const ed = build([bad]);
     expect(ed.mainCount).toBe(0);
     expect(ed.withheld.restricted_identifier_key).toBe(1);
+  });
+
+  it("withholds a row whose text quotes a restricted identifier word, instead of refusing the edition", async () => {
+    // Four live Form 25 rows quote one in security_description; this is a real row with that shape.
+    const bad = clone(ROWS[0]);
+    const word = "nisi".split("").reverse().join("").toUpperCase();
+    bad.envelope.payload = { ...bad.envelope.payload, security_description: `Common Stock (${word} on file)` };
+    const ed = build([bad, ...ROWS.slice(1)]);
+    expect(ed.withheld.restricted_identifier_key).toBe(1);
+    expect(ed.mainCount).toBe(6);
+    const html = await render(EventLedgerDigestEmail({ edition: ed }));
+    expect(restrictedWordHits(html, renderDigestText(ed), ed.attachment.body)).toEqual([]);
   });
 
   it("flags a correction that supersedes an earlier event", () => {
@@ -245,5 +270,172 @@ describe("event ledger digest", () => {
     expect(provisionLabel("17 CFR 240.12d2-2(b)")).toBe("removed by the exchange under its rules");
     expect(provisionLabel("17 CFR 240.12d2-2(c)")).toBe("withdrawn by the issuer");
     expect(provisionLabel(null)).toBeNull();
+  });
+
+  describe("licensed data: derived fields allowed and labelled, market cap and raw values never", () => {
+    const MARKET_CAP_VARIANTS: Array<[string, unknown]> = [
+      ["market_cap", 1.23e9],
+      ["market_cap_usd", 1.23e9],
+      ["mkt_cap", 1.23e9],
+      ["cap_band", "large"],
+      ["size_band", "mid"],
+      ["cap_rank", 412],
+      ["cap_weighted_return", 0.01],
+      ["market_value", 1.23e9],
+    ];
+
+    it("withholds any event carrying a market cap field from the client edition and its file", async () => {
+      for (const [key, value] of MARKET_CAP_VARIANTS) {
+        for (const where of ["payload", "entity"] as const) {
+          const bad = clone(ROWS[0]);
+          (bad.envelope[where] as Record<string, unknown>)[key] = value;
+          const ed = build([bad, ...ROWS.slice(1)]);
+          expect(ed.withheld.market_cap_in_client_edition).toBe(1);
+          expect(ed.mainCount).toBe(6);
+          const html = await render(EventLedgerDigestEmail({ edition: ed }));
+          const text = renderDigestText(ed);
+          for (const body of [html, text, ed.attachment.body]) {
+            expect(body).not.toContain(key);
+            expect(body).not.toContain(bad.envelope.payload!.issuer_name as string);
+          }
+          expect(marketCapHits(html, text, ed.attachment.body)).toEqual([]);
+        }
+      }
+    });
+
+    it("withholds shares outstanding when a price travels with it, and allows shares alone", () => {
+      const both = clone(ROWS[0]);
+      both.envelope.payload = { ...both.envelope.payload, shares_outstanding: 1000, last_price: 12.5 };
+      expect(build([both]).withheld.market_cap_in_client_edition).toBe(1);
+      const shares = clone(ROWS[0]);
+      shares.envelope.payload = { ...shares.envelope.payload, shares_outstanding: 1000 };
+      expect(build([shares]).mainCount).toBe(1);
+    });
+
+    it("withholds raw licensed values (prices, volumes, bar dates, vendor codes)", () => {
+      for (const key of ["close", "volume", "last_trade_date", "vendor_code", "adj_close"]) {
+        const bad = clone(ROWS[0]);
+        bad.envelope.payload = { ...bad.envelope.payload, [key]: "1" };
+        expect(build([bad]).withheld.raw_vendor_value_in_client_edition).toBe(1);
+      }
+    });
+
+    it("applies the market cap and raw-value withholding to client editions only (internal goes to INTERNAL_RECIPIENTS)", () => {
+      const bad = clone(ROWS[0]);
+      bad.envelope.payload = { ...bad.envelope.payload, market_cap: 1 };
+      const ed = build([bad], { audience: "internal", recipient: "conrad@bwmacro.com" });
+      expect(ed.mainCount).toBe(1);
+    });
+
+    it("allows derived entity fields in a client edition and names them in the license_label", () => {
+      const mapped = clone(ROWS[0]);
+      mapped.envelope.entity = { ...mapped.envelope.entity, ticker: "V", entity_name: "VISA INC." };
+      const ed = build([mapped]);
+      expect(ed.mainCount).toBe(1);
+      const line = JSON.parse(ed.attachment.body);
+      expect(line.license_label).toContain("Fields entity.ticker, entity.entity_name are derived by RiskModels.");
+      expect(licenseLabel(ROWS[0].envelope)).not.toContain("derived");
+    });
+
+    it("refuses rendered output that mentions market cap", () => {
+      expect(marketCapHits("Market cap: $1.2B")).not.toEqual([]);
+      expect(marketCapHits('{"mkt_cap":1}')).not.toEqual([]);
+      expect(marketCapHits("cap band: large")).not.toEqual([]);
+      expect(marketCapHits(renderDigestText(build()))).toEqual([]);
+    });
+
+    it("finds no market cap or raw licensed value in any of the real verified rows", () => {
+      const ed = build();
+      expect(ed.withheld.market_cap_in_client_edition).toBe(0);
+      expect(ed.withheld.raw_vendor_value_in_client_edition).toBe(0);
+      expect(marketCapHits(ed.attachment.body)).toEqual([]);
+    });
+  });
+
+  describe("per-recipient footer", () => {
+    const contact = { unsubscribe_token: "3f2b8c1e-1d2a-4b5c-9e8f-0a1b2c3d4e5f", purpose: "contact", referral_code: "9018ddd80c6a" };
+
+    it("carries the referral link, the team-inbox link, unsubscribe and terms for a contact", async () => {
+      const ed = build();
+      const f = editionFooter(contact);
+      expect(f.forwardUrl).toBe("https://riskmodels.app/security-master-feed?ref=9018ddd80c6a#join");
+      expect(f.teamInboxUrl).toBe(`https://riskmodels.app/security-master-feed/delivery?token=${contact.unsubscribe_token}`);
+      expect(f.unsubscribeUrl).toBe(`https://riskmodels.app/security-master-feed/unsubscribe?token=${contact.unsubscribe_token}`);
+      const html = unescapeHtml(await render(EventLedgerDigestEmail({ edition: ed, footer: f })));
+      const text = renderDigestText(ed, f);
+      for (const body of [html, text]) {
+        expect(body).toContain(f.forwardUrl);
+        expect(body).toContain(f.teamInboxUrl!);
+        expect(body).toContain(f.unsubscribeUrl!);
+        expect(body).toContain(FEED_TERMS_URL);
+        expect(body).toContain("Send this to your team inbox instead");
+        expect(body).toContain("Forward to a colleague");
+      }
+      expect(text).toContain("stop delivery to this address once the team inbox confirms");
+      // The unsubscribe link is the human page with a confirm button, never the one-click endpoint.
+      expect(html).not.toContain("/api/feed-waitlist/unsubscribe");
+    });
+
+    it("offers no team-inbox link to a delivery inbox, and no personal links to an unlisted reader", async () => {
+      const inbox = editionFooter({ ...contact, purpose: "feed" });
+      expect(inbox.teamInboxUrl).toBeNull();
+      expect(inbox.unsubscribeUrl).not.toBeNull();
+      const none = editionFooter(null);
+      expect(none).toMatchObject({ teamInboxUrl: null, unsubscribeUrl: null });
+      expect(none.forwardUrl).toBe("https://riskmodels.app/security-master-feed#join");
+      const text = renderDigestText(build(), none);
+      expect(text).not.toContain("Send this to your team inbox instead");
+      expect(text).not.toContain("Unsubscribe:");
+    });
+
+    it("drops a malformed referral code instead of putting it in a link", () => {
+      expect(editionFooter({ ...contact, referral_code: "<script>" }).forwardUrl).toBe(
+        "https://riskmodels.app/security-master-feed#join",
+      );
+    });
+  });
+
+  describe("GDELT credit", () => {
+    it("adds the credit when a delivered event is GDELT-derived, and not otherwise", async () => {
+      const g = clone(ROWS[0]);
+      g.envelope.lifecycle_status = "candidate";
+      g.envelope.source = { ...g.envelope.source, source_system: "gdelt_doc_v1" };
+      g.envelope.license = { basis: "gdelt_metadata_discovery_only", classification: "internal_only", redistributable: false };
+      const internal = build([g], { audience: "internal", recipient: "conrad@bwmacro.com" });
+      expect(internal.gdeltCredit).toBe(true);
+      expect(renderDigestText(internal)).toContain(GDELT_CREDIT);
+      expect(await render(EventLedgerDigestEmail({ edition: internal }))).toContain("gdeltproject.org");
+      // The adapter marks them internal_only, so a client edition never carries one or the credit.
+      const client = build([g]);
+      expect(client.gdeltCredit).toBe(false);
+      expect(client.attachment.lines).toBe(0);
+      expect(build().gdeltCredit).toBe(false);
+    });
+  });
+
+  describe("public latest-events file", () => {
+    it("lists verified client-deliverable events newest first, with their license labels", () => {
+      const file = buildPublicLatest(ROWS, { generatedAt: "2026-11-13T18:00:00Z", count: 5 });
+      expect(file.count).toBe(5);
+      const known = file.events.map((e) => e.known_date!);
+      expect([...known].sort().reverse()).toEqual(known);
+      expect(file.latest_known_date).toBe("2026-06-15");
+      for (const e of file.events) expect(e.license_label).toContain("Public record (SEC filing).");
+      expect(restrictedWordHits(JSON.stringify(file))).toEqual([]);
+      expect(marketCapHits(JSON.stringify(file))).toEqual([]);
+    });
+
+    it("leaves out candidates, internal rows and market cap rows", () => {
+      const cand = clone(ROWS[0]);
+      cand.envelope.lifecycle_status = "candidate";
+      const internal = clone(ROWS[1]);
+      internal.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
+      const cap = clone(ROWS[2]);
+      cap.envelope.payload = { ...cap.envelope.payload, market_cap: 1 };
+      const file = buildPublicLatest([cand, internal, cap, ...ROWS.slice(3)], { generatedAt: "2026-11-13T18:00:00Z" });
+      expect(file.count).toBe(4);
+      const ids = file.events.map((e) => e.event_id);
+      for (const r of [cand, internal, cap]) expect(ids).not.toContain(r.envelope.event_id);
+    });
   });
 });
