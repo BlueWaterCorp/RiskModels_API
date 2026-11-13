@@ -43,7 +43,7 @@ const sections: { title: string; body: string[] }[] = [
     title: '4. What is in it, and what is not',
     body: [
       'Events come from public SEC filings (EDGAR) and from fields RiskModels derives from them and from its own records. Each line of the data file carries a license_label saying what it is.',
-      'The free edition never contains market capitalisation, or anything from which one could be rebuilt: no market cap values, size or cap bands, cap ranks, cap-weighted figures, or shares together with a price. It is not a source of prices or market data.',
+      'The free edition never contains exact market capitalisation values, or prices. Figures RiskModels computes from market data (for example size buckets, ranks, weights and risk metrics) are its own derived data and may appear. The free edition is not a source of prices or market data.',
       'Credit for third-party sources is shown where their terms ask for it.',
     ],
   },

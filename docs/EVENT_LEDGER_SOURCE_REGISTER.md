@@ -13,15 +13,20 @@ checks in `scripts/event-ledger-digest.ts`. Tests: `tests/event-ledger-digest.te
 
 ## The licensed-data rule
 
-Conrad, 2026-11-13: our market-data licence allows redistributing data DERIVED from
-the licensed data, with one exception, market capitalisation.
+Conrad, 2026-11-13, from the market-data vendor's written replies (2026-11-11 and
+2026-11-12): we may redistribute data DERIVED from the licensed data. Exact market cap
+values may be shown only per stock and per request, inside a logged-in product,
+alongside our own analytics: never in the email editions, the JSON Lines file, the
+public /events page, or any bulk table. Anything computed from market cap (cap
+weights, size factors, size buckets and ranks, risk metrics) is our own derived data
+and is allowed anywhere.
 
 | Kind of value | Client edition | Enforcement |
 |---|---|---|
 | From the public filing itself (SEC EDGAR) | Yes | licence `public_record`, redistributable |
-| Derived by RiskModels, including from licensed data | Yes, traced and labelled | `derivedFieldPaths()`; named in the line's `license_label` |
+| Derived by RiskModels, including from licensed data and from market cap (cap weights, size factors, size buckets and ranks, risk metrics) | Yes, traced and labelled | `derivedFieldPaths()`; named in the line's `license_label`; derived cap keys pass `marketCapPaths()` |
 | Raw licensed value as received (price, volume, other bar fields, last-trade date from a bar, vendor codes) | No: the event is withheld | `rawVendorPaths()` -> `raw_vendor_value_in_client_edition` |
-| Market cap, or anything that rebuilds one (market cap, size or cap bands, cap ranks, cap-weighted figures, shares together with a price) | No: the event is withheld | `marketCapPaths()` -> `market_cap_in_client_edition`; `marketCapHits()` refuses the send if the words appear in any rendered copy or the data file |
+| Exact market cap value (`market_cap`, `market_cap_usd`, `mkt_cap`, `mcap`, `market_value`, or shares together with a price) | No: the event is withheld | `marketCapPaths()` -> `market_cap_in_client_edition`; `marketCapHits()` refuses the send if a market cap label (not a derived one such as "market cap weight") appears in any rendered copy or the data file |
 | `internal_only` / not redistributable | No | `withheldReason()` |
 
 The published envelope is never edited: an event that fails is withheld whole. The
@@ -54,7 +59,8 @@ no abusive crawling). Those rules bind our collection (ERM3 SEC jobs), not reade
 | `first_observed_at` / basis, `ingested_at`, `provenance.*`, `dedupe_key`, `event_id` | RiskModels system fields | no | yes |
 | `entity.bw_sym_id`, `payload.affected_bw_sym_ids` | CIK mapped to the RiskModels security master, restricted to the model universe | derived: the master's inputs include licensed data, and universe membership is ranked on market value | allowed as derived and labelled; **empty on all 4,604 rows today** (see open question 1) |
 | `entity.ticker`, `entity.figi`, `entity.entity_name` | RiskModels security master | derived (tickers and names partly from licensed price data; FIGI is an open identifier) | allowed as derived and labelled; **empty on all rows today** |
-| any price, volume, bar, market value or shares-with-price field | none today | would be raw vendor or market cap | withheld |
+| any price, volume, bar, exact market value or shares-with-price field | none today | would be raw vendor or exact market cap | withheld |
+| size bucket, cap rank, cap weight, size factor, risk metric | none today | derived from market cap (our data) | allowed, labelled |
 
 Every populated field on the 4,604 verified rows comes from, or is computed from,
 the filing itself. Nothing traced to licensed data reaches a client edition today.
@@ -77,11 +83,6 @@ the edition carries the GDELT credit line automatically (`isGdeltDerived()`,
 
 ## Open questions for Conrad
 
-1. Model-universe membership. When a future publish maps CIKs to RiskModels ids
-   (`sym_map`), the presence of `entity.bw_sym_id` says the security is in the model
-   universe, which is ranked on market value. It is not a cap value, but it is a
-   coarse "above the cut-off" signal. The code allows it today as a derived field;
-   say if it should be treated as a cap band and withheld.
-2. FIGI provenance in the master: if some FIGIs were taken from licensed records
+1. FIGI provenance in the master: if some FIGIs were taken from licensed records
    rather than the open standard's own mapping, label them as derived (they already
    are, by `derivedFieldPaths()`).

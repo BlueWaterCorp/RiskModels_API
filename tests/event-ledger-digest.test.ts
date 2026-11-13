@@ -272,19 +272,26 @@ describe("event ledger digest", () => {
     expect(provisionLabel(null)).toBeNull();
   });
 
-  describe("licensed data: derived fields allowed and labelled, market cap and raw values never", () => {
+  describe("licensed data: derived fields allowed and labelled, exact market cap and raw values never", () => {
     const MARKET_CAP_VARIANTS: Array<[string, unknown]> = [
       ["market_cap", 1.23e9],
       ["market_cap_usd", 1.23e9],
       ["mkt_cap", 1.23e9],
-      ["cap_band", "large"],
-      ["size_band", "mid"],
-      ["cap_rank", 412],
-      ["cap_weighted_return", 0.01],
+      ["mcap", 1.23e9],
       ["market_value", 1.23e9],
     ];
+    // Computed from market cap: our own derived data, allowed anywhere.
+    const DERIVED_CAP_FIELDS: Array<[string, unknown]> = [
+      ["market_cap_weight", 0.012],
+      ["cap_weight", 0.012],
+      ["market_cap_rank", 412],
+      ["size_bucket", "mid"],
+      ["cap_band", "large"],
+      ["size_factor_exposure", -0.4],
+      ["log_market_cap_z", 1.1],
+    ];
 
-    it("withholds any event carrying a market cap field from the client edition and its file", async () => {
+    it("withholds any event carrying an exact market cap value from the client edition and its file", async () => {
       for (const [key, value] of MARKET_CAP_VARIANTS) {
         for (const where of ["payload", "entity"] as const) {
           const bad = clone(ROWS[0]);
@@ -337,10 +344,25 @@ describe("event ledger digest", () => {
       expect(licenseLabel(ROWS[0].envelope)).not.toContain("derived");
     });
 
-    it("refuses rendered output that mentions market cap", () => {
+    it("allows figures computed from market cap: weights, ranks, buckets, size factors", async () => {
+      for (const [key, value] of DERIVED_CAP_FIELDS) {
+        const row = clone(ROWS[0]);
+        row.envelope.payload = { ...row.envelope.payload, [key]: value };
+        const ed = build([row]);
+        expect(ed.withheld.market_cap_in_client_edition).toBe(0);
+        expect(ed.mainCount).toBe(1);
+        expect(ed.attachment.body).toContain(key);
+        const html = await render(EventLedgerDigestEmail({ edition: ed }));
+        expect(marketCapHits(html, renderDigestText(ed), ed.attachment.body)).toEqual([]);
+      }
+    });
+
+    it("refuses rendered output that labels an exact market cap value, not a derived figure", () => {
       expect(marketCapHits("Market cap: $1.2B")).not.toEqual([]);
       expect(marketCapHits('{"mkt_cap":1}')).not.toEqual([]);
-      expect(marketCapHits("cap band: large")).not.toEqual([]);
+      expect(marketCapHits('{"market_cap_usd":1}')).not.toEqual([]);
+      expect(marketCapHits("market cap weight 1.2%")).toEqual([]);
+      expect(marketCapHits('{"market_cap_rank":412,"cap_band":"large"}')).toEqual([]);
       expect(marketCapHits(renderDigestText(build()))).toEqual([]);
     });
 

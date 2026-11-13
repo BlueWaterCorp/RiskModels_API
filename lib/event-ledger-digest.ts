@@ -176,19 +176,26 @@ export type WithheldReason =
 /**
  * Licensed-data guard for client editions (docs/EVENT_LEDGER_SOURCE_REGISTER.md).
  *
- * The rule (Conrad, 2026-11-13): RiskModels may redistribute data DERIVED from its licensed market
- * data, with one exception, market capitalisation. So a client edition, and its attached file:
- *   - never carries a market cap value, or anything a reader could rebuild one from: market cap,
- *     size or cap bands, cap ranks, cap-weighted figures, or shares together with a price;
- *   - never carries a RAW licensed value (a price, volume or other bar field as received, a vendor
+ * The rule (Conrad, 2026-11-13, from the market-data vendor's written replies of 11-11 and 11-12):
+ * RiskModels may redistribute data DERIVED from its licensed market data. Exact market cap values may
+ * be shown only per stock and per request, inside a logged-in product, next to our own analytics. So a
+ * client edition, its attached file and the public events list:
+ *   - never carry an exact market cap value (or shares together with a price, which is one);
+ *   - never carry a RAW licensed value (a price, volume or other bar field as received, a vendor
  *     code), only values RiskModels derived;
- *   - may carry derived fields, which are traced and labelled (derivedFieldPaths(), and the
+ *   - may carry anything computed from market cap, which is our own derived data: cap weights, size
+ *     factors, size buckets and ranks, risk metrics;
+ *   - may carry other derived fields, which are traced and labelled (derivedFieldPaths(), and the
  *     license_label of each line names them).
  * An event carrying either kind is withheld whole from client editions; the published envelope is
  * never edited. On 2026-11-13 none of the 4,604 verified events carried any of these keys.
  */
+/** Keys holding an exact market cap value. */
 export const MARKET_CAP_KEY_RE =
-  /(^|_)(market_?cap(s|italisation|italization)?|mkt_?cap|mcap|market_value|cap_(band|bucket|rank|ranking|tier|weight|weighted|pct|percentile)|size_(band|bucket|rank|tier|decile|quintile)|cap_weighted|capweight|float_cap)($|_)/i;
+  /(^|_)(market_?cap(s|italisation|italization)?|mkt_?cap|mcap|market_?value|float_cap)($|_)/i;
+/** Words that make a market cap key a derived figure (allowed): weights, ranks, buckets, factors. */
+const MARKET_CAP_DERIVED_RE =
+  /(^|_)(weight|weights|weighted|wt|rank|ranks|ranking|bucket|buckets|band|bands|tier|decile|quintile|percentile|pct_rank|factor|z|zscore|score|log|beta|exposure)($|_)/i;
 const RAW_VENDOR_KEY_RE =
   /(^|_)(price|prices|close|open|high|low|adj_close|adjusted_close|vwap|volume|bar|bars|ohlc|ohlcv|vendor|vendor_code|exchange_code|last_trade_date|last_traded|last_price)($|_)/i;
 /** Shares outstanding alone is a filing fact; with any price it rebuilds market cap. */
@@ -213,9 +220,11 @@ function envelopeKeyPaths(env: EventEnvelope, re: RegExp): string[] {
   return out;
 }
 
-/** Paths of market cap values (or a shares-plus-price pair) in an envelope. */
+const lastKey = (path: string) => path.replace(/\[\d+\]/g, "").split(".").pop() ?? "";
+
+/** Paths of exact market cap values (or a shares-plus-price pair) in an envelope. Derived cap figures are not listed. */
 export function marketCapPaths(env: EventEnvelope): string[] {
-  const cap = envelopeKeyPaths(env, MARKET_CAP_KEY_RE);
+  const cap = envelopeKeyPaths(env, MARKET_CAP_KEY_RE).filter((p) => !MARKET_CAP_DERIVED_RE.test(lastKey(p)));
   const shares = envelopeKeyPaths(env, SHARES_KEY_RE);
   const raw = envelopeKeyPaths(env, RAW_VENDOR_KEY_RE);
   return shares.length && raw.length ? [...cap, ...shares] : cap;
@@ -242,13 +251,15 @@ export function derivedFieldPaths(env: EventEnvelope): string[] {
   return out;
 }
 
-/** Words that mean market cap in rendered output. A client edition containing one is refused. */
+/**
+ * Words that label an exact market cap value in rendered output. A client copy containing one is
+ * refused. Derived figures ("market cap weight", "market_cap_rank", ...) do not match.
+ */
+const DERIVED_AFTER = String.raw`(?![\s_-]?(weight|weights|weighted|wt|rank|ranks|ranking|bucket|buckets|band|bands|tier|decile|quintile|percentile|factor|z|zscore|score|log|beta|exposure)\b)`;
 export const MARKET_CAP_OUTPUT_RES = [
-  /\bmarket[\s_-]?cap(s|italisation|italization)?\b/i,
-  /\bmkt[\s_-]?cap\b/i,
-  /\bmcap\b/i,
-  /\bcap[\s_-](band|bucket|rank|tier|weight(ed)?)\b/i,
-  /\bsize[\s_-](band|bucket|decile|quintile)\b/i,
+  new RegExp(String.raw`\bmarket[\s_-]?cap(s|italisation|italization)?(?![a-z])` + DERIVED_AFTER, "i"),
+  new RegExp(String.raw`\bmkt[\s_-]?cap(?![a-z])` + DERIVED_AFTER, "i"),
+  new RegExp(String.raw`\bmcap(?![a-z])` + DERIVED_AFTER, "i"),
 ];
 
 /** Patterns of MARKET_CAP_OUTPUT_RES found in the rendered bodies; empty means none. */
