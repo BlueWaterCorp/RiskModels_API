@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useFeedSecret } from "@/components/feed/useFeedSecret";
 
 type State = "ready" | "saving" | "done" | "doneFeed" | "invalid" | "error";
 
 export function FeedConfirm() {
-  const token = useSearchParams().get("token");
+  // Read from the stash, not the URL: the head script removed it before analytics loaded.
+  const token = useFeedSecret("token");
   const [state, setState] = useState<State>("ready");
 
   async function confirm() {

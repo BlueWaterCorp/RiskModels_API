@@ -10,6 +10,7 @@ import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
 import { GoogleTagManager, GoogleTagManagerNoScript } from '@/components/GoogleTagManager';
 import { PostHogProvider } from '@/components/posthog-provider';
+import { FEED_SECRET_STASH_SCRIPT } from '@/lib/feed-url-secrets';
 import { ConsentBanner } from '@/components/ConsentBanner';
 import { UTMTracker } from '@/components/UTMTracker';
 import { CANONICAL_SITE_URL } from '@/lib/constants';
@@ -94,6 +95,8 @@ export default async function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <head>
+        {/* Before any tag: moves feed-link secrets (token, inbox) out of the URL (lib/feed-url-secrets.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: FEED_SECRET_STASH_SCRIPT }} />
         {/* Google Tag Manager: as high in <head> as possible per GTM install guidance */}
         <GoogleTagManager />
         {/* Agent discovery: a bare fetch of riskmodels.app self-routes an AI agent to the

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 // Every statement here should match what the code does; check the code before
 // changing a sentence, and update "Last updated".
 
-const LAST_UPDATED = 'October 15, 2026';
+const LAST_UPDATED = 'November 13, 2026';
 
 type Item = { label: string; text: string };
 type Section = { title: string; intro?: string; items?: Item[]; paragraphs?: string[] };
@@ -53,6 +53,10 @@ const sections: Section[] = [
         text: 'If you send feedback through the site or API, we store your comment with your IP address and user agent.',
       },
       {
+        label: 'Event Ledger and feed list',
+        text: 'When you join the feed list at riskmodels.app/security-master-feed we store your email address and, only if you give them, a second delivery address (such as a team inbox), your name, firm, role, firm type, firm size band, intended uses, who will read the feed, and how you heard about it. We also store when you accepted the free edition terms and which version, whether you asked for marketing email, when you confirmed your address, the referral code in your copy of each edition, which referral link you signed up through (if any), whether you were invited personally and by whom, and the browser user agent and referring page at signup.',
+      },
+      {
         label: 'Website analytics and advertising',
         text: 'Our website uses PostHog, Google Analytics, Google Tag Manager and Google Ads, which set cookies and record pages viewed and clicks. When you sign up, the Google Ads tag may send your email address, hashed by the tag, to Google to measure ad conversions. If you arrive from an ad or campaign link, we keep the click and campaign identifiers in your browser and store them with your account at sign-up.',
       },
@@ -73,6 +77,14 @@ const sections: Section[] = [
       },
       { label: 'Support and service emails', text: 'Answer your questions and tell you about your account.' },
       {
+        label: 'Feed email',
+        text: 'Send the Event Ledger editions and feed notices to confirmed addresses only. Each address confirms by clicking a link before it receives anything.',
+      },
+      {
+        label: 'Marketing email',
+        text: 'Only if the signup you confirm ticked the separate marketing box; the confirmation email says whether it did. Unsubscribing from the feed turns it off too.',
+      },
+      {
         label: 'Improve the product',
         text: 'Understand which endpoints and tickers are used, mostly in aggregate.',
       },
@@ -90,7 +102,7 @@ const sections: Section[] = [
       { label: 'Supabase', text: 'sign-in, database and private file storage.' },
       { label: 'Upstash', text: 'rate limiting and short-lived caches.' },
       { label: 'Stripe', text: 'payments.' },
-      { label: 'Resend', text: 'email delivery.' },
+      { label: 'Resend', text: 'email delivery, including the Event Ledger editions and feed list emails, as our email processor.' },
       { label: 'Plaid', text: 'brokerage connections, only if you link an account.' },
       { label: 'PostHog and Google', text: 'website analytics and ad measurement; Google and GitHub also for sign-in if you choose them.' },
       { label: 'Anthropic and Moonshot AI', text: 'the chat assistant only.' },
@@ -107,6 +119,10 @@ const sections: Section[] = [
       { label: 'Usage and billing records', text: 'as long as needed for billing, accounting and tax records.' },
       { label: 'Cached responses', text: 'up to 24 hours.' },
       { label: 'Exposure-history files', text: 'deleted daily.' },
+      {
+        label: 'Feed list',
+        text: 'while you are on the list. When you unsubscribe we keep the address and the date, so the list cannot re-add you silently; ask us to delete the record and we will. A signup that is never confirmed receives nothing after the confirmation emails, and is kept until you or we delete it.',
+      },
       {
         label: 'Connector sign-ins',
         text: 'authorization codes expire after 5 minutes, access tokens after 1 hour, refresh tokens after 30 days or when you revoke them.',
@@ -125,6 +141,10 @@ const sections: Section[] = [
         text: 'Revoke API keys in your account at any time. Removing RiskModels from an AI client stops its access; ask us if you also want its sign-in revoked on our side.',
       },
       { label: 'Brokerage connections', text: 'Disconnect through your account or the Plaid Portal.' },
+      {
+        label: 'Feed and marketing email',
+        text: 'Every feed email has an unsubscribe link, which stops all feed email to that address and turns off marketing email for it too. To stop marketing email only, or to delete your feed list record and profile entirely, email service@riskmodels.app; we complete deletion within 30 days.',
+      },
       { label: 'Cookies', text: 'Visitors in the EEA, UK and Switzerland choose whether to allow analytics and advertising cookies in a banner; until they accept, those tags run without cookies. Anyone can block or delete cookies in their browser settings; the API and connector do not need them.' },
     ],
   },

@@ -122,6 +122,11 @@ describe("POST /api/feed-waitlist/confirm", () => {
         p_min_interval_seconds: 900,
         p_max_sends: 3,
         p_window_seconds: 86400,
+        // A delivery address records no marketing, terms or referral: a planted opt-in is reset.
+        p_from_submission: true,
+        p_marketing_opt_in: false,
+        p_terms_version: null,
+        p_referred_by: null,
       });
       expect(claim[1].p_token_hash).toMatch(/^[0-9a-f]{64}$/);
       expect(sendFeedDeliveryConfirmation).toHaveBeenCalledTimes(1);

@@ -1,5 +1,6 @@
 import posthog from 'posthog-js';
 import { getConsent, inConsentRegion } from '@/lib/consent';
+import { sanitizeFeedSecrets, stripFeedSecrets } from '@/lib/feed-url-secrets';
 
 const POSTHOG_HOST = process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
 
@@ -17,6 +18,8 @@ export function initPostHog() {
       capture_pageview: false,
       capture_pageleave: true,
       autocapture: true,
+      // Feed links carry single-use and unsubscribe tokens; never send them (lib/feed-url-secrets.ts).
+      before_send: sanitizeFeedSecrets,
       // EEA/UK/CH visitors stay opted out until they accept in the consent banner.
       opt_out_capturing_by_default: inConsentRegion() && getConsent() !== 'granted',
     });
@@ -38,7 +41,7 @@ export function trackEvent(eventName: string, properties?: Record<string, unknow
 export function trackPageView(pageName?: string) {
   if (typeof window !== 'undefined') {
     posthog.capture('$pageview', {
-      $current_url: window.location.href,
+      $current_url: stripFeedSecrets(window.location.href),
       page_name: pageName,
       site: 'riskmodels.app',
     });

@@ -41,6 +41,7 @@ import {
   newConfirmToken,
 } from "@/lib/feed-token";
 import { safeErrorCode } from "@/lib/safe-log";
+import { DELIVERY_CLAIM_VALUES } from "@/lib/feed-delivery";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,8 @@ export async function POST(req: NextRequest) {
           p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
           p_max_sends: CONFIRM_MAX_SENDS,
           p_window_seconds: CONFIRM_WINDOW_SEC,
+          // A delivery address records no marketing, terms or referral; anything planted is reset.
+          ...DELIVERY_CLAIM_VALUES,
         });
         if (error) {
           console.error("[feed-waitlist/confirm] delivery_claim_failed", safeErrorCode(error));

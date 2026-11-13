@@ -34,8 +34,46 @@ import {
   type FeedLaunchNoticeEmailProps,
 } from "@/emails/feed-launch-notice";
 import { FeedInviteEmail, feedInviteSubject } from "@/emails/feed-invite";
+import { FeedDeliveryChangeEmail, FEED_DELIVERY_CHANGE_SUBJECT } from "@/emails/feed-delivery-change";
 
 export { FEED_PAGE_URL };
+
+/** Token only: the inbox is named in the email text, and the server acts on the inbox stored with the request. */
+export function feedDeliveryChangeConfirmPageUrl(token: string): string {
+  return `${FEED_PAGE_URL}/delivery/confirm?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Team-inbox request from an edition footer: asks the CONTACT (never the inbox) to confirm. The inbox and
+ * the stop choice named here are the ones stored on the row by feed_waitlist_claim_delivery_change.
+ */
+export async function sendFeedDeliveryChangeConfirmation(
+  row: { email: string; name: string | null; unsubscribe_token: string },
+  token: string,
+  change: { inbox: string; stopContact: boolean; requestedBy?: "footer" | "operator" },
+): Promise<{ id: string }> {
+  const { html, text } = await renderBoth(
+    FeedDeliveryChangeEmail({
+      name: row.name,
+      inbox: change.inbox,
+      stopContact: change.stopContact,
+      requestedBy: change.requestedBy ?? "footer",
+      confirmUrl: feedDeliveryChangeConfirmPageUrl(token),
+      unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+    }),
+  );
+  const sent = await sendResendEmail(resendClient(), {
+    from: fromAddress(),
+    to: row.email,
+    replyTo: SUPPORT_EMAIL,
+    subject: FEED_DELIVERY_CHANGE_SUBJECT,
+    html,
+    text,
+    headers: feedUnsubscribeHeaders(row.unsubscribe_token),
+    tags: [{ name: "category", value: "feed_delivery_change" }],
+  });
+  return { id: sent.id };
+}
 
 /** Human page: shows a confirm button, so link scanners cannot unsubscribe anyone. */
 export function feedUnsubscribePageUrl(token: string): string {
@@ -97,6 +135,8 @@ export interface FeedConfirmRow {
   unsubscribe_token: string;
   /** The delivery address STORED on the row, if any. The confirmation email names this one, never a request's. */
   requested_feed_email?: string | null;
+  /** The marketing choice the pending claim will apply on confirmation (migration 20261113120000). */
+  marketing_opt_in?: boolean | null;
 }
 
 export function feedConfirmPageUrl(token: string): string {
@@ -106,7 +146,7 @@ export function feedConfirmPageUrl(token: string): string {
 export async function sendFeedConfirmation(
   row: FeedConfirmRow,
   token: string,
-  opts: { requestedFeedEmail?: string | null } = {},
+  opts: { requestedFeedEmail?: string | null; marketingOptIn?: boolean } = {},
 ): Promise<{ id: string }> {
   const { html, text } = await renderBoth(
     FeedConfirmEmail({
@@ -114,6 +154,7 @@ export async function sendFeedConfirmation(
       confirmUrl: feedConfirmPageUrl(token),
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
       requestedFeedEmail: opts.requestedFeedEmail ?? null,
+      marketingOptIn: opts.marketingOptIn === true,
     }),
   );
   const sent = await sendResendEmail(resendClient(), {

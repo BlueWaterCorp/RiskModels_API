@@ -20,6 +20,11 @@ export interface FeedConfirmEmailProps {
    * address can see it before confirming: confirming also authorises that address to be asked.
    */
   requestedFeedEmail?: string | null;
+  /**
+   * The marketing choice confirming will apply, as the signup that sent this email asked. Always
+   * stated, so nobody's marketing opt-in is switched on without the owner seeing it.
+   */
+  marketingOptIn?: boolean;
   /** Override for previews and test sends (e.g. a cid: image). */
   logoSrc?: string;
 }
@@ -31,6 +36,7 @@ export const FeedConfirmEmail = ({
   confirmUrl = `${BASE_URL}/security-master-feed/confirm`,
   unsubscribeUrl = `${BASE_URL}/security-master-feed/unsubscribe`,
   requestedFeedEmail = null,
+  marketingOptIn = false,
   logoSrc = FEED_LOGO_URL,
 }: FeedConfirmEmailProps) => (
   <Html>
@@ -60,6 +66,12 @@ export const FeedConfirmEmail = ({
             that address is wrong, do not confirm.
           </Text>
         ) : null}
+
+        <Text style={marketingOptIn ? styles.banner : styles.paragraph}>
+          {marketingOptIn
+            ? "The request also asks for occasional news about other RiskModels products. Confirming turns that on, separately from the feed. If you did not ask for it, do not confirm here; join again from the early-access page without that box ticked."
+            : "The request does not ask for marketing email, and confirming does not turn it on."}
+        </Text>
 
         <Section style={styles.buttonWrap}>
           <Button style={styles.button} href={confirmUrl}>

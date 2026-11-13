@@ -4,20 +4,28 @@ import { FeedHeader, FEED_LOGO_URL, styles as feedStyles } from "./feed-shared";
 import {
   DIGEST_CONTACT_EMAIL,
   DIGEST_FOOTER_LEGAL,
+  FOOTER_FORWARD_TEXT,
+  FOOTER_TEAM_INBOX_TEXT,
+  FOOTER_TERMS_TEXT,
+  GDELT_CREDIT,
   digestDescriptorJson,
+  editionFooter,
   headline,
   reviewSectionNote,
   reviewSectionTitle,
   windowText,
   type DigestEdition,
   type DigestItem,
+  type EditionFooter,
 } from "../lib/event-ledger-digest";
 
 /**
- * Daily Event Ledger edition (HTML part). Written to the standard of a client
- * email; for now it goes to one internal recipient only (see
- * scripts/event-ledger-digest.ts). Every value comes from the edition built by
- * lib/event-ledger-digest.ts; the template adds no facts of its own.
+ * Daily Event Ledger edition (HTML part). Every value comes from the edition
+ * built by lib/event-ledger-digest.ts; the template adds no facts of its own.
+ * `footer` is built per recipient (editionFooter()): forward-to-a-colleague link
+ * with the recipient's referral code, the team-inbox re-route link (contact
+ * addresses only), unsubscribe and terms. Without it the footer carries the
+ * plain signup and terms links only.
  */
 
 const NAVY = "#002a5e";
@@ -166,10 +174,15 @@ const EventTable = ({ items }: { items: DigestItem[] }) => (
 
 export interface EventLedgerDigestEmailProps {
   edition: DigestEdition;
+  footer?: EditionFooter;
   logoSrc?: string;
 }
 
-export const EventLedgerDigestEmail = ({ edition, logoSrc = FEED_LOGO_URL }: EventLedgerDigestEmailProps) => (
+export const EventLedgerDigestEmail = ({
+  edition,
+  footer = editionFooter(null),
+  logoSrc = FEED_LOGO_URL,
+}: EventLedgerDigestEmailProps) => (
   <Html>
     <Head />
     <Preview>{headline(edition)}</Preview>
@@ -228,7 +241,40 @@ export const EventLedgerDigestEmail = ({ edition, logoSrc = FEED_LOGO_URL }: Eve
           <pre style={s.pre}>{digestDescriptorJson(edition)}</pre>
         </Section>
 
+        {edition.gdeltCredit ? <Text style={s.small}>{GDELT_CREDIT}</Text> : null}
+
         <Hr style={s.hr} />
+        {footer.forwardUrl ? (
+          <Text style={s.small}>
+            <Link href={footer.forwardUrl} style={s.link}>
+              {FOOTER_FORWARD_TEXT}
+            </Link>
+            .
+          </Text>
+        ) : null}
+        {footer.teamInboxUrl ? (
+          <Text style={s.small}>
+            <Link href={footer.teamInboxUrl} style={s.link}>
+              {FOOTER_TEAM_INBOX_TEXT}
+            </Link>
+            . You can also stop delivery to this address once the team inbox confirms.
+          </Text>
+        ) : null}
+        <Text style={s.small}>
+          {FOOTER_TERMS_TEXT}:{" "}
+          <Link href={footer.termsUrl} style={s.link}>
+            free edition terms
+          </Link>
+          .
+          {footer.unsubscribeUrl ? (
+            <>
+              {" · "}
+              <Link href={footer.unsubscribeUrl} style={s.link}>
+                Unsubscribe
+              </Link>
+            </>
+          ) : null}
+        </Text>
         <Text style={s.small}>
           Questions or corrections: reply to this email or write to{" "}
           <Link href={`mailto:${DIGEST_CONTACT_EMAIL}`} style={s.link}>
