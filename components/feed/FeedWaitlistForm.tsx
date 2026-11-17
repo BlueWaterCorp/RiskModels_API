@@ -53,7 +53,6 @@ export default function FeedWaitlistForm() {
           uses: form.getAll('uses'),
           audience: form.get('audience') || null,
           heard_about: form.get('heard_about'),
-          consent_feed_emails: form.get('consent_feed_emails') === 'on',
           marketing_opt_in: form.get('marketing_opt_in') === 'on',
           terms_accepted: form.get('terms_accepted') === 'on',
           ref: referralCode(),
@@ -203,14 +202,6 @@ export default function FeedWaitlistForm() {
       </div>
 
       <label className="flex items-start gap-2 text-sm text-zinc-300 leading-snug">
-        <input type="checkbox" name="consent_feed_emails" className={boxClass} />
-        <span>
-          Email me the feed: launch notice, the spec and sample, and editions once delivery starts. We will send a
-          link to confirm your address first. Unsubscribe at any time.
-        </span>
-      </label>
-
-      <label className="flex items-start gap-2 text-sm text-zinc-300 leading-snug">
         <input type="checkbox" name="marketing_opt_in" className={boxClass} />
         <span>
           Also send me occasional news about other RiskModels products. Separate from the feed; it takes effect only
@@ -225,7 +216,8 @@ export default function FeedWaitlistForm() {
           <Link href="/legal/feed-terms" className="underline hover:text-white" target="_blank">
             free edition terms
           </Link>
-          : use inside my firm and quoting with attribution; no bulk redistribution or resale.{' '}
+          : use inside my firm and quoting with attribution; no bulk redistribution or resale. Email me the feed;
+          we will send a link to confirm your address first. Unsubscribe at any time.{' '}
           <span className="text-blue-400">*</span>
         </span>
       </label>
