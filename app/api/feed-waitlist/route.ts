@@ -260,6 +260,7 @@ export async function POST(req: NextRequest) {
     }
 
     {
+      // Every accepted signup asks for a confirmation (the terms are the request for feed email).
       // One atomic UPDATE decides whether a confirmation email may go out. It matches nothing for a
       // consented or unsubscribed row, a row mailed in the last interval, or one at the send cap.
       const fresh = newConfirmToken();
