@@ -138,9 +138,12 @@ export async function POST(req: NextRequest) {
   }
 
   const feedRaw = typeof body.feed_email === "string" ? body.feed_email.trim().toLowerCase() : "";
+  // A delivery address equal to the contact address is one address, so it gets the plain reply.
   const reply = {
     ok: true,
-    message: feedRaw ? CONFIRM_MESSAGE_WITH_FEED : CONFIRM_MESSAGE,
+    message: feedRaw && feedRaw !== (typeof body.email === "string" ? body.email.trim().toLowerCase() : "")
+      ? CONFIRM_MESSAGE_WITH_FEED
+      : CONFIRM_MESSAGE,
   };
 
   // Honeypot: real visitors never see or fill this field.
