@@ -53,6 +53,7 @@ describe("POST /api/admin/cache/fundamentals", () => {
     });
     expect(deleteCachePattern).toHaveBeenCalledWith(
       "riskmodels:fundamentals_zarr:*",
+      { failOnError: true },
     );
   });
 

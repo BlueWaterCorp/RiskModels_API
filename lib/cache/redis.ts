@@ -182,11 +182,27 @@ export async function deleteCache(key: string): Promise<void> {
   memoryCache.delete(key);
 }
 
+export interface DeleteCachePatternOptions {
+  /**
+   * When true, a failed Redis scan or delete is rethrown instead of logged
+   * and swallowed, so the caller can report the purge as failed (ERM3-97:
+   * the fundamentals purge must not return ok on a failed purge). Default
+   * false keeps the historical best-effort behavior.
+   */
+  failOnError?: boolean;
+}
+
 /**
  * Delete multiple keys by pattern. Returns the number of keys deleted
  * (Redis + memory fallback combined) for observability.
+ *
+ * With `failOnError: true`, a Redis scan or delete failure throws (after the
+ * error is logged) and the memory fallback is not touched.
  */
-export async function deleteCachePattern(pattern: string): Promise<number> {
+export async function deleteCachePattern(
+  pattern: string,
+  options: DeleteCachePatternOptions = {},
+): Promise<number> {
   let deleted = 0;
 
   if (redis) {
@@ -210,6 +226,7 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
       }
     } catch (error) {
       console.error("[Cache] Redis pattern delete error:", error);
+      if (options.failOnError) throw error;
     }
   }
 

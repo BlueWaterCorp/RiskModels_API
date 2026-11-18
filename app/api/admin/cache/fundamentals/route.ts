@@ -9,6 +9,9 @@
  * null-rf rows from this cache). Safe to call any time — the next request
  * per ticker recomputes from GCS.
  *
+ * Returns 2xx with `deleted` only when the Redis scan and delete both
+ * succeeded; any Redis failure returns 500 `{ ok: false, error }`.
+ *
  * Auth: Authorization: Bearer CRON_SECRET (same machine-to-machine secret
  * as /api/admin/cache/funds). Production value lives in Doppler `erm3/prd`
  * (synced to Vercel). A bare `$CRON_SECRET` in the shell is often unset or
@@ -40,7 +43,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const deleted = await deleteCachePattern(FUNDAMENTALS_ZARR_CACHE_PATTERN);
+    // Fail closed (ERM3-97): a failed Redis scan or delete throws and this
+    // route returns 500, so the ERM3 weekly publisher never reads a failed
+    // purge as success while stale row packs keep being served.
+    const deleted = await deleteCachePattern(FUNDAMENTALS_ZARR_CACHE_PATTERN, {
+      failOnError: true,
+    });
     console.log(
       `[admin/cache/fundamentals] purged ${deleted} keys (${FUNDAMENTALS_ZARR_CACHE_PATTERN})`,
     );
