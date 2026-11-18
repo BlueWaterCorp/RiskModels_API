@@ -185,9 +185,15 @@ export async function deleteCache(key: string): Promise<void> {
 /**
  * Delete multiple keys by pattern. Returns the number of keys deleted
  * (Redis + memory fallback combined) for observability.
+ *
+ * Unlike the other helpers here, a Redis scan/delete failure is NOT
+ * swallowed: callers are admin purge routes whose callers (ERM3 publishers)
+ * treat a success response as confirmed invalidation. The memory fallback is
+ * still cleared, then the Redis error is rethrown.
  */
 export async function deleteCachePattern(pattern: string): Promise<number> {
   let deleted = 0;
+  let redisError: unknown = null;
 
   if (redis) {
     try {
@@ -210,6 +216,7 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
       }
     } catch (error) {
       console.error("[Cache] Redis pattern delete error:", error);
+      redisError = error;
     }
   }
 
@@ -220,6 +227,12 @@ export async function deleteCachePattern(pattern: string): Promise<number> {
       memoryCache.delete(key);
       deleted++;
     }
+  }
+
+  if (redisError !== null) {
+    throw redisError instanceof Error
+      ? redisError
+      : new Error(`Redis pattern delete failed: ${String(redisError)}`);
   }
 
   return deleted;
