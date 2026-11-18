@@ -7,7 +7,7 @@
  */
 import { execFile } from "node:child_process";
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -273,4 +273,34 @@ describe("event-ledger-digest.ts --scheduled (process)", () => {
     expect(existsSync(join(stateDir(h), "list-send.lock"))).toBe(false);
     expect(cursorOf(h).pending_send).toMatchObject({ after_seq: 4597, through_seq: 4604 });
   }, 90_000);
+
+  it("refuses --out on an ad-hoc list send, before reading anything", async () => {
+    const h = home();
+    const reads = fake.ledgerReads;
+    const r = await run(h, ["--list", "--send", "--confirm-list-send", "2", "--out", join(h, "elsewhere")]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("list_send_fixed_state");
+    expect(fake.ledgerReads).toBe(reads);
+  }, 90_000);
+
+  it("resumes from the edition folder recorded in pending_send, not a recomputed one", async () => {
+    const h = home();
+    fake.failTo = new Set(["team-inbox@example.com"]);
+    const day1 = await run(h, SCHEDULED);
+    fake.failTo = new Set();
+    expect(day1.code).toBe(1);
+    // Move the edition folder (as a pre-fix custom --out would have placed it elsewhere) and
+    // point pending_send at the new place.
+    const c = cursorOf(h);
+    const moved = join(h, "moved_edition");
+    renameSync(c.pending_send.out_dir, moved);
+    c.pending_send.out_dir = moved;
+    writeFileSync(join(stateDir(h), "cursor-list.json"), JSON.stringify(c, null, 2) + "\n");
+    const mark = fake.sends.length;
+    const resume = await run(h, ["--list", "--send", "--resume-pending", "--confirm-list-send", "2"]);
+    expect(resume.code).toBe(0);
+    expect(fake.sends.slice(mark)).toEqual(["team-inbox@example.com"]);
+    const log = JSON.parse(readFileSync(join(moved, "sent.json"), "utf8"));
+    expect(log.complete).toBe(true);
+  }, 180_000);
 });

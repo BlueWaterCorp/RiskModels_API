@@ -65,6 +65,7 @@ export type GateResult =
         | "scheduled_fixed_state"
         | "scheduled_no_recipients"
         | "resume_needs_list_send"
+        | "list_send_fixed_state"
         | "resume_takes_pending_window";
     };
 
@@ -90,6 +91,8 @@ export function listSendGate(f: ListSendFlags, recipients: number | null): GateR
       return { ok: false, reason: "resume_takes_pending_window" };
     }
   }
+  // List state (sent.json, pending_send's folder) always lives in the fixed directory.
+  if (f.list && f.send && f.out) return { ok: false, reason: "list_send_fixed_state" };
   if (recipients !== null && f.list && f.send && f.confirmListSend !== String(recipients)) {
     return { ok: false, reason: "confirm_list_send_required" };
   }

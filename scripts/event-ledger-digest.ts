@@ -48,6 +48,8 @@
  *               With --list --send --confirm-list-send <N>: rebuilds exactly the pending edition
  *               (same rows, same edition date), sends only to addresses not yet in its sent.json,
  *               then moves the list cursor past it.
+ *   --out       Dry runs and single-address runs only: every list send (--list --send) refuses it,
+ *               so sent.json and pending_send's folder always live in the fixed directory.
  *   Lock.       Every list send holds ~/.riskmodels/event-ledger-digest/list-send.lock (exclusive
  *               create) from reading its state to writing it; a second run refuses (exit 5). A lock
  *               older than two hours is reported and refused, never broken: remove it by hand.
@@ -504,8 +506,9 @@ async function main() {
     process.exit(3);
   }
 
+  // A resume writes to the folder its pending send recorded (belt and braces: --out is refused on list sends).
   const outDir = resolve(
-    arg("out") ?? join(STATE_DIR, "editions", `${editionDate}${list ? "_list" : ""}${edition.sample ? "_sample" : ""}`),
+    resume?.out_dir ?? arg("out") ?? join(STATE_DIR, "editions", `${editionDate}${list ? "_list" : ""}${edition.sample ? "_sample" : ""}`),
   );
   mkdirSync(outDir, { recursive: true });
   // A list preview carries no recipient's links or tokens.
@@ -593,7 +596,7 @@ async function main() {
     }
   }
   // A resume skips every address already sent for that edition, whatever the rebuilt sha.
-  const resumeLog = resume ? readSentLogRaw(join(resume.out_dir ?? outDir, "sent.json")) : null;
+  const resumeLog = resume ? readSentLogRaw(join(outDir, "sent.json")) : null;
   const shaMismatch = Boolean(resume?.attachment_sha256 && resume.attachment_sha256 !== edition.attachment.sha256);
   if (shaMismatch) {
     console.error(

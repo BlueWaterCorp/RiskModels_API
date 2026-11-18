@@ -63,6 +63,13 @@ describe("list send gate", () => {
     });
   });
 
+  it("keeps every list send's state in the fixed folder: --out only on a dry run or a single-address run", () => {
+    expect(listSendGate(flags({ out: true, confirmListSend: "2" }), 2)).toEqual({ ok: false, reason: "list_send_fixed_state" });
+    expect(listSendGate(flags({ out: true }), null)).toEqual({ ok: false, reason: "list_send_fixed_state" });
+    expect(listSendGate(flags({ out: true, send: false }), 2)).toEqual({ ok: true });
+    expect(listSendGate(flags({ out: true, list: false }), 1)).toEqual({ ok: true });
+  });
+
   it("keeps scheduled state in the fixed folder: no --out, no --cursor", () => {
     for (const over of [{ out: true }, { cursor: true }]) {
       expect(listSendGate(flags({ scheduled: true, ...over }), 2)).toEqual({ ok: false, reason: "scheduled_fixed_state" });
