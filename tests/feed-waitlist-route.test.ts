@@ -88,7 +88,7 @@ describe("POST /api/feed-waitlist", () => {
   });
 
   describe("double opt-in: the signup never records consent", () => {
-    it("stores a new row WITHOUT consent even when the box is ticked", async () => {
+    it("stores a new row WITHOUT consent even though the terms are accepted", async () => {
       const res = await POST(
         request({
           email: "  Analyst@Example.COM ",
@@ -96,7 +96,6 @@ describe("POST /api/feed-waitlist", () => {
           company: "Example Capital",
           role: "PM",
           intended_use: "risk_portfolio",
-          consent_feed_emails: true,
         }),
       );
       expect(res.status).toBe(200);
@@ -118,7 +117,7 @@ describe("POST /api/feed-waitlist", () => {
 
     it("asks for a confirmation email through the atomic claim, with a hashed single-use token", async () => {
       rpc.mockResolvedValue({ data: [claimedRow()], error: null });
-      const res = await POST(request({ email: "new@example.com", consent_feed_emails: true }));
+      const res = await POST(request({ email: "new@example.com" }));
       expect(res.status).toBe(200);
       expect((await res.json()).message).toMatch(/Check your email/);
       expect(rpc).toHaveBeenCalledTimes(1);
@@ -142,17 +141,16 @@ describe("POST /api/feed-waitlist", () => {
       expect(createHash("sha256").update(token).digest("hex")).toBe(args.p_token_hash);
     });
 
-    it("sends nothing and claims nothing when the box is not ticked", async () => {
-      const res = await POST(request({ email: "a@example.com" }));
+    it("asks for a confirmation on accepted terms alone, and ignores an old client's consent_feed_emails false", async () => {
+      const res = await POST(request({ email: "a@example.com", consent_feed_emails: false }));
       expect(res.status).toBe(200);
-      expect((await res.json()).message).toMatch(/will not email you/);
-      expect(rpc).not.toHaveBeenCalled();
-      expect(afterTasks).toHaveLength(0);
+      expect((await res.json()).message).toMatch(/Check your email/);
+      expect(rpc).toHaveBeenCalledTimes(1);
     });
 
     it("sends nothing when the claim matches no row (consented, unsubscribed, throttled or capped)", async () => {
       rpc.mockResolvedValue({ data: [], error: null });
-      const res = await POST(request({ email: "listed@example.com", consent_feed_emails: true }));
+      const res = await POST(request({ email: "listed@example.com" }));
       expect(res.status).toBe(200);
       expect(afterTasks).toHaveLength(0);
       await runAfter();
@@ -161,9 +159,9 @@ describe("POST /api/feed-waitlist", () => {
 
     it("returns the same reply whether or not the address was already listed", async () => {
       rpc.mockResolvedValue({ data: [claimedRow()], error: null });
-      const first = await POST(request({ email: "x@example.com", consent_feed_emails: true }));
+      const first = await POST(request({ email: "x@example.com" }));
       rpc.mockResolvedValue({ data: [], error: null });
-      const repeat = await POST(request({ email: "x@example.com", consent_feed_emails: true }));
+      const repeat = await POST(request({ email: "x@example.com" }));
       expect(repeat.status).toBe(first.status);
       expect(await repeat.json()).toEqual(await first.json());
       expect([...repeat.headers.entries()].sort()).toEqual([...first.headers.entries()].sort());
@@ -172,14 +170,14 @@ describe("POST /api/feed-waitlist", () => {
     it("does not wait for the email provider (so latency cannot reveal list state)", async () => {
       rpc.mockResolvedValue({ data: [claimedRow()], error: null });
       sendFeedConfirmation.mockImplementation(() => new Promise(() => {})); // never settles
-      const res = await POST(request({ email: "new@example.com", consent_feed_emails: true }));
+      const res = await POST(request({ email: "new@example.com" }));
       expect(res.status).toBe(200);
       expect(sendFeedConfirmation).not.toHaveBeenCalled(); // queued, not yet run, not awaited
       expect(afterTasks).toHaveLength(1);
     });
 
     it("never changes an existing row's fields (the upsert ignores duplicates)", async () => {
-      await POST(request({ email: "old@example.com", name: "Attacker", consent_feed_emails: true }));
+      await POST(request({ email: "old@example.com", name: "Attacker" }));
       expect(upsert.mock.calls[0]![1]).toMatchObject({ ignoreDuplicates: true });
       expect(from).toHaveBeenCalledTimes(1); // the only table call is the insert-if-absent
     });
@@ -194,7 +192,7 @@ describe("POST /api/feed-waitlist", () => {
   describe("two addresses: a contact and a separate feed delivery address", () => {
     it("stores the delivery address as a REQUEST on the new contact row, not as a row or a link", async () => {
       rpc.mockResolvedValue({ data: [claimedRow()], error: null });
-      await POST(request({ email: "Analyst@Corp.com", feed_email: "  OPS@Corp.com ", consent_feed_emails: true }));
+      await POST(request({ email: "Analyst@Corp.com", feed_email: "  OPS@Corp.com " }));
       expect(upsert).toHaveBeenCalledTimes(1); // only the contact row is written at signup
       expect(upsert.mock.calls[0]![0]).toMatchObject({
         email: "analyst@corp.com",
@@ -205,7 +203,7 @@ describe("POST /api/feed-waitlist", () => {
 
     it("asks only the contact to confirm at signup, and names the delivery address in that email", async () => {
       rpc.mockResolvedValue({ data: [claimedRow({ email: "analyst@corp.com", requested_feed_email: "ops@corp.com" })], error: null });
-      const res = await POST(request({ email: "analyst@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      const res = await POST(request({ email: "analyst@corp.com", feed_email: "ops@corp.com" }));
       expect((await res.json()).message).toMatch(/ask the feed delivery address to confirm too/);
       expect(rpc).toHaveBeenCalledTimes(1);
       expect(rpc.mock.calls[0]![1]).toMatchObject({ p_email: "analyst@corp.com" });
@@ -218,38 +216,32 @@ describe("POST /api/feed-waitlist", () => {
     it("names the STORED delivery address even when a repeat signup omits it, so the warning cannot be hidden", async () => {
       // The row was registered earlier with the attacker's address; this request carries no feed_email.
       rpc.mockResolvedValue({ data: [claimedRow({ email: "victim@corp.com", requested_feed_email: "attacker@evil.com" })], error: null });
-      await POST(request({ email: "victim@corp.com", consent_feed_emails: true }));
+      await POST(request({ email: "victim@corp.com" }));
       await runAfter();
       expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com", marketingOptIn: false });
     });
 
     it("names the stored address, not a different one submitted by a repeat signup", async () => {
       rpc.mockResolvedValue({ data: [claimedRow({ email: "victim@corp.com", requested_feed_email: "attacker@evil.com" })], error: null });
-      await POST(request({ email: "victim@corp.com", feed_email: "friendly@corp.com", consent_feed_emails: true }));
+      await POST(request({ email: "victim@corp.com", feed_email: "friendly@corp.com" }));
       await runAfter();
       expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: "attacker@evil.com", marketingOptIn: false });
     });
 
     it("names no delivery address when none is stored, even if this request submitted one", async () => {
       rpc.mockResolvedValue({ data: [claimedRow({ requested_feed_email: null })], error: null });
-      await POST(request({ email: "new@example.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      await POST(request({ email: "new@example.com", feed_email: "ops@corp.com" }));
       await runAfter();
       expect(sendFeedConfirmation.mock.calls[0]![2]).toEqual({ requestedFeedEmail: null, marketingOptIn: false });
     });
 
     it("treats a delivery address equal to the contact address as one address", async () => {
-      await POST(request({ email: "a@corp.com", feed_email: "A@Corp.com", consent_feed_emails: true }));
+      await POST(request({ email: "a@corp.com", feed_email: "A@Corp.com" }));
       expect(upsert.mock.calls[0]![0]).toMatchObject({ requested_feed_email: null });
-    });
-
-    it("stores no delivery request when the box is not ticked", async () => {
-      await POST(request({ email: "a@corp.com", feed_email: "ops@corp.com" }));
-      expect(upsert.mock.calls[0]![0]).toMatchObject({ requested_feed_email: null });
-      expect(rpc).not.toHaveBeenCalled();
     });
 
     it("rejects a malformed delivery address, and writes nothing", async () => {
-      const res = await POST(request({ email: "a@corp.com", feed_email: "not-an-email", consent_feed_emails: true }));
+      const res = await POST(request({ email: "a@corp.com", feed_email: "not-an-email" }));
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe("Invalid feed_email");
       expect(upsert).not.toHaveBeenCalled();
@@ -257,14 +249,14 @@ describe("POST /api/feed-waitlist", () => {
 
     it("gives the same reply for a listed and a new contact when a delivery address is given", async () => {
       rpc.mockResolvedValue({ data: [claimedRow()], error: null });
-      const first = await POST(request({ email: "x@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      const first = await POST(request({ email: "x@corp.com", feed_email: "ops@corp.com" }));
       rpc.mockResolvedValue({ data: [], error: null });
-      const repeat = await POST(request({ email: "x@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      const repeat = await POST(request({ email: "x@corp.com", feed_email: "ops@corp.com" }));
       expect(await repeat.json()).toEqual(await first.json());
     });
 
     it("never creates the delivery address row or a link from the signup (only a confirmed contact can)", async () => {
-      await POST(request({ email: "a@corp.com", feed_email: "ops@corp.com", consent_feed_emails: true }));
+      await POST(request({ email: "a@corp.com", feed_email: "ops@corp.com" }));
       expect(from).toHaveBeenCalledTimes(1);
       expect(rpc.mock.calls.every(([fn]) => fn === "feed_waitlist_claim_confirmation")).toBe(true);
     });
@@ -273,7 +265,7 @@ describe("POST /api/feed-waitlist", () => {
   describe("terms, profile, marketing opt-in and referrals", () => {
     it("refuses a signup without the terms box, and writes nothing", async () => {
       for (const terms_accepted of [false, undefined, "yes"]) {
-        const res = await POST(request({ email: "a@example.com", consent_feed_emails: true, terms_accepted }));
+        const res = await POST(request({ email: "a@example.com", terms_accepted }));
         expect(res.status).toBe(400);
       }
       expect(upsert).not.toHaveBeenCalled();
@@ -282,7 +274,7 @@ describe("POST /api/feed-waitlist", () => {
 
     it("never writes terms, marketing or referral on the row: they ride on this submission's claim", async () => {
       referralLookup.mockResolvedValue({ data: { id: "referrer-row" }, error: null });
-      await POST(request({ email: "a@example.com", consent_feed_emails: true, marketing_opt_in: true, ref: "9018ddd80c6a" }));
+      await POST(request({ email: "a@example.com", marketing_opt_in: true, ref: "9018ddd80c6a" }));
       const [row] = upsert.mock.calls[0]!;
       for (const k of ["terms_version", "terms_accepted_at", "marketing_opt_in", "marketing_opt_in_at", "referred_by", "deliver_to_contact"]) {
         expect(row).not.toHaveProperty(k);
@@ -301,7 +293,7 @@ describe("POST /api/feed-waitlist", () => {
       // 1. A third party submits the victim's address with marketing ticked and their own referral code.
       referralLookup.mockResolvedValue({ data: { id: "stranger-row" }, error: null });
       rpc.mockResolvedValueOnce({ data: [claimedRow({ email: "victim@example.com", marketing_opt_in: true })], error: null });
-      await POST(request({ email: "victim@example.com", consent_feed_emails: true, marketing_opt_in: true, ref: "0000aaaa1111" }));
+      await POST(request({ email: "victim@example.com", marketing_opt_in: true, ref: "0000aaaa1111" }));
       expect(upsert.mock.calls[0]![0]).not.toHaveProperty("marketing_opt_in");
       expect(rpc.mock.calls[0]![1]).toMatchObject({ p_from_submission: true, p_marketing_opt_in: true, p_referred_by: "stranger-row" });
       await runAfter();
@@ -310,18 +302,12 @@ describe("POST /api/feed-waitlist", () => {
       // 2. The victim signs up themself, without marketing or a referral: their claim carries their own values.
       referralLookup.mockResolvedValue({ data: null, error: null });
       rpc.mockResolvedValueOnce({ data: [claimedRow({ email: "victim@example.com", marketing_opt_in: false })], error: null });
-      await POST(request({ email: "victim@example.com", consent_feed_emails: true }));
+      await POST(request({ email: "victim@example.com" }));
       expect(rpc.mock.calls[1]![1]).toMatchObject({ p_from_submission: true, p_marketing_opt_in: false, p_referred_by: null });
       await runAfter();
       expect(sendFeedConfirmation.mock.calls[1]![2]).toMatchObject({ marketingOptIn: false });
       // Nothing consent-like was ever written by either request (the database test covers the confirm step).
       for (const [row] of upsert.mock.calls) expect(row).not.toHaveProperty("referred_by");
-    });
-
-    it("records no terms, marketing or referral when no confirmation email is asked for", async () => {
-      await POST(request({ email: "a@example.com", marketing_opt_in: true, ref: "9018ddd80c6a" }));
-      expect(rpc).not.toHaveBeenCalled();
-      expect(upsert.mock.calls[0]![0]).not.toHaveProperty("marketing_opt_in");
     });
 
     it("stores the optional profile answers", async () => {
@@ -369,14 +355,14 @@ describe("POST /api/feed-waitlist", () => {
 
     it("passes the referrer of a known code to the claim, and ignores an unknown or malformed one", async () => {
       referralLookup.mockResolvedValue({ data: { id: "referrer-row" }, error: null });
-      await POST(request({ email: "a@example.com", consent_feed_emails: true, ref: "9018ddd80c6a" }));
+      await POST(request({ email: "a@example.com", ref: "9018ddd80c6a" }));
       expect(referralLookup).toHaveBeenCalledWith("9018ddd80c6a");
       expect(rpc.mock.calls[0]![1].p_referred_by).toBe("referrer-row");
       referralLookup.mockResolvedValue({ data: null, error: null });
-      const ok = await POST(request({ email: "b@example.com", consent_feed_emails: true, ref: "0000aaaa1111" }));
+      const ok = await POST(request({ email: "b@example.com", ref: "0000aaaa1111" }));
       expect(ok.status).toBe(200);
       expect(rpc.mock.calls[1]![1].p_referred_by).toBeNull();
-      await POST(request({ email: "c@example.com", consent_feed_emails: true, ref: "x'); drop" }));
+      await POST(request({ email: "c@example.com", ref: "x'); drop" }));
       expect(referralLookup).toHaveBeenCalledTimes(2);
       expect(rpc.mock.calls[2]![1].p_referred_by).toBeNull();
     });
@@ -410,7 +396,7 @@ describe("POST /api/feed-waitlist", () => {
     });
 
     it("returns success without writing when the honeypot is filled", async () => {
-      const res = await POST(request({ email: "bot@example.com", website: "http://spam", consent_feed_emails: true }));
+      const res = await POST(request({ email: "bot@example.com", website: "http://spam" }));
       expect(res.status).toBe(200);
       expect((await res.json()).ok).toBe(true);
       expect(upsert).not.toHaveBeenCalled();
@@ -436,7 +422,7 @@ describe("POST /api/feed-waitlist", () => {
     it("returns 503 when the confirmation claim fails", async () => {
       rpc.mockResolvedValue({ data: null, error: { code: "42883", message: "function does not exist" } });
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const res = await POST(request({ email: "a@example.com", consent_feed_emails: true }));
+      const res = await POST(request({ email: "a@example.com" }));
       expect(res.status).toBe(503);
       expect(afterTasks).toHaveLength(0);
       errSpy.mockRestore();
@@ -460,7 +446,7 @@ describe("POST /api/feed-waitlist", () => {
     it("on a claim error that quotes the row", async () => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});
       rpc.mockResolvedValue({ data: null, error: { code: "XX000", message: `bad row (${SENTINEL_EMAIL})` } });
-      expect((await POST(request({ email: SENTINEL_EMAIL, consent_feed_emails: true }))).status).toBe(503);
+      expect((await POST(request({ email: SENTINEL_EMAIL }))).status).toBe(503);
       expect(logged(spy)).not.toContain(SENTINEL_EMAIL);
       spy.mockRestore();
     });
@@ -479,7 +465,7 @@ describe("POST /api/feed-waitlist", () => {
       sendFeedConfirmation.mockRejectedValue(
         new Error(`validation_error: invalid to ${SENTINEL_EMAIL} for https://riskmodels.app/x/confirm?token=${SENTINEL_TOKEN}`),
       );
-      expect((await POST(request({ email: SENTINEL_EMAIL, consent_feed_emails: true }))).status).toBe(200);
+      expect((await POST(request({ email: SENTINEL_EMAIL }))).status).toBe(200);
       await runAfter();
       expect(logged(spy)).not.toContain(SENTINEL_EMAIL);
       expect(logged(spy)).not.toContain(SENTINEL_TOKEN);

@@ -4,10 +4,12 @@
  * POST /api/feed-waitlist
  *   { email, terms_accepted, feed_email?, name?, company?, role?, intended_use?,
  *     firm_type?, firm_size?, uses?, audience?, heard_about?, marketing_opt_in?,
- *     consent_feed_emails?, ref?, website? }
+ *     ref?, website? }
  *
  * Everything except email and terms_accepted is optional; terms_accepted must be
- * true (the form's required box). Profile answers are written on a NEW row only
+ * true (the form's required box). Accepting the terms is the request for feed email: every
+ * accepted signup asks for a confirmation email (consent_feed_emails, if sent by an old
+ * client, is ignored). Profile answers are written on a NEW row only
  * and activate nothing. Values outside the allowed lists get a 400
  * (lib/feed-waitlist.ts mirrors the CHECK constraints of migration 20261113120000).
  *
@@ -16,8 +18,7 @@
  * party typed for someone's address must never take effect. They are never
  * written on insert. They go with the confirmation CLAIM of this submission
  * (p_from_submission), the confirmation email states the marketing choice, and
- * feed_waitlist_confirm applies them only when the owner clicks that email. A
- * signup without the email box sends no confirmation and records none of them.
+ * feed_waitlist_confirm applies them only when the owner clicks that email.
  * A bad or unknown referral code is ignored, never an error.
  *
  * Two addresses. `email` is the contact: the person, who gets the relationship
@@ -91,8 +92,6 @@ const CONFIRM_MESSAGE =
   "Check your email. We sent a link to confirm your address; you join the early-access list when you click it.";
 const CONFIRM_MESSAGE_WITH_FEED =
   "Check your email. We sent a link to confirm your contact address. When you confirm it, we will ask the feed delivery address to confirm too.";
-const INTEREST_MESSAGE =
-  "Thank you. We have noted your interest. We will not email you about the feed unless you tick the email box.";
 
 const TERMS_MESSAGE = "Please accept the free edition terms to join.";
 
@@ -138,11 +137,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400, headers: NO_STORE });
   }
 
-  const wantsEmails = body.consent_feed_emails === true;
   const feedRaw = typeof body.feed_email === "string" ? body.feed_email.trim().toLowerCase() : "";
+  // A delivery address equal to the contact address is one address, so it gets the plain reply.
   const reply = {
     ok: true,
-    message: !wantsEmails ? INTEREST_MESSAGE : feedRaw ? CONFIRM_MESSAGE_WITH_FEED : CONFIRM_MESSAGE,
+    message: feedRaw && feedRaw !== (typeof body.email === "string" ? body.email.trim().toLowerCase() : "")
+      ? CONFIRM_MESSAGE_WITH_FEED
+      : CONFIRM_MESSAGE,
   };
 
   // Honeypot: real visitors never see or fill this field.
@@ -245,8 +246,8 @@ export async function POST(req: NextRequest) {
         heard_about: optionalText(body.heard_about),
         consent_feed_emails: false,
         consented_at: null,
-        // Only when the box is ticked, and only ever on a new row: an existing row is never changed.
-        requested_feed_email: wantsEmails ? feedEmail : null,
+        // Only ever on a new row: an existing row is never changed.
+        requested_feed_email: feedEmail,
         user_id: userId,
         source: "security-master-feed",
         metadata: {
@@ -261,7 +262,8 @@ export async function POST(req: NextRequest) {
       return unavailable();
     }
 
-    if (wantsEmails) {
+    {
+      // Every accepted signup asks for a confirmation (the terms are the request for feed email).
       // One atomic UPDATE decides whether a confirmation email may go out. It matches nothing for a
       // consented or unsubscribed row, a row mailed in the last interval, or one at the send cap.
       const fresh = newConfirmToken();
