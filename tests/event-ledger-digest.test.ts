@@ -16,6 +16,8 @@ import {
   licenseLabel,
   marketCapHits,
   INCLUDE_UNDER_REVIEW_DEFAULT,
+  RECENT_KNOWLEDGE_DAYS,
+  isEmptyEdition,
   INTERNAL_ONLY_HEADING,
   InternalRecipientError,
   buildDigest,
@@ -226,6 +228,102 @@ describe("event ledger digest", () => {
     const html = await render(EventLedgerDigestEmail({ edition: ed }));
     expect(html).toContain("Nothing to report in this window.");
     expect(ed.attachment.body).toBe("");
+  });
+
+  describe("age rule (knowledge_at within RECENT_KNOWLEDGE_DAYS of the edition date)", () => {
+    // The seven real rows were first knowable 2026-06-11 (2), 06-12 (2) and 06-15 (3). Only the
+    // edition date moves: 2026-07-13 puts the 30-day cutoff at 06-13, so four rows are older.
+    const SEQ = { basis: "ledger_seq", after_seq: 4597, through_seq: 4604 } as const;
+    const seqBuild = (editionDate: string, rows: LedgerRow[] = ROWS, extra: Partial<Parameters<typeof buildDigest>[1]> = {}) =>
+      buildDigest(rows, { editionDate, window: SEQ, ...extra });
+
+    it("lists every row first knowable within 30 days and counts none as older", () => {
+      expect(RECENT_KNOWLEDGE_DAYS).toBe(30);
+      const ed = seqBuild("2026-07-11");
+      expect(ed.mainCount).toBe(7);
+      expect(ed.older).toEqual({ total: 0, knowledgeBefore: "2026-06-11", days: 30 });
+      expect(renderDigestText(ed)).not.toContain("older filing");
+    });
+
+    it("summarises newly published rows first knowable earlier as one count line, not listed", async () => {
+      const ed = seqBuild("2026-07-13");
+      expect(ed.mainCount).toBe(3);
+      expect(ed.older).toEqual({ total: 4, knowledgeBefore: "2026-06-13", days: 30 });
+      const listed = ed.families.flatMap((f) => f.items.map((i) => i.seq));
+      expect(listed.sort()).toEqual([4602, 4603, 4604]);
+      expect(ed.attachment.lines).toBe(3);
+      const text = renderDigestText(ed);
+      const html = await render(EventLedgerDigestEmail({ edition: ed }));
+      for (const body of [text, unescapeHtml(html)]) {
+        expect(body).toContain("4 older filings added to the ledger");
+        // Older rows are counted, never named.
+        for (const r of ROWS.slice(0, 4)) {
+          const name = (r.envelope.payload!.issuer_name as string) ?? "";
+          if (!ROWS.slice(4).some((x) => x.envelope.payload!.issuer_name === name)) expect(body).not.toContain(name);
+        }
+      }
+      expect(digestSubject(ed)).toBe("RiskModels Event Ledger — 2026-07-13 — 3 events");
+      expect(buildDigestDescriptor(ed).counts.sections).toMatchObject({
+        main: 3,
+        older_not_listed: { total: 4, knowledge_before: "2026-06-13" },
+      });
+    });
+
+    it("says one older filing in the singular and gives an all-older day its own headline", async () => {
+      const one = seqBuild("2026-07-13", [ROWS[0], ROWS[6]]);
+      expect(renderDigestText(one)).toContain("1 older filing added to the ledger");
+      const all = seqBuild("2026-08-30");
+      expect(all.mainCount).toBe(0);
+      expect(all.older.total).toBe(7);
+      expect(isEmptyEdition(all)).toBe(false);
+      const text = renderDigestText(all);
+      expect(text).toContain("No new events first knowable in the last 30 days.");
+      expect(text).toContain("7 older filings added to the ledger");
+      expect(all.attachment.lines).toBe(0);
+    });
+
+    it("applies to candidates under review and to internal editions too", () => {
+      const cands = ROWS.map((r) => {
+        const c = clone(r);
+        c.envelope.lifecycle_status = "candidate";
+        return c;
+      });
+      const ed = seqBuild("2026-07-13", cands);
+      expect(ed.underReview.total).toBe(3);
+      expect(ed.older.total).toBe(4);
+      const internal = seqBuild("2026-07-13", ROWS, { audience: "internal", recipient: "conrad@bwmacro.com" });
+      expect(internal.mainCount).toBe(3);
+      expect(internal.older.total).toBe(4);
+    });
+
+    it("always lists a correction or withdrawal, however old the event it corrects", () => {
+      const corr = clone(ROWS[0]);
+      corr.seq = 99999;
+      corr.envelope.supersedes_event_id = ROWS[1].envelope.event_id;
+      corr.envelope.correction_reason = "accession re-read";
+      const ed = seqBuild("2026-08-30", [corr]);
+      expect(ed.mainCount).toBe(1);
+      expect(ed.correctionCount).toBe(1);
+      expect(ed.older.total).toBe(0);
+    });
+
+    it("counts a row with no knowledge date as older, and never counts withheld rows", () => {
+      const noDate = clone(ROWS[4]);
+      noDate.envelope.knowledge_at = null;
+      const internal = clone(ROWS[5]);
+      internal.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
+      const ed = seqBuild("2026-07-13", [noDate, internal, ROWS[6]]);
+      expect(ed.mainCount).toBe(1);
+      expect(ed.older.total).toBe(1);
+      expect(ed.withheld.internal_only_in_client_edition).toBe(1);
+    });
+
+    it("leaves a knowledge-date sample alone: its window already selects by knowledge date", () => {
+      const ed = build();
+      expect(ed.mainCount).toBe(7);
+      expect(ed.older.total).toBe(0);
+      expect(buildDigestDescriptor(ed).counts.sections).not.toHaveProperty("older_not_listed");
+    });
   });
 
   it("carries the descriptor in both parts, matching the attachment, with no restricted words", async () => {

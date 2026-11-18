@@ -18,6 +18,14 @@
  *     the main tables. Redistributable candidates appear in a section labelled
  *     "Under review, not verified" when INCLUDE_UNDER_REVIEW_DEFAULT (or the
  *     includeUnderReview option) is on.
+ *   - Age. In an edition read from the ledger cursor (ledger_seq window), an
+ *     event is listed only when its knowledge_at falls within
+ *     RECENT_KNOWLEDGE_DAYS of the edition date. Deliverable events published
+ *     now but first knowable earlier (the Form 25 backfill, for one) are
+ *     summarised as a single count line ("N older filings added to the
+ *     ledger"), not listed and not in the attached file. Corrections and
+ *     withdrawals are always listed. A knowledge-date sample is left alone: its
+ *     window already selects by knowledge date. Applies to every audience.
  *   - Audience. A "client" edition never carries an internal_only row, whatever
  *     the other settings. An "internal" edition may, under its own heading
  *     ("Internal only, not for clients"), and only to INTERNAL_RECIPIENTS;
@@ -73,6 +81,9 @@ export const INCLUDE_UNDER_REVIEW_DEFAULT = true;
 
 /** Rows shown per review section; the rest are counted, not listed. */
 export const REVIEW_SECTION_CAP = 20;
+
+/** Days before the edition date within which an event's knowledge_at must fall to be listed. */
+export const RECENT_KNOWLEDGE_DAYS = 30;
 
 /** The only addresses an internal edition (with internal_only rows) may go to. */
 export const INTERNAL_RECIPIENTS: readonly string[] = ["conrad@bwmacro.com"];
@@ -669,6 +680,11 @@ export interface DigestEdition {
   underReview: ReviewSection;
   /** internal_only rows ("Internal only, not for clients"); always empty in a client edition. */
   internalOnly: ReviewSection;
+  /**
+   * Deliverable events in the window first knowable before knowledgeBefore (or with no knowledge
+   * date): counted in one line, not listed, not attached. Always 0 for a knowledge-date window.
+   */
+  older: { total: number; knowledgeBefore: string | null; days: number | null };
   /** Count in the headline and subject: verified events plus corrections. */
   mainCount: number;
   correctionCount: number;
@@ -693,6 +709,26 @@ export interface BuildOptions {
   recipient?: string;
   /** Rows shown per review section; defaults to REVIEW_SECTION_CAP. */
   reviewCap?: number;
+  /**
+   * Age rule; defaults to RECENT_KNOWLEDGE_DAYS. Applies to ledger_seq windows only. null turns it
+   * off (the public latest-events file, which is not an edition and picks the newest events itself).
+   */
+  recentDays?: number | null;
+}
+
+/** editionDate minus `days`, as YYYY-MM-DD. */
+export function knowledgeCutoff(editionDate: string, days: number): string {
+  const d = new Date(`${editionDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** True when the event is listed under the age rule; cutoff null means no age rule. */
+function isRecent(env: EventEnvelope, cutoff: string | null): boolean {
+  if (cutoff === null) return true;
+  if (env.supersedes_event_id || env.lifecycle_status === "superseded" || env.lifecycle_status === "rejected") return true;
+  const k = typeof env.knowledge_at === "string" ? env.knowledge_at.slice(0, 10) : null;
+  return k !== null && k >= cutoff;
 }
 
 export class InternalRecipientError extends Error {
@@ -729,6 +765,9 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
   }
   const includeUnderReview = opts.includeUnderReview ?? INCLUDE_UNDER_REVIEW_DEFAULT;
   const cap = opts.reviewCap ?? REVIEW_SECTION_CAP;
+  const days = opts.recentDays === undefined ? RECENT_KNOWLEDGE_DAYS : opts.recentDays;
+  const cutoff = opts.window.basis === "ledger_seq" && days !== null ? knowledgeCutoff(opts.editionDate, days) : null;
+  let older = 0;
   const withheld: Record<WithheldReason, number> = {
     not_redistributable: 0,
     internal_only_in_client_edition: 0,
@@ -747,10 +786,18 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
       continue;
     }
     // Belt and braces: whatever withheldReason says, a client edition never carries internal_only.
-    if (isInternalOnly(row.envelope)) {
-      if (audience === "internal") internal.push(toItem(row));
-      else withheld.internal_only_in_client_edition++;
-    } else if (isMain(row.envelope)) main.push(toItem(row));
+    if (isInternalOnly(row.envelope) && audience !== "internal") {
+      withheld.internal_only_in_client_edition++;
+      continue;
+    }
+    const shown =
+      isInternalOnly(row.envelope) || isMain(row.envelope) || (includeUnderReview && row.envelope.lifecycle_status === "candidate");
+    if (shown && !isRecent(row.envelope, cutoff)) {
+      older++;
+      continue;
+    }
+    if (isInternalOnly(row.envelope)) internal.push(toItem(row));
+    else if (isMain(row.envelope)) main.push(toItem(row));
     else if (includeUnderReview && row.envelope.lifecycle_status === "candidate") review.push(toItem(row));
   }
 
@@ -781,6 +828,7 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
     families,
     underReview,
     internalOnly,
+    older: { total: older, knowledgeBefore: cutoff, days },
     mainCount: main.length,
     correctionCount: main.filter((i) => i.flag).length,
     gdeltCredit: delivered.some((i) => isGdeltDerived(i.envelope)),
@@ -827,8 +875,21 @@ export function windowText(w: DigestWindow): string {
     : `events first knowable from ${w.from} through ${w.to}`;
 }
 
+/** The single count line for older events, or null when there are none. */
+export function olderLine(ed: DigestEdition): string | null {
+  const n = ed.older.total;
+  if (!n) return null;
+  return `${n} older ${n === 1 ? "filing" : "filings"} added to the ledger: first knowable before ${ed.older.knowledgeBefore}, more than ${ed.older.days} days before this edition. ${n === 1 ? "It is" : "They are"} not listed here or in the attached file.`;
+}
+
+/** An edition with nothing to list, nothing under review and no older count. List mode sends nothing for it. */
+export function isEmptyEdition(ed: DigestEdition): boolean {
+  return ed.mainCount === 0 && ed.underReview.total === 0 && ed.older.total === 0;
+}
+
 export function headline(ed: DigestEdition): string {
   if (ed.mainCount === 0) {
+    if (ed.older.total) return `No new events first knowable in the last ${ed.older.days} days.`;
     return ed.window.basis === "ledger_seq"
       ? "No new events since the last edition."
       : `No events were first knowable from ${ed.window.from} through ${ed.window.to}.`;
@@ -910,6 +971,9 @@ export function buildDigestDescriptor(ed: DigestEdition) {
       by_event_type: byType,
       sections: {
         main: ed.mainCount,
+        ...(ed.window.basis === "ledger_seq"
+          ? { older_not_listed: { total: ed.older.total, knowledge_before: ed.older.knowledgeBefore } }
+          : {}),
         under_review: { shown: ed.underReview.items.length, total: ed.underReview.total },
         ...(ed.audience === "internal"
           ? { internal_only: { shown: ed.internalOnly.items.length, total: ed.internalOnly.total } }
@@ -1057,6 +1121,8 @@ export function renderDigestText(ed: DigestEdition, footer: EditionFooter = edit
     out.push(title, "-".repeat(title.length));
     for (const i of f.items) out.push(...itemText(i), "");
   }
+  const old = olderLine(ed);
+  if (old) out.push(old, "");
   for (const kind of ["under_review", "internal_only"] as const) {
     const sec = kind === "under_review" ? ed.underReview : ed.internalOnly;
     if (!sec.total) continue;

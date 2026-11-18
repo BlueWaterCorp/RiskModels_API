@@ -8,7 +8,14 @@
   (it replaced the earlier daily 07:00 client-edition agent,
   app.riskmodels.event-ledger-digest). Keep this file and the installed copy
   identical; steps are in the header of scripts/event-ledger-digest.ts
-  ("The schedule").
+  ("The retired launchd agent").
+
+  RETIRED once the ERM3 Dagster job erm3_event_ledger_daily (erm3/sec_overnight)
+  is live: that job sends the list edition each weekday after the SEC daily
+  fetch and the ledger publish succeed
+  (event-ledger-digest.ts --list --send --scheduled --advance-cursor).
+  Then: launchctl bootout gui/$(id -u)/com.bwmacro.event-ledger-digest
+  and remove the installed copy. Kept here until that cutover.
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">

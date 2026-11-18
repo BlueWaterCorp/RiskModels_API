@@ -11,6 +11,7 @@ import {
   digestDescriptorJson,
   editionFooter,
   headline,
+  olderLine,
   reviewSectionNote,
   reviewSectionTitle,
   windowText,
@@ -211,6 +212,8 @@ export const EventLedgerDigestEmail = ({
             <EventTable items={f.items} />
           </Section>
         ))}
+
+        {olderLine(edition) ? <Text style={s.window}>{olderLine(edition)}</Text> : null}
 
         {(["under_review", "internal_only"] as const).map((kind) => {
           const sec = kind === "under_review" ? edition.underReview : edition.internalOnly;

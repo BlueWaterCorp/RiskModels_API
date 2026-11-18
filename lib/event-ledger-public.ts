@@ -103,6 +103,7 @@ export function buildPublicLatest(
     window: { basis: "ledger_seq", after_seq: 0, through_seq: 0 },
     audience: "client",
     includeUnderReview: false,
+    recentDays: null,
   });
   const superseded = new Set(
     rows.map((r) => r.envelope.supersedes_event_id).filter((id): id is string => typeof id === "string" && id !== ""),

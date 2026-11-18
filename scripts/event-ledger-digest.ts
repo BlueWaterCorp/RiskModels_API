@@ -3,9 +3,18 @@
  * the email (HTML, plain text, attached events_<date>.jsonl) and send it with
  * Resend, either to one allowed address or, with --list, to the feed list.
  *
- * The schedule (scripts/event-ledger-digest.launchd.plist, weekdays 07:30 PT):
- *   doppler run --project erm3 --config prd -- \
- *     npx tsx scripts/event-ledger-digest.ts --internal --send --advance-cursor
+ * The schedule. The list edition goes out each weekday from the ERM3 Dagster job
+ * erm3_event_ledger_daily (erm3/sec_overnight), which runs only after a successful SEC daily fetch
+ * (erm3_sec_daily_delta) and a successful ledger publish; if either fails, no email goes out:
+ *   npx tsx scripts/event-ledger-digest.ts --list --send --scheduled --advance-cursor
+ * (the job runs under doppler erm3/prd, so the env is already present). The older launchd agent
+ * (scripts/event-ledger-digest.launchd.plist, internal edition weekdays 07:30 PT) is retired once
+ * that Dagster job is live: boot it out then (see the end of this header).
+ *
+ * Age rule (all editions read from a cursor): an event is listed only when its knowledge_at falls
+ * within RECENT_KNOWLEDGE_DAYS (30) of the edition date. Events published in the window but first
+ * knowable earlier, such as the Form 25 backfill, appear as one line, "N older filings added to the
+ * ledger", and are not listed or attached. Corrections and withdrawals are always listed.
  *
  * Modes
  *   (default)   one edition to --to (default conrad@bwmacro.com; ALLOWED_RECIPIENTS only).
@@ -17,11 +26,19 @@
  *               unsubscribe, terms) and List-Unsubscribe headers. Refused with --internal.
  *               Without --send it is a dry run: it reads the recipient list, renders and checks
  *               every copy, writes a preview with no personal links to --out and prints counts;
- *               nothing is sent. A real list send needs --send AND --confirm-list-send <N>, where N
- *               is the exact number of recipients; any other value refuses before anything is sent.
- *               An empty window (no main event, nothing under review) sends nothing in --list mode:
- *               it logs "skipped_empty" and leaves the cursor alone. The single-address mode still
- *               sends its "No new events" note.
+ *               nothing is sent. An ad-hoc list send needs --send AND --confirm-list-send <N>, where
+ *               N is the exact number of recipients; any other value refuses before anything is sent.
+ *               An empty window (no main event, nothing under review, no older count) sends nothing
+ *               in --list mode: it logs "skipped_empty"; with --advance-cursor the cursor moves past
+ *               any rows read (all of them withheld), so they are not read again. The single-address
+ *               mode still sends its "No new events" note.
+ *   --scheduled With --list --send (and --advance-cursor): the Dagster run. Sends to every confirmed
+ *               list recipient (accepted terms, confirmed address, not unsubscribed) without
+ *               --confirm-list-send; reads the list cursor only (no --since-seq, knowledge window or
+ *               --sample). One edition per edition date: when sent.json for the date is marked
+ *               complete, a later scheduled run sends nothing ("skipped_already_sent", exit 0) and
+ *               leaves its events for the next edition; a partial send of other events for the
+ *               same date refuses (exit 4). See lib/event-ledger-digest-schedule.ts.
  *   --public-json <path>
  *               also write the public "latest events" file for riskmodels.org/events
  *               (lib/event-ledger-public.ts): the newest 20 verified, client-deliverable events,
@@ -56,7 +73,7 @@
  * RESEND_API_KEY (and optionally RESEND_FROM_EMAIL). Editions are not BCC'd to the audit mailbox:
  * an internal edition must reach INTERNAL_RECIPIENTS only, and list copies are logged in sent.json.
  *
- * Turning the schedule on or off (a user LaunchAgent; no sudo):
+ * The retired launchd agent (a user LaunchAgent; no sudo). Turn it off once the Dagster job is live:
  *   cp scripts/event-ledger-digest.launchd.plist ~/Library/LaunchAgents/com.bwmacro.event-ledger-digest.plist
  *   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bwmacro.event-ledger-digest.plist
  *   Off: launchctl bootout gui/$(id -u)/com.bwmacro.event-ledger-digest
@@ -76,6 +93,7 @@ import {
   INTERNAL_RECIPIENTS,
   buildDigest,
   digestSubject,
+  isEmptyEdition,
   editionFooter,
   internalFooter,
   priceOrCapHits,
@@ -89,6 +107,12 @@ import {
 } from "../lib/event-ledger-digest";
 import { loadPublicLatest } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
+import {
+  listSendGate,
+  scheduledEditionState,
+  type ListSendFlags,
+  type SentLogState,
+} from "../lib/event-ledger-digest-schedule";
 
 /** The only addresses a single-address edition may go to. List sends go to the list. */
 const ALLOWED_RECIPIENTS = ["conrad@bwmacro.com"] as const;
@@ -256,21 +280,22 @@ async function sendOnce(resend: Resend, edition: DigestEdition, subject: string,
   return result.data.id;
 }
 
-interface SentLog {
+interface SentLog extends SentLogState {
   subject: string;
-  attachment_sha256: string;
-  sent: { to: string; id: string }[];
-  failed: string[];
+}
+
+function readSentLogRaw(path: string): SentLog | null {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as SentLog;
+  } catch {
+    return null;
+  }
 }
 
 function readSentLog(path: string, edition: DigestEdition): SentLog["sent"] {
-  if (!existsSync(path)) return [];
-  try {
-    const log = JSON.parse(readFileSync(path, "utf8")) as SentLog;
-    return log.attachment_sha256 === edition.attachment.sha256 && Array.isArray(log.sent) ? log.sent : [];
-  } catch {
-    return [];
-  }
+  const log = readSentLogRaw(path);
+  return log && log.attachment_sha256 === edition.attachment.sha256 && Array.isArray(log.sent) ? log.sent : [];
 }
 
 async function writePublicJson(path: string) {
@@ -291,6 +316,23 @@ async function main() {
     writeCursor(cursorPath, head, { note: "initialised at ledger head; no edition sent" });
     console.log(`cursor initialised at seq ${head}: ${cursorPath}`);
     return;
+  }
+
+  const sendFlags: ListSendFlags = {
+    list,
+    send: flag("send"),
+    scheduled: flag("scheduled"),
+    confirmListSend: arg("confirm-list-send"),
+    knowledgeWindow: Boolean(arg("knowledge-from") || arg("knowledge-to")),
+    sinceSeq: arg("since-seq") !== undefined,
+    sample: flag("sample"),
+  };
+  if (sendFlags.scheduled) {
+    const early = listSendGate(sendFlags, 0);
+    if (!early.ok) {
+      console.error(`refused: ${early.reason}; --scheduled is --list --send from the list cursor only; nothing sent`);
+      process.exit(2);
+    }
   }
 
   const audience = flag("internal") ? "internal" : "client";
@@ -397,6 +439,8 @@ async function main() {
     rows_read: rows.length,
     main: edition.mainCount,
     corrections: edition.correctionCount,
+    older_not_listed: edition.older,
+    scheduled: sendFlags.scheduled,
     audience,
     recipients: copies.length,
     recipients_by_purpose: list
@@ -411,16 +455,22 @@ async function main() {
     out: outDir,
   };
 
-  const empty = edition.mainCount === 0 && edition.underReview.total === 0;
-  if (list && empty) {
-    console.log(JSON.stringify({ ...summary, sent: 0, skipped_empty: true }, null, 2));
+  if (list && isEmptyEdition(edition)) {
+    // Rows read but all withheld: move past them so they are not read again.
+    const advanced =
+      flag("send") && flag("advance-cursor") && window.basis === "ledger_seq" && window.through_seq > window.after_seq;
+    if (advanced && window.basis === "ledger_seq") {
+      writeCursor(cursorPath, window.through_seq, { edition_date: editionDate, sent: 0, mode: summary.mode, skipped_empty: true });
+    }
+    console.log(JSON.stringify({ ...summary, sent: 0, skipped_empty: true, cursor_advanced: advanced }, null, 2));
     return;
   }
   if (!flag("send")) {
     console.log(JSON.stringify({ ...summary, sent: false, dry_run: true }, null, 2));
     return;
   }
-  if (list && arg("confirm-list-send") !== String(copies.length)) {
+  const gate = listSendGate(sendFlags, copies.length);
+  if (!gate.ok) {
     console.error(`refused: a list send needs --confirm-list-send ${copies.length} (the exact recipient count); nothing sent`);
     process.exit(2);
   }
@@ -431,14 +481,25 @@ async function main() {
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const logPath = join(outDir, "sent.json");
+  if (sendFlags.scheduled) {
+    const state = scheduledEditionState(readSentLogRaw(logPath), edition.attachment.sha256);
+    if (state === "complete") {
+      console.log(JSON.stringify({ ...summary, sent: 0, skipped_already_sent: true }, null, 2));
+      return;
+    }
+    if (state === "conflict") {
+      console.error(`refused: ${logPath} holds a partial send of other events for ${editionDate}; nothing sent`);
+      process.exit(4);
+    }
+  }
   const sent = readSentLog(logPath, edition);
   const already = new Set(sent.map((x) => x.to.toLowerCase()));
   const failed: string[] = [];
-  const writeLog = () =>
+  const writeLog = (complete = false) =>
     writeFileSync(
       logPath,
       JSON.stringify(
-        { updated_at: new Date().toISOString(), subject, attachment_sha256: edition.attachment.sha256, sent, failed },
+        { updated_at: new Date().toISOString(), subject, attachment_sha256: edition.attachment.sha256, sent, failed, complete },
         null,
         2,
       ) + "\n",
@@ -452,7 +513,7 @@ async function main() {
       failed.push(c.to);
     }
   }
-  writeLog();
+  writeLog(failed.length === 0);
 
   if (!failed.length && flag("advance-cursor") && window.basis === "ledger_seq") {
     writeCursor(cursorPath, window.through_seq, { edition_date: editionDate, sent: sent.length, mode: summary.mode });
