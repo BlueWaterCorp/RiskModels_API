@@ -3,9 +3,18 @@
  * the email (HTML, plain text, attached events_<date>.jsonl) and send it with
  * Resend, either to one allowed address or, with --list, to the feed list.
  *
- * The schedule (scripts/event-ledger-digest.launchd.plist, weekdays 07:30 PT):
- *   doppler run --project erm3 --config prd -- \
- *     npx tsx scripts/event-ledger-digest.ts --internal --send --advance-cursor
+ * The schedule. The list edition goes out each weekday from the ERM3 Dagster job
+ * erm3_event_ledger_daily (erm3/sec_overnight), which runs only after a successful SEC daily fetch
+ * (erm3_sec_daily_delta) and a successful ledger publish; if either fails, no email goes out:
+ *   npx tsx scripts/event-ledger-digest.ts --list --send --scheduled --advance-cursor
+ * (the job runs under doppler erm3/prd, so the env is already present). The older launchd agent
+ * (scripts/event-ledger-digest.launchd.plist, internal edition weekdays 07:30 PT) is retired once
+ * that Dagster job is live: boot it out then (see the end of this header).
+ *
+ * Age rule (all editions read from a cursor): an event is listed only when its knowledge_at falls
+ * within RECENT_KNOWLEDGE_DAYS (30) of the edition date. Events published in the window but first
+ * knowable earlier, such as the Form 25 backfill, appear as one line, "N older events added to the
+ * ledger", and are not listed or attached. Corrections and withdrawals are always listed.
  *
  * Modes
  *   (default)   one edition to --to (default conrad@bwmacro.com; ALLOWED_RECIPIENTS only).
@@ -17,11 +26,33 @@
  *               unsubscribe, terms) and List-Unsubscribe headers. Refused with --internal.
  *               Without --send it is a dry run: it reads the recipient list, renders and checks
  *               every copy, writes a preview with no personal links to --out and prints counts;
- *               nothing is sent. A real list send needs --send AND --confirm-list-send <N>, where N
- *               is the exact number of recipients; any other value refuses before anything is sent.
- *               An empty window (no main event, nothing under review) sends nothing in --list mode:
- *               it logs "skipped_empty" and leaves the cursor alone. The single-address mode still
- *               sends its "No new events" note.
+ *               nothing is sent. An ad-hoc list send needs --send AND --confirm-list-send <N>, where
+ *               N is the exact number of recipients; any other value refuses before anything is sent.
+ *               An empty window (no main event, nothing under review, no older count) sends nothing
+ *               in --list mode: it logs "skipped_empty"; with --advance-cursor the cursor moves past
+ *               any rows read (all of them withheld), so they are not read again. The single-address
+ *               mode still sends its "No new events" note.
+ *   --scheduled With --list --send (and --advance-cursor): the Dagster run. Sends to every confirmed
+ *               list recipient (accepted terms, confirmed address, not unsubscribed) without
+ *               --confirm-list-send; reads the list cursor only (no --since-seq, knowledge window or
+ *               --sample). One edition per edition date: when sent.json for the date is marked
+ *               complete, a later scheduled run sends nothing ("skipped_already_sent", exit 0) and
+ *               leaves its events for the next edition; a partial send of other events for the
+ *               same date refuses (exit 4). It refuses (exit 3, cursor unchanged) an empty or
+ *               unreadable recipient list, and takes no --out, --cursor or --edition-date: its state
+ *               is always in ~/.riskmodels/event-ledger-digest. See lib/event-ledger-digest-schedule.ts.
+ *   Pending list send. Before the first copy goes out, the list cursor file records pending_send
+ *               (edition date, seq window); it is cleared when every copy went out. While it is set,
+ *               every list send refuses (exit 4), so a partial send is never resent to everyone.
+ *   --resume-pending
+ *               With --list --send --confirm-list-send <N>: rebuilds exactly the pending edition
+ *               (same rows, same edition date), sends only to addresses not yet in its sent.json,
+ *               then moves the list cursor past it.
+ *   --out       Dry runs and single-address runs only: every list send (--list --send) refuses it,
+ *               so sent.json and pending_send's folder always live in the fixed directory.
+ *   Lock.       Every list send holds ~/.riskmodels/event-ledger-digest/list-send.lock (exclusive
+ *               create) from reading its state to writing it; a second run refuses (exit 5). A lock
+ *               older than two hours is reported and refused, never broken: remove it by hand.
  *   --public-json <path>
  *               also write the public "latest events" file for riskmodels.org/events
  *               (lib/event-ledger-public.ts): the newest 20 verified, client-deliverable events,
@@ -56,7 +87,7 @@
  * RESEND_API_KEY (and optionally RESEND_FROM_EMAIL). Editions are not BCC'd to the audit mailbox:
  * an internal edition must reach INTERNAL_RECIPIENTS only, and list copies are logged in sent.json.
  *
- * Turning the schedule on or off (a user LaunchAgent; no sudo):
+ * The retired launchd agent (a user LaunchAgent; no sudo). Turn it off once the Dagster job is live:
  *   cp scripts/event-ledger-digest.launchd.plist ~/Library/LaunchAgents/com.bwmacro.event-ledger-digest.plist
  *   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.bwmacro.event-ledger-digest.plist
  *   Off: launchctl bootout gui/$(id -u)/com.bwmacro.event-ledger-digest
@@ -76,6 +107,7 @@ import {
   INTERNAL_RECIPIENTS,
   buildDigest,
   digestSubject,
+  isEmptyEdition,
   editionFooter,
   internalFooter,
   priceOrCapHits,
@@ -89,6 +121,16 @@ import {
 } from "../lib/event-ledger-digest";
 import { loadPublicLatest } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
+import {
+  acquireSendLock,
+  listSendGate,
+  pendingSendGate,
+  scheduledEditionState,
+  type CursorFile,
+  type ListSendFlags,
+  type PendingSend,
+  type SentLogState,
+} from "../lib/event-ledger-digest-schedule";
 
 /** The only addresses a single-address edition may go to. List sends go to the list. */
 const ALLOWED_RECIPIENTS = ["conrad@bwmacro.com"] as const;
@@ -138,9 +180,10 @@ interface ListRecipient extends FooterRecipient {
   email: string;
 }
 
-async function listRecipients(): Promise<ListRecipient[]> {
-  const rows = await rest<ListRecipient[]>("rpc/feed_waitlist_edition_recipients", { method: "POST", body: "{}" });
-  return Array.isArray(rows) ? rows : [];
+/** The list, or null when the response is not an array (the caller refuses). */
+async function listRecipients(): Promise<ListRecipient[] | null> {
+  const rows = await rest<unknown>("rpc/feed_waitlist_edition_recipients", { method: "POST", body: "{}" });
+  return Array.isArray(rows) ? (rows as ListRecipient[]) : null;
 }
 
 /** The single address's own footer when it is on the list; the plain footer otherwise or before the migration. */
@@ -155,9 +198,24 @@ async function footerFor(email: string): Promise<EditionFooter> {
   }
 }
 
-function readCursor(path: string): number | null {
+function readCursorFile(path: string): CursorFile | null {
   if (!existsSync(path)) return null;
-  return Number(JSON.parse(readFileSync(path, "utf8")).last_seq);
+  return JSON.parse(readFileSync(path, "utf8")) as CursorFile;
+}
+
+function readCursor(path: string): number | null {
+  const f = readCursorFile(path);
+  return f ? Number(f.last_seq) : null;
+}
+
+/** Records (or, with null, clears) a list send in progress, keeping the cursor's position. */
+function setPending(path: string, pending: PendingSend | null) {
+  const f = readCursorFile(path) ?? { last_seq: pending?.after_seq ?? 0 };
+  const { saved_at: _saved, pending_send: _old, ...rest } = f;
+  writeFileSync(
+    path,
+    JSON.stringify({ ...rest, saved_at: new Date().toISOString(), ...(pending ? { pending_send: pending } : {}) }, null, 2) + "\n",
+  );
 }
 
 function writeCursor(path: string, seq: number, extra: Record<string, unknown>) {
@@ -256,21 +314,22 @@ async function sendOnce(resend: Resend, edition: DigestEdition, subject: string,
   return result.data.id;
 }
 
-interface SentLog {
+interface SentLog extends SentLogState {
   subject: string;
-  attachment_sha256: string;
-  sent: { to: string; id: string }[];
-  failed: string[];
+}
+
+function readSentLogRaw(path: string): SentLog | null {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8")) as SentLog;
+  } catch {
+    return null;
+  }
 }
 
 function readSentLog(path: string, edition: DigestEdition): SentLog["sent"] {
-  if (!existsSync(path)) return [];
-  try {
-    const log = JSON.parse(readFileSync(path, "utf8")) as SentLog;
-    return log.attachment_sha256 === edition.attachment.sha256 && Array.isArray(log.sent) ? log.sent : [];
-  } catch {
-    return [];
-  }
+  const log = readSentLogRaw(path);
+  return log && log.attachment_sha256 === edition.attachment.sha256 && Array.isArray(log.sent) ? log.sent : [];
 }
 
 async function writePublicJson(path: string) {
@@ -293,6 +352,55 @@ async function main() {
     return;
   }
 
+  const sendFlags: ListSendFlags = {
+    list,
+    send: flag("send"),
+    scheduled: flag("scheduled"),
+    confirmListSend: arg("confirm-list-send"),
+    knowledgeWindow: Boolean(arg("knowledge-from") || arg("knowledge-to")),
+    sinceSeq: arg("since-seq") !== undefined,
+    sample: flag("sample"),
+    advanceCursor: flag("advance-cursor"),
+    editionDate: arg("edition-date") !== undefined,
+    resumePending: flag("resume-pending"),
+    out: arg("out") !== undefined,
+    cursor: arg("cursor") !== undefined,
+    reviewOptions: flag("include-under-review") || flag("no-under-review") || arg("review-cap") !== undefined,
+  };
+  const early = listSendGate(sendFlags, null);
+  if (!early.ok) {
+    console.error(
+      `refused: ${early.reason}; --scheduled is --list --send --advance-cursor from the fixed list cursor only, ` +
+        "--resume-pending is --list --send --confirm-list-send N alone; nothing sent",
+    );
+    process.exit(2);
+  }
+
+  // Every list send holds the lock from reading its state to writing it, so overlapping runs
+  // cannot both send. Released on any exit; a stale lock is reported, never broken.
+  const listSend = list && sendFlags.send;
+  if (listSend) {
+    mkdirSync(STATE_DIR, { recursive: true });
+    const lock = acquireSendLock(join(STATE_DIR, "list-send.lock"));
+    if (!lock.ok) {
+      console.error(
+        `refused: ${lock.reason}; ${join(STATE_DIR, "list-send.lock")} is held (${Math.round(lock.ageMs / 60000)} min, ${lock.holder || "no holder"}). ` +
+          (lock.reason === "stale_lock" ? "Check no run is alive, then remove it by hand. " : "") +
+          "nothing sent",
+      );
+      process.exit(5);
+    }
+    process.on("exit", lock.release);
+    // A signal ends the run with the lock released; pending_send stays, so the send is resumed, not resent.
+    for (const [sig, code] of [["SIGTERM", 143], ["SIGINT", 130]] as const) {
+      process.on(sig, () => {
+        lock.release();
+        console.error(`event-ledger-digest: ${sig}; lock released; any pending send stays recorded`);
+        process.exit(code);
+      });
+    }
+  }
+
   const audience = flag("internal") ? "internal" : "client";
   const to = arg("to") ?? ALLOWED_RECIPIENTS[0];
   if (list) {
@@ -311,8 +419,24 @@ async function main() {
     }
   }
 
+  // A list send that did not finish blocks every later list send until it is resumed.
+  let resume: PendingSend | null = null;
+  if (listSend) {
+    const pg = pendingSendGate(readCursorFile(cursorPath), sendFlags.resumePending);
+    if (!pg.ok) {
+      console.error(
+        pg.reason === "pending_partial_send"
+          ? `refused: pending_partial_send; the ${pg.pending!.edition_date} list edition (seq ${pg.pending!.after_seq}..${pg.pending!.through_seq}) did not finish. ` +
+              `Resume it with --list --send --resume-pending --confirm-list-send <N>; nothing sent`
+          : "refused: no_pending_send; there is no pending list send to resume; nothing sent",
+      );
+      process.exit(pg.reason === "pending_partial_send" ? 4 : 2);
+    }
+    resume = pg.resume;
+  }
+
   // Edition date: the day the edition covers, which is the day before the send (Pacific).
-  const editionDate = arg("edition-date") ?? ptDate(-1);
+  const editionDate = resume?.edition_date ?? arg("edition-date") ?? ptDate(-1);
   const kFrom = arg("knowledge-from");
   const kTo = arg("knowledge-to");
 
@@ -322,6 +446,10 @@ async function main() {
     if (!kFrom || !kTo) throw new Error("--knowledge-from and --knowledge-to go together");
     window = { basis: "knowledge_date", from: kFrom, to: kTo };
     rows = await getRows(`knowledge_at=gte.${kFrom}T00:00:00Z&knowledge_at=lt.${nextDay(kTo)}T00:00:00Z`);
+  } else if (resume) {
+    // Exactly the pending edition's rows, so its attachment (and sent.json) match.
+    rows = await getRows(`seq=gt.${resume.after_seq}&seq=lte.${resume.through_seq}`);
+    window = { basis: "ledger_seq", after_seq: resume.after_seq, through_seq: resume.through_seq };
   } else {
     const since = arg("since-seq") !== undefined ? Number(arg("since-seq")) : readCursor(cursorPath);
     if (since === null || !Number.isFinite(since)) {
@@ -346,8 +474,20 @@ async function main() {
   const subject = digestSubject(edition);
 
   // Recipients and their copies. Every copy is rendered and checked before the first send.
+  const listed = list ? await listRecipients() : null;
+  if (list && listed === null) {
+    console.error("refused: recipient_list_unreadable; feed_waitlist_edition_recipients() did not return a list; nothing sent");
+    process.exit(3);
+  }
+  if (sendFlags.scheduled) {
+    const g = listSendGate(sendFlags, (listed ?? []).length);
+    if (!g.ok) {
+      console.error(`refused: ${g.reason}; the cursor is unchanged; nothing sent`);
+      process.exit(3);
+    }
+  }
   const recipients: ListRecipient[] = list
-    ? await listRecipients()
+    ? (listed as ListRecipient[])
     : [{ email: to, unsubscribe_token: "", purpose: null, referral_code: null }];
   const copies: Copy[] = [];
   try {
@@ -366,8 +506,9 @@ async function main() {
     process.exit(3);
   }
 
+  // A resume writes to the folder its pending send recorded (belt and braces: --out is refused on list sends).
   const outDir = resolve(
-    arg("out") ?? join(STATE_DIR, "editions", `${editionDate}${list ? "_list" : ""}${edition.sample ? "_sample" : ""}`),
+    resume?.out_dir ?? arg("out") ?? join(STATE_DIR, "editions", `${editionDate}${list ? "_list" : ""}${edition.sample ? "_sample" : ""}`),
   );
   mkdirSync(outDir, { recursive: true });
   // A list preview carries no recipient's links or tokens.
@@ -397,6 +538,8 @@ async function main() {
     rows_read: rows.length,
     main: edition.mainCount,
     corrections: edition.correctionCount,
+    older_not_listed: edition.older,
+    scheduled: sendFlags.scheduled,
     audience,
     recipients: copies.length,
     recipients_by_purpose: list
@@ -411,16 +554,26 @@ async function main() {
     out: outDir,
   };
 
-  const empty = edition.mainCount === 0 && edition.underReview.total === 0;
-  if (list && empty) {
-    console.log(JSON.stringify({ ...summary, sent: 0, skipped_empty: true }, null, 2));
+  if (list && isEmptyEdition(edition)) {
+    // Rows read but all withheld: move past them so they are not read again.
+    const advanced =
+      flag("send") && flag("advance-cursor") && window.basis === "ledger_seq" && window.through_seq > window.after_seq;
+    if (advanced && window.basis === "ledger_seq") {
+      writeCursor(cursorPath, window.through_seq, { edition_date: editionDate, sent: 0, mode: summary.mode, skipped_empty: true });
+    }
+    console.log(JSON.stringify({ ...summary, sent: 0, skipped_empty: true, cursor_advanced: advanced }, null, 2));
     return;
   }
   if (!flag("send")) {
     console.log(JSON.stringify({ ...summary, sent: false, dry_run: true }, null, 2));
     return;
   }
-  if (list && arg("confirm-list-send") !== String(copies.length)) {
+  const gate = listSendGate(sendFlags, copies.length);
+  if (!gate.ok) {
+    if (gate.reason !== "confirm_list_send_required") {
+      console.error(`refused: ${gate.reason}; nothing sent`);
+      process.exit(2);
+    }
     console.error(`refused: a list send needs --confirm-list-send ${copies.length} (the exact recipient count); nothing sent`);
     process.exit(2);
   }
@@ -431,14 +584,47 @@ async function main() {
 
   const resend = new Resend(process.env.RESEND_API_KEY);
   const logPath = join(outDir, "sent.json");
-  const sent = readSentLog(logPath, edition);
+  if (sendFlags.scheduled) {
+    const state = scheduledEditionState(readSentLogRaw(logPath), edition.attachment.sha256);
+    if (state === "complete") {
+      console.log(JSON.stringify({ ...summary, sent: 0, skipped_already_sent: true }, null, 2));
+      return;
+    }
+    if (state === "conflict") {
+      console.error(`refused: ${logPath} holds a partial send of other events for ${editionDate}; nothing sent`);
+      process.exit(4);
+    }
+  }
+  // A resume skips every address already sent for that edition, whatever the rebuilt sha.
+  const resumeLog = resume ? readSentLogRaw(join(outDir, "sent.json")) : null;
+  const shaMismatch = Boolean(resume?.attachment_sha256 && resume.attachment_sha256 !== edition.attachment.sha256);
+  if (shaMismatch) {
+    console.error(
+      `resume_sha_mismatch: the rebuilt ${editionDate} edition differs from the one the pending send started with; ` +
+        "addresses already sent are still skipped",
+    );
+  }
+  const sent = resume ? [...(resumeLog?.sent ?? [])] : readSentLog(logPath, edition);
+  // Recorded before the first send and cleared only when every copy went out, so a crash or a
+  // failed copy blocks the next list send instead of resending the window to everyone.
+  const trackPending = list && window.basis === "ledger_seq" && !sendFlags.sinceSeq;
+  if (trackPending && window.basis === "ledger_seq") {
+    setPending(cursorPath, {
+      edition_date: editionDate,
+      after_seq: window.after_seq,
+      through_seq: window.through_seq,
+      started_at: resume?.started_at ?? new Date().toISOString(),
+      out_dir: outDir,
+      attachment_sha256: resume?.attachment_sha256 ?? edition.attachment.sha256,
+    });
+  }
   const already = new Set(sent.map((x) => x.to.toLowerCase()));
   const failed: string[] = [];
-  const writeLog = () =>
+  const writeLog = (complete = false) =>
     writeFileSync(
       logPath,
       JSON.stringify(
-        { updated_at: new Date().toISOString(), subject, attachment_sha256: edition.attachment.sha256, sent, failed },
+        { updated_at: new Date().toISOString(), subject, attachment_sha256: edition.attachment.sha256, sent, failed, complete },
         null,
         2,
       ) + "\n",
@@ -452,12 +638,14 @@ async function main() {
       failed.push(c.to);
     }
   }
-  writeLog();
+  writeLog(failed.length === 0);
 
-  if (!failed.length && flag("advance-cursor") && window.basis === "ledger_seq") {
+  if (!failed.length && (flag("advance-cursor") || resume) && window.basis === "ledger_seq") {
     writeCursor(cursorPath, window.through_seq, { edition_date: editionDate, sent: sent.length, mode: summary.mode });
+  } else if (!failed.length && trackPending) {
+    setPending(cursorPath, null);
   }
-  console.log(JSON.stringify({ ...summary, sent: sent.length, failed: failed.length }, null, 2));
+  console.log(JSON.stringify({ ...summary, sent: sent.length, failed: failed.length, ...(shaMismatch ? { resume_sha_mismatch: true } : {}) }, null, 2));
   if (failed.length) process.exit(1);
 }
 
