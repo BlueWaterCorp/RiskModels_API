@@ -84,10 +84,19 @@ describe("lib/feed-email", () => {
     expect(out).toEqual({ id: "email-1" });
     const payload = send.mock.calls[0][0];
     expect(payload.to).toBe("analyst@example.com");
-    expect(payload.subject).toMatch(/early-access list/);
+    expect(payload.subject).toMatch(/confirmed/);
     expect(payload.html).toContain(feedUnsubscribePageUrl(TOKEN).replace(/&/g, "&amp;"));
-    expect(payload.html).toMatch(/early access/i);
+    expect(payload.html).toMatch(/confirmed/i);
     expect(payload.html).toMatch(/Tell us what you need/);
+    expect(payload.html).not.toMatch(/Invite a colleague/);
+  });
+
+  it("puts the colleague link in the welcome when the recipient has one", async () => {
+    const inviteUrl = "https://riskmodels.app/security-master-feed?ref=9018ddd80c6a";
+    await sendFeedEarlyAccessEmail(row({ inviteUrl }));
+    const payload = send.mock.calls[0][0];
+    expect(payload.html).toContain(inviteUrl);
+    expect(payload.text).toMatch(/Invite a colleague/);
     expect(payload.replyTo).toBe("service@riskmodels.app");
     expect(payload.headers).toEqual(feedUnsubscribeHeaders(TOKEN));
     expect(payload.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
@@ -268,7 +277,7 @@ describe("lib/feed-email", () => {
       );
       for (const body of [payload.html, payload.text]) {
         expect(body).toContain(`/security-master-feed/confirm?token=${CONFIRM_TOKEN}`);
-        expect(body).toMatch(/not on the list until you do/);
+        expect(body).toMatch(/not subscribed until you do/);
         expect(body).toMatch(/If you did not ask to join, ignore this email/);
       }
       expect(payload.headers).toEqual(feedUnsubscribeHeaders(TOKEN));
@@ -283,8 +292,18 @@ describe("lib/feed-email", () => {
       const { html, text } = send.mock.calls[0][0];
       for (const body of [html, text]) {
         expect(body).toContain("ops@example.com");
-        expect(body).toMatch(/we will ask that address to confirm too/);
+        expect(body).toMatch(/not asked to confirm again/);
         expect(body).toMatch(/do not confirm/);
+      }
+    });
+
+    it("offers the recipient's own colleague link when one is supplied", async () => {
+      const inviteUrl = "https://riskmodels.app/security-master-feed?ref=9018ddd80c6a";
+      await sendFeedConfirmation(pending, CONFIRM_TOKEN, { inviteUrl });
+      const { html, text } = send.mock.calls[0][0];
+      for (const body of [html, text]) {
+        expect(body).toContain(inviteUrl);
+        expect(body).toMatch(/Invite a colleague/);
       }
     });
 

@@ -9,6 +9,7 @@ const rpc = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({
 const from = vi.fn();
 const sendFeedEarlyAccessEmail = vi.fn();
 const sendFeedDeliveryConfirmation = vi.fn();
+const deliveryUpdate = vi.fn();
 const rateLimit = vi.fn();
 const afterTasks: Array<() => Promise<void> | void> = [];
 
@@ -70,7 +71,21 @@ describe("POST /api/feed-waitlist/confirm", () => {
   beforeEach(() => {
     rpc.mockClear();
     mockRpc([confirmed()]);
-    from.mockClear();
+    from.mockReset().mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: { referral_code: "9018ddd80c6a" }, error: null }),
+        }),
+      }),
+      update: () => ({
+        eq: () => ({
+          eq: () => ({
+            is: () => deliveryUpdate(),
+          }),
+        }),
+      }),
+    });
+    deliveryUpdate.mockReset().mockResolvedValue({ error: null });
     sendFeedEarlyAccessEmail.mockReset().mockResolvedValue({ id: "email-1" });
     sendFeedDeliveryConfirmation.mockReset().mockResolvedValue({ id: "email-2" });
     rateLimit.mockReset().mockResolvedValue({ ok: true, remaining: 29, retryAfter: 3600 });
@@ -80,11 +95,16 @@ describe("POST /api/feed-waitlist/confirm", () => {
   it("records consent through one atomic database call, matched by the token's hash", async () => {
     const res = await POST(jsonRequest(TOKEN));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, purpose: "contact" });
+    expect(await res.json()).toEqual({
+      ok: true,
+      purpose: "contact",
+      delivery: false,
+      inviteUrl: "https://riskmodels.app/security-master-feed?ref=9018ddd80c6a",
+    });
     expect(rpc).toHaveBeenCalledWith("feed_waitlist_confirm", {
       p_token_hash: createHash("sha256").update(TOKEN).digest("hex"),
     });
-    expect(from).not.toHaveBeenCalled(); // no separate table writes: consent is one SQL function
+    expect(deliveryUpdate).not.toHaveBeenCalled(); // consent is one SQL function; the referral read is not a write
   });
 
   it("queues the welcome email for a confirmed contact, without awaiting the provider", async () => {
@@ -107,57 +127,39 @@ describe("POST /api/feed-waitlist/confirm", () => {
     expect(sendFeedDeliveryConfirmation).not.toHaveBeenCalled(); // no delivery address was asked for
   });
 
-  describe("a contact that asked for a separate feed delivery address", () => {
+  describe("a contact that asked for a separate ops delivery address", () => {
     beforeEach(() => {
       rpc.mockClear();
       mockRpc([confirmed({ feed_email: "ops@example.com" })], [feedRow]);
     });
 
-    it("asks that address to confirm for itself, only after the contact confirmed, via the throttled claim", async () => {
-      await POST(jsonRequest(TOKEN));
-      await runAfter();
-      const claim = rpc.mock.calls.find(([fn]) => fn === "feed_waitlist_claim_confirmation")!;
-      expect(claim[1]).toMatchObject({
-        p_email: "ops@example.com",
-        p_min_interval_seconds: 900,
-        p_max_sends: 3,
-        p_window_seconds: 86400,
-        // A delivery address records no marketing, terms or referral: a planted opt-in is reset.
-        p_from_submission: true,
-        p_marketing_opt_in: false,
-        p_terms_version: null,
-        p_referred_by: null,
+    it("confirms that address from the contact's confirmation and does not email it", async () => {
+      const res = await POST(jsonRequest(TOKEN));
+      expect(await res.json()).toEqual({
+        ok: true,
+        purpose: "contact",
+        delivery: true,
+        inviteUrl: "https://riskmodels.app/security-master-feed?ref=9018ddd80c6a",
       });
-      expect(claim[1].p_token_hash).toMatch(/^[0-9a-f]{64}$/);
-      expect(sendFeedDeliveryConfirmation).toHaveBeenCalledTimes(1);
-      const [target, token, requestedBy] = sendFeedDeliveryConfirmation.mock.calls[0]!;
-      expect(target).toMatchObject({ email: "ops@example.com" });
-      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-      expect(createHash("sha256").update(token).digest("hex")).toBe(claim[1].p_token_hash);
-      expect(requestedBy).toEqual({ email: "owner@example.com", name: "O. Wner" });
+      expect(deliveryUpdate).not.toHaveBeenCalled();
+      await runAfter();
+      expect(rpc.mock.calls.map(([fn]) => fn)).not.toContain("feed_waitlist_claim_confirmation");
+      expect(sendFeedDeliveryConfirmation).not.toHaveBeenCalled();
+      expect(deliveryUpdate).toHaveBeenCalledTimes(1);
+      expect(from).toHaveBeenCalledWith("feed_waitlist");
     });
 
-    it("sends the delivery confirmation after the response, never before it", async () => {
-      sendFeedDeliveryConfirmation.mockImplementation(() => new Promise(() => {}));
+    it("writes the ops address after the response, never before it", async () => {
       const res = await POST(jsonRequest(TOKEN));
       expect(res.status).toBe(200);
-      expect(sendFeedDeliveryConfirmation).not.toHaveBeenCalled();
-      expect(rpc).toHaveBeenCalledTimes(1); // only the confirm call ran inside the request
-    });
-
-    it("sends nothing to the delivery address when the claim matches no row (already confirmed, unsubscribed, throttled or capped)", async () => {
-      mockRpc([confirmed({ feed_email: "ops@example.com" })], []);
-      await POST(jsonRequest(TOKEN));
+      expect(deliveryUpdate).not.toHaveBeenCalled();
+      expect(rpc).toHaveBeenCalledTimes(1);
       await runAfter();
-      expect(sendFeedDeliveryConfirmation).not.toHaveBeenCalled();
+      expect(deliveryUpdate).toHaveBeenCalledTimes(1);
     });
 
-    it("still welcomes the contact when the delivery claim fails, and logs no address", async () => {
-      rpc.mockImplementation(async (fn: string) =>
-        fn === "feed_waitlist_confirm"
-          ? { data: [confirmed({ feed_email: "ops@example.com" })], error: null }
-          : { data: null, error: { code: "XX000", message: "bad row (ops@example.com)" } },
-      );
+    it("still welcomes the contact when marking the ops address fails, and logs no address", async () => {
+      deliveryUpdate.mockRejectedValue(new Error("bad row (ops@example.com)"));
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});
       expect((await POST(jsonRequest(TOKEN))).status).toBe(200);
       await runAfter();
@@ -170,7 +172,7 @@ describe("POST /api/feed-waitlist/confirm", () => {
   it("confirming a delivery address sends it no welcome and starts no further delivery request", async () => {
     mockRpc([confirmed({ email: "ops@example.com", purpose: "feed", name: null })]);
     const res = await POST(jsonRequest(TOKEN));
-    expect(await res.json()).toEqual({ ok: true, purpose: "feed" });
+    expect(await res.json()).toEqual({ ok: true, purpose: "feed", delivery: false, inviteUrl: null });
     await runAfter();
     expect(sendFeedEarlyAccessEmail).not.toHaveBeenCalled();
     expect(sendFeedDeliveryConfirmation).not.toHaveBeenCalled();

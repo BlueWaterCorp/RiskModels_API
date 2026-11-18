@@ -204,7 +204,7 @@ describe("POST /api/feed-waitlist", () => {
     it("asks only the contact to confirm at signup, and names the delivery address in that email", async () => {
       rpc.mockResolvedValue({ data: [claimedRow({ email: "analyst@corp.com", requested_feed_email: "ops@corp.com" })], error: null });
       const res = await POST(request({ email: "analyst@corp.com", feed_email: "ops@corp.com" }));
-      expect((await res.json()).message).toMatch(/ask the feed delivery address to confirm too/);
+      expect((await res.json()).message).toMatch(/does not need its own confirmation/);
       expect(rpc).toHaveBeenCalledTimes(1);
       expect(rpc.mock.calls[0]![1]).toMatchObject({ p_email: "analyst@corp.com" });
       await runAfter();

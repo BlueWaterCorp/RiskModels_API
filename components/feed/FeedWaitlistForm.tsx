@@ -99,7 +99,8 @@ export default function FeedWaitlistForm() {
         <Input id="fw-feed-email" name="feed_email" type="email" autoComplete="off" maxLength={254} />
         <p className="mt-1 text-[11px] text-zinc-500 leading-snug">
           Many teams use one address for the person and another for the feed, such as a team mailbox or an agent
-          inbox. We will ask that address to confirm too. Leave blank to receive everything at the address above.
+          inbox. Confirming your address also confirms that mailbox. Leave blank to receive the feed at the address
+          above.
         </p>
       </div>
 

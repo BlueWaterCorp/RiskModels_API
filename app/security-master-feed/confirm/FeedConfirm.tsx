@@ -4,12 +4,26 @@ import Link from "next/link";
 import { useState } from "react";
 import { useFeedSecret } from "@/components/feed/useFeedSecret";
 
-type State = "ready" | "saving" | "done" | "doneFeed" | "invalid" | "error";
+type State = "ready" | "saving" | "done" | "doneDelivery" | "doneFeed" | "invalid" | "error";
+
+/** Only the public signup link for this address. Anything else is not shown. */
+function colleagueInviteUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !url.pathname.endsWith("/security-master-feed")) return null;
+    if (!/^[a-z0-9]{8,32}$/.test(url.searchParams.get("ref") ?? "")) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
 export function FeedConfirm() {
   // Read from the stash, not the URL: the head script removed it before analytics loaded.
   const token = useFeedSecret("token");
   const [state, setState] = useState<State>("ready");
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   async function confirm() {
     setState("saving");
@@ -23,8 +37,13 @@ export function FeedConfirm() {
         setState(r.status === 400 ? "invalid" : "error");
         return;
       }
-      const json = (await r.json().catch(() => ({}))) as { purpose?: string };
-      setState(json.purpose === "feed" ? "doneFeed" : "done");
+      const json = (await r.json().catch(() => ({}))) as {
+        purpose?: string;
+        delivery?: boolean;
+        inviteUrl?: string | null;
+      };
+      setInviteUrl(colleagueInviteUrl(json.inviteUrl));
+      setState(json.purpose === "feed" ? "doneFeed" : json.delivery ? "doneDelivery" : "done");
     } catch {
       setState("error");
     }
@@ -38,25 +57,35 @@ export function FeedConfirm() {
           This address is confirmed as a delivery address for the security master change feed. It will receive
           editions once delivery starts.
         </p>
-      ) : state === "done" ? (
-        <p>
-          You are on the early-access list for the security master change feed. We will email you the specification
-          and a sample before the first edition. If you asked for the feed to go to a separate address, we are asking
-          that address to confirm too.
-        </p>
+      ) : state === "doneDelivery" || state === "done" ? (
+        <>
+          <p>
+            {state === "doneDelivery"
+              ? "This address is confirmed for the security master change feed. Editions go to the other address you named. That address does not need its own confirmation."
+              : "This address is confirmed for the security master change feed. Editions will come to this address."}
+          </p>
+          {inviteUrl ? (
+            <p className="mt-6">
+              Invite a colleague with your link. When they confirm, the list records that the invitation came from
+              you.{" "}
+              <Link href={inviteUrl} className="underline break-all">
+                {inviteUrl}
+              </Link>
+            </p>
+          ) : null}
+        </>
       ) : state === "invalid" ? (
         <p role="alert">
           This confirmation link is invalid or has expired.{" "}
           <Link href="/security-master-feed" className="underline">
-            Join again from the early-access page
+            Sign up again from the feed page
           </Link>
           .
         </p>
       ) : (
         <>
           <p className="mb-6">
-            Confirm that this is your address to join the early-access list for the security master change feed. You
-            are not on the list until you do.
+            Confirm that this is your address for the security master change feed. You are not subscribed until you do.
           </p>
           <button
             type="button"

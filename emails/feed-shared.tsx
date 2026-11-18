@@ -1,4 +1,4 @@
-import { Hr, Img, Link, Section, Text } from "@react-email/components";
+import { Button, Hr, Img, Link, Section, Text } from "@react-email/components";
 import * as React from "react";
 import { BASE_URL, LEGAL_ENTITY, LEGAL_MAILING_ADDRESS, SUPPORT_EMAIL } from "./constants";
 import { FEED_DESCRIPTOR_URL, feedDescriptorJson, type FeedDescriptorOptions } from "../lib/feed-descriptor";
@@ -80,6 +80,20 @@ export const FeedAgentBlock = ({ descriptor }: { descriptor?: FeedDescriptorOpti
       .
     </Text>
     <pre style={styles.pre}>{feedDescriptorJson(descriptor)}</pre>
+  </Section>
+);
+
+/** Personal invite link. Shown only when the sender has this recipient's referral code. */
+export const FeedInviteOffer = ({ inviteUrl }: { inviteUrl: string }) => (
+  <Section style={styles.box}>
+    <Text style={styles.boxHeading}>Invite a colleague</Text>
+    <Text style={styles.boxText}>
+      Send them your link. When they confirm, the list records that the invitation came from you.
+    </Text>
+    <Button style={styles.button} href={inviteUrl}>
+      Invite a colleague
+    </Button>
+    <Text style={{ ...styles.boxTextLast, paddingLeft: "0", marginTop: "12px" }}>{inviteUrl}</Text>
   </Section>
 );
 

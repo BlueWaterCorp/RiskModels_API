@@ -24,6 +24,7 @@ import { render } from "@react-email/render";
 import { sendResendEmail } from "@/lib/resend-audit";
 import { CANONICAL_SITE_URL } from "@/lib/constants";
 import { FEED_PAGE_URL } from "@/lib/feed-descriptor";
+import { feedInviteUrl } from "@/lib/feed-referral";
 import { DEFAULT_RESEND_FROM, SUPPORT_EMAIL } from "@/emails/constants";
 import { FeedEarlyAccessEmail, FEED_EARLY_ACCESS_SUBJECT } from "@/emails/feed-early-access";
 import { FeedConfirmEmail, FEED_CONFIRM_SUBJECT } from "@/emails/feed-confirm";
@@ -36,7 +37,7 @@ import {
 import { FeedInviteEmail, feedInviteSubject } from "@/emails/feed-invite";
 import { FeedDeliveryChangeEmail, FEED_DELIVERY_CHANGE_SUBJECT } from "@/emails/feed-delivery-change";
 
-export { FEED_PAGE_URL };
+export { FEED_PAGE_URL, feedInviteUrl };
 
 /** Token only: the inbox is named in the email text, and the server acts on the inbox stored with the request. */
 export function feedDeliveryChangeConfirmPageUrl(token: string): string {
@@ -100,6 +101,8 @@ export interface FeedWaitlistRow {
   unsubscribed_at: string | null;
   /** 'contact' (default) receives relationship email; 'feed' is a delivery address and receives editions only. */
   purpose?: "contact" | "feed";
+  /** This recipient's forward-to-a-colleague link, when the caller has their referral code. */
+  inviteUrl?: string | null;
 }
 
 /**
@@ -146,7 +149,7 @@ export function feedConfirmPageUrl(token: string): string {
 export async function sendFeedConfirmation(
   row: FeedConfirmRow,
   token: string,
-  opts: { requestedFeedEmail?: string | null; marketingOptIn?: boolean } = {},
+  opts: { requestedFeedEmail?: string | null; marketingOptIn?: boolean; inviteUrl?: string | null } = {},
 ): Promise<{ id: string }> {
   const { html, text } = await renderBoth(
     FeedConfirmEmail({
@@ -155,6 +158,7 @@ export async function sendFeedConfirmation(
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
       requestedFeedEmail: opts.requestedFeedEmail ?? null,
       marketingOptIn: opts.marketingOptIn === true,
+      inviteUrl: opts.inviteUrl ?? null,
     }),
   );
   const sent = await sendResendEmail(resendClient(), {
@@ -204,6 +208,7 @@ export async function sendFeedEarlyAccessEmail(row: FeedWaitlistRow): Promise<{ 
       name: row.name,
       feedPageUrl: FEED_PAGE_URL,
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+      inviteUrl: row.inviteUrl ?? null,
     }),
   );
   const sent = await sendResendEmail(resendClient(), {

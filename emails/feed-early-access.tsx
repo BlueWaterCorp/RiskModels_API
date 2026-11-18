@@ -7,6 +7,7 @@ import {
   FeedFit,
   FeedFooter,
   FeedHeader,
+  FeedInviteOffer,
   FEED_LOGO_URL,
   styles,
 } from "./feed-shared";
@@ -21,34 +22,34 @@ export interface FeedEarlyAccessEmailProps {
   name?: string | null;
   feedPageUrl: string;
   unsubscribeUrl: string;
+  /** This address's own colleague link. Omitted when the code is not available. */
+  inviteUrl?: string | null;
   /** Override for previews and test sends (e.g. a cid: image). */
   logoSrc?: string;
 }
 
-export const FEED_EARLY_ACCESS_SUBJECT =
-  "You're on the early-access list for the RiskModels security master feed";
+export const FEED_EARLY_ACCESS_SUBJECT = "You are confirmed for the RiskModels security master feed";
 
 export const FeedEarlyAccessEmail = ({
   name = null,
   feedPageUrl = `${BASE_URL}/security-master-feed`,
   unsubscribeUrl = `${BASE_URL}/security-master-feed/unsubscribe`,
+  inviteUrl = null,
   logoSrc = FEED_LOGO_URL,
 }: FeedEarlyAccessEmailProps) => (
   <Html>
     <Head />
-    <Preview>
-      You are on the early-access list. We will send the spec and a sample before the first edition.
-    </Preview>
+    <Preview>This address is confirmed for the RiskModels security master change feed.</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <FeedHeader logoSrc={logoSrc} />
-        <Heading style={styles.heading}>You are on the early-access list</Heading>
+        <Heading style={styles.heading}>You are confirmed</Heading>
 
         <Text style={styles.paragraph}>{name ? `Hi ${name},` : "Hello,"}</Text>
 
         <Text style={styles.paragraph}>
-          Thank you for signing up for the RiskModels security master change feed. The feed is in early
-          access and has not published its first edition yet.
+          This address is confirmed for the RiskModels security master change feed. Editions are sent as they
+          are published.
         </Text>
 
         <Section style={styles.box}>
@@ -69,14 +70,14 @@ export const FeedEarlyAccessEmail = ({
         <FeedFit />
 
         <Text style={styles.paragraph}>
-          <strong>What happens next.</strong> Before the first edition we will email you the specification
-          and an illustrative sample. Early clients receive the feed free for about the first year.
+          <strong>What happens next.</strong> Editions are sent as they are published. Early clients receive the
+          feed free for about the first year.
         </Text>
 
         <FeedFeedbackAsk
           heading="Tell us what you need"
           lines={[
-            "Early-access members shape the feed before it launches. Reply to this email with a line or two on any of these:",
+            "Reply to this email with a line or two on any of these:",
             "Which events matter most to your work, and which you would ignore. The identifiers you join on, and how you handle a ticker that is reused. How you want it delivered: an email digest, the API or a webhook. Which system or process you would reconcile it against. A recent rename, merger or delisting that tripped up your data.",
             "Every reply is read by the team building the feed.",
           ]}
@@ -87,6 +88,8 @@ export const FeedEarlyAccessEmail = ({
             About the feed
           </Link>
         </Text>
+
+        {inviteUrl ? <FeedInviteOffer inviteUrl={inviteUrl} /> : null}
 
         <FeedAgentBlock />
 

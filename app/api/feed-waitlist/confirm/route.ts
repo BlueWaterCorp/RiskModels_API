@@ -14,8 +14,8 @@
  *
  * When the confirmed row is a contact that asked for a separate delivery address,
  * the same transaction creates that address's row and links it. After the response,
- * a confirmation email is queued to that address (it must confirm for itself), and
- * the contact gets the welcome email. A confirmed delivery address gets no welcome:
+ * that ops address is marked confirmed. It is not sent its own confirmation. The
+ * contact gets the welcome email. A confirmed delivery address gets no welcome:
  * it receives editions only.
  *
  * The page /security-master-feed/confirm asks for a click before posting here, so
@@ -26,22 +26,10 @@
 import { after, NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
-import {
-  sendFeedDeliveryConfirmation,
-  sendFeedEarlyAccessEmail,
-  type FeedConfirmRow,
-} from "@/lib/feed-email";
-import {
-  CONFIRM_MAX_SENDS,
-  CONFIRM_MIN_INTERVAL_SEC,
-  CONFIRM_WINDOW_SEC,
-  CONFIRM_TOKEN_RE,
-  CONFIRM_TOKEN_TTL_MS,
-  hashConfirmToken,
-  newConfirmToken,
-} from "@/lib/feed-token";
+import { sendFeedEarlyAccessEmail } from "@/lib/feed-email";
+import { lookupFeedInviteUrl } from "@/lib/feed-referral";
+import { CONFIRM_TOKEN_RE, hashConfirmToken } from "@/lib/feed-token";
 import { safeErrorCode } from "@/lib/safe-log";
-import { DELIVERY_CLAIM_VALUES } from "@/lib/feed-delivery";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +38,7 @@ const RATE_LIMIT = 30;
 const RATE_WINDOW_SEC = 3600;
 const INVALID = {
   error: "Invalid or expired link",
-  message: "This confirmation link is invalid or has expired. Join again from the early-access page.",
+  message: "This confirmation link is invalid or has expired. Sign up again from the feed page.",
 };
 
 async function readToken(req: NextRequest): Promise<string | null> {
@@ -118,6 +106,7 @@ export async function POST(req: NextRequest) {
   if (!confirmed) return NextResponse.json(INVALID, { status: 400, headers: NO_STORE });
 
   const row = confirmed;
+  const inviteUrl = row.purpose === "contact" ? await lookupFeedInviteUrl(admin, row.email) : null;
   after(async () => {
     // The contact gets the welcome. A delivery address receives editions only, so it gets none.
     if (row.purpose === "contact") {
@@ -129,39 +118,37 @@ export async function POST(req: NextRequest) {
           unsubscribe_token: row.unsubscribe_token,
           unsubscribed_at: null,
           purpose: "contact",
+          inviteUrl,
         });
       } catch (err) {
         console.error("[feed-waitlist/confirm] welcome_email_failed", safeErrorCode(err));
       }
     }
 
-    // The contact authorised a delivery address by confirming. That address must now confirm for itself:
-    // the same atomic, throttled claim as a signup, so it is never mailed twice in a row, more than the cap,
-    // or when it has already consented or unsubscribed.
+    // The contact authorised the ops mailbox by confirming. That address is not asked to confirm again.
+    // Only a purpose 'feed' row is updated, which is the only case feed_email is returned.
     if (row.feed_email) {
       try {
-        const fresh = newConfirmToken();
-        const { data, error } = await admin.rpc("feed_waitlist_claim_confirmation", {
-          p_email: row.feed_email,
-          p_token_hash: fresh.hash,
-          p_expires_at: new Date(Date.now() + CONFIRM_TOKEN_TTL_MS).toISOString(),
-          p_min_interval_seconds: CONFIRM_MIN_INTERVAL_SEC,
-          p_max_sends: CONFIRM_MAX_SENDS,
-          p_window_seconds: CONFIRM_WINDOW_SEC,
-          // A delivery address records no marketing, terms or referral; anything planted is reset.
-          ...DELIVERY_CLAIM_VALUES,
-        });
-        if (error) {
-          console.error("[feed-waitlist/confirm] delivery_claim_failed", safeErrorCode(error));
-          return;
-        }
-        const target = Array.isArray(data) && data.length > 0 ? (data[0] as FeedConfirmRow) : null;
-        if (target) await sendFeedDeliveryConfirmation(target, fresh.token, { email: row.email, name: row.name });
+        const now = new Date().toISOString();
+        const { error } = await admin
+          .from("feed_waitlist")
+          .update({
+            consent_feed_emails: true,
+            consented_at: now,
+            consent_confirmed_at: now,
+          })
+          .eq("email", row.feed_email)
+          .eq("purpose", "feed")
+          .is("unsubscribed_at", null);
+        if (error) console.error("[feed-waitlist/confirm] delivery_confirm_failed", safeErrorCode(error));
       } catch (err) {
-        console.error("[feed-waitlist/confirm] delivery_confirmation_failed", safeErrorCode(err));
+        console.error("[feed-waitlist/confirm] delivery_confirm_failed", safeErrorCode(err));
       }
     }
   });
 
-  return NextResponse.json({ ok: true, purpose: row.purpose }, { headers: NO_STORE });
+  return NextResponse.json(
+    { ok: true, purpose: row.purpose, delivery: Boolean(row.feed_email), inviteUrl },
+    { headers: NO_STORE },
+  );
 }

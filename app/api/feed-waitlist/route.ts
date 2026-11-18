@@ -27,7 +27,8 @@
  * requested_feed_email and acted on only after the contact confirms their own
  * address (POST /api/feed-waitlist/confirm), whose email names the delivery
  * address, so nobody can point someone else's feed at an address of their own
- * choosing. The delivery address then has to confirm for itself.
+ * choosing. Confirming the contact also confirms that delivery address. It is
+ * not sent its own confirmation.
  * Public, unauthenticated signup behind the /security-master-feed landing page.
  * Writes one row per email to public.feed_waitlist with the service-role
  * client (migrations: BWMACRO/supabase/migrations/20261102120000_feed_waitlist.sql
@@ -69,6 +70,7 @@ import {
   type FeedIntendedUse,
 } from "@/lib/feed-waitlist";
 import { sendFeedConfirmation, type FeedConfirmRow } from "@/lib/feed-email";
+import { lookupFeedInviteUrl } from "@/lib/feed-referral";
 import {
   CONFIRM_MAX_SENDS,
   CONFIRM_MIN_INTERVAL_SEC,
@@ -89,9 +91,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 const CONFIRM_MESSAGE =
-  "Check your email. We sent a link to confirm your address; you join the early-access list when you click it.";
+  "Check your email. We sent a link to confirm your address. You receive the feed when you click it.";
 const CONFIRM_MESSAGE_WITH_FEED =
-  "Check your email. We sent a link to confirm your contact address. When you confirm it, we will ask the feed delivery address to confirm too.";
+  "Check your email. We sent a link to confirm your address. The feed will go to the other address after you confirm. That address does not need its own confirmation.";
 
 const TERMS_MESSAGE = "Please accept the free edition terms to join.";
 
@@ -305,10 +307,12 @@ export async function POST(req: NextRequest) {
     // repeat one, and the difference would reveal who is already listed.
     after(async () => {
       try {
+        const inviteUrl = await lookupFeedInviteUrl(createAdminClient(), row.email);
         await sendFeedConfirmation(row, confirmToken, {
           requestedFeedEmail: pendingFeed,
           // The choice this email's link will apply, as stored by the claim.
           marketingOptIn: row.marketing_opt_in === true,
+          ...(inviteUrl ? { inviteUrl } : {}),
         });
       } catch (err) {
         console.error("[feed-waitlist] confirmation_email_failed", safeErrorCode(err));

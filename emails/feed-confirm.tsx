@@ -1,7 +1,7 @@
 import { Body, Button, Container, Head, Heading, Html, Preview, Section, Text } from "@react-email/components";
 import * as React from "react";
 import { BASE_URL } from "./constants";
-import { FeedAgentBlock, FeedFooter, FeedHeader, FEED_LOGO_URL, styles } from "./feed-shared";
+import { FeedAgentBlock, FeedFooter, FeedHeader, FeedInviteOffer, FEED_LOGO_URL, styles } from "./feed-shared";
 
 /**
  * Double opt-in. Sent right after someone asks to join the early-access list,
@@ -25,6 +25,8 @@ export interface FeedConfirmEmailProps {
    * stated, so nobody's marketing opt-in is switched on without the owner seeing it.
    */
   marketingOptIn?: boolean;
+  /** This address's own colleague link. Omitted when the code is not available. */
+  inviteUrl?: string | null;
   /** Override for previews and test sends (e.g. a cid: image). */
   logoSrc?: string;
 }
@@ -37,11 +39,12 @@ export const FeedConfirmEmail = ({
   unsubscribeUrl = `${BASE_URL}/security-master-feed/unsubscribe`,
   requestedFeedEmail = null,
   marketingOptIn = false,
+  inviteUrl = null,
   logoSrc = FEED_LOGO_URL,
 }: FeedConfirmEmailProps) => (
   <Html>
     <Head />
-    <Preview>Confirm your email to join the early-access list for the RiskModels security master feed.</Preview>
+    <Preview>Confirm your email for the RiskModels security master change feed.</Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <FeedHeader logoSrc={logoSrc} />
@@ -50,20 +53,19 @@ export const FeedConfirmEmail = ({
         <Text style={styles.paragraph}>{name ? `Hi ${name},` : "Hello,"}</Text>
 
         <Text style={styles.paragraph}>
-          Someone asked to join the early-access list for the RiskModels security master change feed with this
-          email address. The feed is a daily, SEC-filing-cited record of US equity identity and status events. It
-          is in early access and has not published its first edition yet.
+          Someone asked to receive the RiskModels security master change feed at this email address. The feed is a
+          daily, SEC-filing-cited record of US equity identity and status events.
         </Text>
 
         <Text style={styles.paragraph}>
-          To join, confirm that this is your address. You are not on the list until you do.
+          Confirm that this is your address. You are not subscribed until you do.
         </Text>
 
         {requestedFeedEmail ? (
           <Text style={styles.banner}>
             The request also asks for the feed to be delivered to a separate address:{" "}
-            <strong>{requestedFeedEmail}</strong>. If you confirm, we will ask that address to confirm too. If
-            that address is wrong, do not confirm.
+            <strong>{requestedFeedEmail}</strong>. If you confirm, editions go there. That address is not asked to
+            confirm again. If that address is wrong, do not confirm.
           </Text>
         ) : null}
 
@@ -83,6 +85,8 @@ export const FeedConfirmEmail = ({
           If you did not ask to join, ignore this email. You will not be added, and we will not email you about
           the feed. The link works once and expires in seven days.
         </Text>
+
+        {inviteUrl ? <FeedInviteOffer inviteUrl={inviteUrl} /> : null}
 
         <FeedAgentBlock />
 
