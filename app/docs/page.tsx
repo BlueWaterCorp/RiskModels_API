@@ -80,6 +80,13 @@ export default function DocsHubPage() {
           Separate factor exposure from the idiosyncratic bet so you can hedge what you don&apos;t
           want.
         </p>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-500">
+          Tracking ticker changes, delistings, mergers and splits? The{' '}
+          <Link href="/security-master-feed" className="text-blue-400 hover:text-blue-300">
+            security master feed
+          </Link>{' '}
+          is a daily, SEC-filing-cited feed of those events, now in early access.
+        </p>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

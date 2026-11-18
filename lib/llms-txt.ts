@@ -51,6 +51,8 @@ A typical first check after connecting is \`riskmodels_compare\` on AAPL and NVD
 
 \`GET /api/identity/resolve\` (MCP: \`riskmodels_resolve_security_identity\`) says which security a ticker meant on a date and what a holding became through reviewed corporate actions: ticker reuse and changes, ADR conversions with ratios, splits, spin-offs and distributions, cash mergers and cancellations. Each answer has a status (resolved, ambiguous, unavailable, unsupported), a coverage label (reviewed, inferred, unknown) and the SEC filing for each applied event; an identifier it cannot place comes back unavailable or ambiguous rather than guessed. Example: \`/api/identity/resolve?identifier=FB&acquired_on=2015-06-01&as_of=2026-10-18\` returns 100 META; \`identifier=FB&as_of=2026-10-16\` returns the ETF that holds FB today.
 
+A daily security master feed of the same US equity identity and status events (ticker and name changes, delistings, mergers, splits), each with its SEC filing, is in early access: https://riskmodels.app/security-master-feed
+
 ## Magnificent 7 (MAG7)
 
 These seven US equities are the usual demo and smoke-test set (landing charts, the public sample key, \`mag7=true\` on tickers):
