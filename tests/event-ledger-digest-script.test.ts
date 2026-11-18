@@ -28,8 +28,21 @@ interface Fake {
   failTo: Set<string>;
   ledgerReads: number;
   sends: string[];
+  /** Ledger rows left out of reads (to make a rebuilt edition differ). */
+  dropSeq: Set<number>;
+  /** Hold every /emails request open until the test releases it. */
+  holdSends: boolean;
+  onSend: (() => void) | null;
 }
-const fake: Fake = { recipients: TWO, failTo: new Set(), ledgerReads: 0, sends: [] };
+const fake: Fake = {
+  recipients: TWO,
+  failTo: new Set(),
+  ledgerReads: 0,
+  sends: [],
+  dropSeq: new Set(),
+  holdSends: false,
+  onSend: null,
+};
 let server: Server;
 let base = "";
 
@@ -56,13 +69,20 @@ beforeAll(async () => {
       const lte = (url.search.match(/seq=lte\.(\d+)/) ?? [])[1];
       return send(
         200,
-        ROWS.filter((r) => (gt === undefined || r.seq > Number(gt)) && (lte === undefined || r.seq <= Number(lte))),
+        ROWS.filter(
+          (r) =>
+            !fake.dropSeq.has(r.seq) && (gt === undefined || r.seq > Number(gt)) && (lte === undefined || r.seq <= Number(lte)),
+        ),
       );
     }
     if (url.pathname === "/emails" && req.method === "POST") {
       const msg = JSON.parse(await body(req)) as { to: string | string[] };
       const to = Array.isArray(msg.to) ? msg.to[0] : msg.to;
       fake.sends.push(to);
+      if (fake.holdSends) {
+        fake.onSend?.();
+        return; // never answered; the test signals the process
+      }
       if (fake.failTo.has(to)) return send(500, { name: "application_error", message: "stand-in failure", statusCode: 500 });
       return send(200, { id: `re_${fake.sends.length}` });
     }
@@ -85,9 +105,13 @@ function home(cursor: Record<string, unknown> = { last_seq: 4597 }): string {
 const stateDir = (h: string) => join(h, ".riskmodels", "event-ledger-digest");
 const cursorOf = (h: string) => JSON.parse(readFileSync(join(stateDir(h), "cursor-list.json"), "utf8"));
 
-function run(h: string, args: string[]): Promise<{ code: number; out: string; err: string }> {
+function run(
+  h: string,
+  args: string[],
+  started?: (child: ReturnType<typeof execFile>) => void,
+): Promise<{ code: number; out: string; err: string; signal: string | null }> {
   return new Promise((ok) => {
-    execFile(
+    const child = execFile(
       // vite-node (a vitest dependency) with the vitest config, for the "@/" alias; tsx is not installed.
       join(ROOT, "node_modules", ".bin", "vite-node"),
       ["-c", "vitest.config.ts", join(ROOT, "scripts", "event-ledger-digest.ts"), ...args],
@@ -105,8 +129,14 @@ function run(h: string, args: string[]): Promise<{ code: number; out: string; er
         timeout: 60_000,
       },
       (error, stdout, stderr) =>
-        ok({ code: error ? ((error as { code?: number }).code ?? 1) : 0, out: String(stdout), err: String(stderr) }),
+        ok({
+          code: error ? ((error as { code?: number }).code ?? 1) : 0,
+          out: String(stdout),
+          err: String(stderr),
+          signal: error ? ((error as { signal?: string | null }).signal ?? null) : null,
+        }),
     );
+    started?.(child);
   });
 }
 
@@ -194,4 +224,53 @@ describe("event-ledger-digest.ts --scheduled (process)", () => {
     expect(log.complete).toBe(true);
     expect(log.sent.map((s: { to: string }) => s.to).sort()).toEqual(["conrad@bwmacro.com", "team-inbox@example.com"]);
   }, 180_000);
+
+  it("resumes by address even when the rebuilt edition differs, and says so", async () => {
+    const h = home();
+    fake.failTo = new Set(["team-inbox@example.com"]);
+    // An ad-hoc list send dated 2026-07-11, so the seven June rows are listed and attached
+    // (a scheduled run dated today would only count them as older, with an empty attachment).
+    const day1 = await run(h, [
+      "--list", "--send", "--advance-cursor", "--confirm-list-send", "2", "--edition-date", "2026-07-11",
+    ]);
+    fake.failTo = new Set();
+    expect(day1.code).toBe(1);
+    const pending = cursorOf(h).pending_send;
+    expect(pending.edition_date).toBe("2026-07-11");
+    expect(pending.out_dir).toMatch(/_list$/);
+    expect(pending.attachment_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    // One row of the window no longer comes back, so the rebuilt attachment differs.
+    fake.dropSeq = new Set([4600]);
+    const mark = fake.sends.length;
+    const resume = await run(h, ["--list", "--send", "--resume-pending", "--confirm-list-send", "2"]);
+    fake.dropSeq = new Set();
+    expect(resume.code).toBe(0);
+    expect(fake.sends.slice(mark)).toEqual(["team-inbox@example.com"]);
+    expect(resume.err + resume.out).toContain("resume_sha_mismatch");
+    expect(cursorOf(h).last_seq).toBe(4604);
+  }, 180_000);
+
+  it("refuses --resume-pending with --out, --cursor or review settings", async () => {
+    const h = home({ last_seq: 4597 });
+    for (const extra of [["--out", join(h, "x")], ["--cursor", join(h, "c.json")], ["--no-under-review"], ["--review-cap", "3"]]) {
+      const r = await run(h, ["--list", "--send", "--resume-pending", "--confirm-list-send", "2", ...extra]);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain("resume_takes_pending_window");
+    }
+  }, 90_000);
+
+  it("releases the lock and exits non-zero on SIGTERM mid-send, leaving the send pending", async () => {
+    const h = home();
+    fake.holdSends = true;
+    let child: ReturnType<typeof execFile> | null = null;
+    fake.onSend = () => child?.kill("SIGTERM");
+    const r = await run(h, SCHEDULED, (c) => (child = c));
+    fake.holdSends = false;
+    fake.onSend = null;
+    expect(r.code !== 0 || r.signal !== null).toBe(true);
+    expect(r.code).toBe(143);
+    expect(existsSync(join(stateDir(h), "list-send.lock"))).toBe(false);
+    expect(cursorOf(h).pending_send).toMatchObject({ after_seq: 4597, through_seq: 4604 });
+  }, 90_000);
 });

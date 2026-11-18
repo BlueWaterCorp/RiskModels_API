@@ -363,6 +363,7 @@ async function main() {
     resumePending: flag("resume-pending"),
     out: arg("out") !== undefined,
     cursor: arg("cursor") !== undefined,
+    reviewOptions: flag("include-under-review") || flag("no-under-review") || arg("review-cap") !== undefined,
   };
   const early = listSendGate(sendFlags, null);
   if (!early.ok) {
@@ -388,6 +389,14 @@ async function main() {
       process.exit(5);
     }
     process.on("exit", lock.release);
+    // A signal ends the run with the lock released; pending_send stays, so the send is resumed, not resent.
+    for (const [sig, code] of [["SIGTERM", 143], ["SIGINT", 130]] as const) {
+      process.on(sig, () => {
+        lock.release();
+        console.error(`event-ledger-digest: ${sig}; lock released; any pending send stays recorded`);
+        process.exit(code);
+      });
+    }
   }
 
   const audience = flag("internal") ? "internal" : "client";
@@ -583,7 +592,16 @@ async function main() {
       process.exit(4);
     }
   }
-  const sent = readSentLog(logPath, edition);
+  // A resume skips every address already sent for that edition, whatever the rebuilt sha.
+  const resumeLog = resume ? readSentLogRaw(join(resume.out_dir ?? outDir, "sent.json")) : null;
+  const shaMismatch = Boolean(resume?.attachment_sha256 && resume.attachment_sha256 !== edition.attachment.sha256);
+  if (shaMismatch) {
+    console.error(
+      `resume_sha_mismatch: the rebuilt ${editionDate} edition differs from the one the pending send started with; ` +
+        "addresses already sent are still skipped",
+    );
+  }
+  const sent = resume ? [...(resumeLog?.sent ?? [])] : readSentLog(logPath, edition);
   // Recorded before the first send and cleared only when every copy went out, so a crash or a
   // failed copy blocks the next list send instead of resending the window to everyone.
   const trackPending = list && window.basis === "ledger_seq" && !sendFlags.sinceSeq;
@@ -593,6 +611,8 @@ async function main() {
       after_seq: window.after_seq,
       through_seq: window.through_seq,
       started_at: resume?.started_at ?? new Date().toISOString(),
+      out_dir: outDir,
+      attachment_sha256: resume?.attachment_sha256 ?? edition.attachment.sha256,
     });
   }
   const already = new Set(sent.map((x) => x.to.toLowerCase()));
@@ -622,7 +642,7 @@ async function main() {
   } else if (!failed.length && trackPending) {
     setPending(cursorPath, null);
   }
-  console.log(JSON.stringify({ ...summary, sent: sent.length, failed: failed.length }, null, 2));
+  console.log(JSON.stringify({ ...summary, sent: sent.length, failed: failed.length, ...(shaMismatch ? { resume_sha_mismatch: true } : {}) }, null, 2));
   if (failed.length) process.exit(1);
 }
 

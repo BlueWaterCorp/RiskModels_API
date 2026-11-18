@@ -31,6 +31,7 @@ const flags = (over: Partial<ListSendFlags> = {}): ListSendFlags => ({
   resumePending: false,
   out: false,
   cursor: false,
+  reviewOptions: false,
   ...over,
 });
 
@@ -71,6 +72,13 @@ describe("list send gate", () => {
   it("keeps --resume-pending manual: it needs the exact count and refuses --scheduled", () => {
     expect(listSendGate(flags({ resumePending: true }), 2)).toEqual({ ok: false, reason: "confirm_list_send_required" });
     expect(listSendGate(flags({ resumePending: true, confirmListSend: "2" }), 2)).toEqual({ ok: true });
+    // The pending edition is rebuilt exactly: no other output folder, cursor or review settings.
+    for (const over of [{ out: true }, { cursor: true }, { reviewOptions: true }]) {
+      expect(listSendGate(flags({ resumePending: true, confirmListSend: "2", ...over }), 2)).toEqual({
+        ok: false,
+        reason: "resume_takes_pending_window",
+      });
+    }
     expect(listSendGate(flags({ resumePending: true, scheduled: true }), 2)).toEqual({
       ok: false,
       reason: "scheduled_cursor_only",

@@ -14,8 +14,9 @@
  *     (no --out, --cursor, --edition-date);
  *   - a list send that did not finish leaves pending_send in the list cursor file. Every later list
  *     send refuses (exit 4) until it is resumed with --list --send --resume-pending
- *     --confirm-list-send <N>, which rebuilds exactly that edition (same rows, same edition date),
- *     skips addresses already sent and then moves the cursor;
+ *     --confirm-list-send <N>, which rebuilds that edition (same rows, same edition date), skips
+ *     every address already in its sent.json (even if the rebuilt attachment differs, which it
+ *     reports as resume_sha_mismatch) and then moves the cursor;
  *   - an exclusive lock file around read-state -> send -> write-state, so two overlapping runs
  *     cannot both send. A lock older than LOCK_STALE_MS is reported and refused, never broken.
  *
@@ -47,6 +48,8 @@ export interface ListSendFlags {
   out: boolean;
   /** --cursor given. */
   cursor: boolean;
+  /** --include-under-review, --no-under-review or --review-cap given. */
+  reviewOptions: boolean;
 }
 
 export type GateResult =
@@ -83,7 +86,9 @@ export function listSendGate(f: ListSendFlags, recipients: number | null): GateR
   }
   if (f.resumePending) {
     if (!f.list || !f.send) return { ok: false, reason: "resume_needs_list_send" };
-    if (f.knowledgeWindow || f.sinceSeq || f.sample || f.editionDate) return { ok: false, reason: "resume_takes_pending_window" };
+    if (f.knowledgeWindow || f.sinceSeq || f.sample || f.editionDate || f.out || f.cursor || f.reviewOptions) {
+      return { ok: false, reason: "resume_takes_pending_window" };
+    }
   }
   if (recipients !== null && f.list && f.send && f.confirmListSend !== String(recipients)) {
     return { ok: false, reason: "confirm_list_send_required" };
@@ -97,6 +102,10 @@ export interface PendingSend {
   after_seq: number;
   through_seq: number;
   started_at: string;
+  /** Edition folder holding the send's sent.json. */
+  out_dir?: string;
+  /** sha256 of the attachment the send started with. */
+  attachment_sha256?: string;
 }
 
 export interface CursorFile {
