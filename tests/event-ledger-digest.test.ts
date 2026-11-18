@@ -242,7 +242,7 @@ describe("event ledger digest", () => {
       const ed = seqBuild("2026-07-11");
       expect(ed.mainCount).toBe(7);
       expect(ed.older).toEqual({ total: 0, knowledgeBefore: "2026-06-11", days: 30 });
-      expect(renderDigestText(ed)).not.toContain("older filing");
+      expect(renderDigestText(ed)).not.toContain("older event");
     });
 
     it("summarises newly published rows first knowable earlier as one count line, not listed", async () => {
@@ -255,7 +255,7 @@ describe("event ledger digest", () => {
       const text = renderDigestText(ed);
       const html = await render(EventLedgerDigestEmail({ edition: ed }));
       for (const body of [text, unescapeHtml(html)]) {
-        expect(body).toContain("4 older filings added to the ledger");
+        expect(body).toContain("4 older events added to the ledger");
         // Older rows are counted, never named.
         for (const r of ROWS.slice(0, 4)) {
           const name = (r.envelope.payload!.issuer_name as string) ?? "";
@@ -269,16 +269,16 @@ describe("event ledger digest", () => {
       });
     });
 
-    it("says one older filing in the singular and gives an all-older day its own headline", async () => {
+    it("says one older event in the singular and gives an all-older day its own headline", async () => {
       const one = seqBuild("2026-07-13", [ROWS[0], ROWS[6]]);
-      expect(renderDigestText(one)).toContain("1 older filing added to the ledger");
+      expect(renderDigestText(one)).toContain("1 older event added to the ledger");
       const all = seqBuild("2026-08-30");
       expect(all.mainCount).toBe(0);
       expect(all.older.total).toBe(7);
       expect(isEmptyEdition(all)).toBe(false);
       const text = renderDigestText(all);
       expect(text).toContain("No new events first knowable in the last 30 days.");
-      expect(text).toContain("7 older filings added to the ledger");
+      expect(text).toContain("7 older events added to the ledger");
       expect(all.attachment.lines).toBe(0);
     });
 
@@ -291,6 +291,8 @@ describe("event ledger digest", () => {
       const ed = seqBuild("2026-07-13", cands);
       expect(ed.underReview.total).toBe(3);
       expect(ed.older.total).toBe(4);
+      // Candidates are counted too, so the line says "events", not "filings".
+      expect(renderDigestText(ed)).toContain("4 older events added to the ledger");
       const internal = seqBuild("2026-07-13", ROWS, { audience: "internal", recipient: "conrad@bwmacro.com" });
       expect(internal.mainCount).toBe(3);
       expect(internal.older.total).toBe(4);

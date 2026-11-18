@@ -13,7 +13,7 @@
  *
  * Age rule (all editions read from a cursor): an event is listed only when its knowledge_at falls
  * within RECENT_KNOWLEDGE_DAYS (30) of the edition date. Events published in the window but first
- * knowable earlier, such as the Form 25 backfill, appear as one line, "N older filings added to the
+ * knowable earlier, such as the Form 25 backfill, appear as one line, "N older events added to the
  * ledger", and are not listed or attached. Corrections and withdrawals are always listed.
  *
  * Modes
@@ -38,7 +38,19 @@
  *               --sample). One edition per edition date: when sent.json for the date is marked
  *               complete, a later scheduled run sends nothing ("skipped_already_sent", exit 0) and
  *               leaves its events for the next edition; a partial send of other events for the
- *               same date refuses (exit 4). See lib/event-ledger-digest-schedule.ts.
+ *               same date refuses (exit 4). It refuses (exit 3, cursor unchanged) an empty or
+ *               unreadable recipient list, and takes no --out, --cursor or --edition-date: its state
+ *               is always in ~/.riskmodels/event-ledger-digest. See lib/event-ledger-digest-schedule.ts.
+ *   Pending list send. Before the first copy goes out, the list cursor file records pending_send
+ *               (edition date, seq window); it is cleared when every copy went out. While it is set,
+ *               every list send refuses (exit 4), so a partial send is never resent to everyone.
+ *   --resume-pending
+ *               With --list --send --confirm-list-send <N>: rebuilds exactly the pending edition
+ *               (same rows, same edition date), sends only to addresses not yet in its sent.json,
+ *               then moves the list cursor past it.
+ *   Lock.       Every list send holds ~/.riskmodels/event-ledger-digest/list-send.lock (exclusive
+ *               create) from reading its state to writing it; a second run refuses (exit 5). A lock
+ *               older than two hours is reported and refused, never broken: remove it by hand.
  *   --public-json <path>
  *               also write the public "latest events" file for riskmodels.org/events
  *               (lib/event-ledger-public.ts): the newest 20 verified, client-deliverable events,
@@ -108,9 +120,13 @@ import {
 import { loadPublicLatest } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
 import {
+  acquireSendLock,
   listSendGate,
+  pendingSendGate,
   scheduledEditionState,
+  type CursorFile,
   type ListSendFlags,
+  type PendingSend,
   type SentLogState,
 } from "../lib/event-ledger-digest-schedule";
 
@@ -162,9 +178,10 @@ interface ListRecipient extends FooterRecipient {
   email: string;
 }
 
-async function listRecipients(): Promise<ListRecipient[]> {
-  const rows = await rest<ListRecipient[]>("rpc/feed_waitlist_edition_recipients", { method: "POST", body: "{}" });
-  return Array.isArray(rows) ? rows : [];
+/** The list, or null when the response is not an array (the caller refuses). */
+async function listRecipients(): Promise<ListRecipient[] | null> {
+  const rows = await rest<unknown>("rpc/feed_waitlist_edition_recipients", { method: "POST", body: "{}" });
+  return Array.isArray(rows) ? (rows as ListRecipient[]) : null;
 }
 
 /** The single address's own footer when it is on the list; the plain footer otherwise or before the migration. */
@@ -179,9 +196,24 @@ async function footerFor(email: string): Promise<EditionFooter> {
   }
 }
 
-function readCursor(path: string): number | null {
+function readCursorFile(path: string): CursorFile | null {
   if (!existsSync(path)) return null;
-  return Number(JSON.parse(readFileSync(path, "utf8")).last_seq);
+  return JSON.parse(readFileSync(path, "utf8")) as CursorFile;
+}
+
+function readCursor(path: string): number | null {
+  const f = readCursorFile(path);
+  return f ? Number(f.last_seq) : null;
+}
+
+/** Records (or, with null, clears) a list send in progress, keeping the cursor's position. */
+function setPending(path: string, pending: PendingSend | null) {
+  const f = readCursorFile(path) ?? { last_seq: pending?.after_seq ?? 0 };
+  const { saved_at: _saved, pending_send: _old, ...rest } = f;
+  writeFileSync(
+    path,
+    JSON.stringify({ ...rest, saved_at: new Date().toISOString(), ...(pending ? { pending_send: pending } : {}) }, null, 2) + "\n",
+  );
 }
 
 function writeCursor(path: string, seq: number, extra: Record<string, unknown>) {
@@ -326,13 +358,36 @@ async function main() {
     knowledgeWindow: Boolean(arg("knowledge-from") || arg("knowledge-to")),
     sinceSeq: arg("since-seq") !== undefined,
     sample: flag("sample"),
+    advanceCursor: flag("advance-cursor"),
+    editionDate: arg("edition-date") !== undefined,
+    resumePending: flag("resume-pending"),
+    out: arg("out") !== undefined,
+    cursor: arg("cursor") !== undefined,
   };
-  if (sendFlags.scheduled) {
-    const early = listSendGate(sendFlags, 0);
-    if (!early.ok) {
-      console.error(`refused: ${early.reason}; --scheduled is --list --send from the list cursor only; nothing sent`);
-      process.exit(2);
+  const early = listSendGate(sendFlags, null);
+  if (!early.ok) {
+    console.error(
+      `refused: ${early.reason}; --scheduled is --list --send --advance-cursor from the fixed list cursor only, ` +
+        "--resume-pending is --list --send --confirm-list-send N alone; nothing sent",
+    );
+    process.exit(2);
+  }
+
+  // Every list send holds the lock from reading its state to writing it, so overlapping runs
+  // cannot both send. Released on any exit; a stale lock is reported, never broken.
+  const listSend = list && sendFlags.send;
+  if (listSend) {
+    mkdirSync(STATE_DIR, { recursive: true });
+    const lock = acquireSendLock(join(STATE_DIR, "list-send.lock"));
+    if (!lock.ok) {
+      console.error(
+        `refused: ${lock.reason}; ${join(STATE_DIR, "list-send.lock")} is held (${Math.round(lock.ageMs / 60000)} min, ${lock.holder || "no holder"}). ` +
+          (lock.reason === "stale_lock" ? "Check no run is alive, then remove it by hand. " : "") +
+          "nothing sent",
+      );
+      process.exit(5);
     }
+    process.on("exit", lock.release);
   }
 
   const audience = flag("internal") ? "internal" : "client";
@@ -353,8 +408,24 @@ async function main() {
     }
   }
 
+  // A list send that did not finish blocks every later list send until it is resumed.
+  let resume: PendingSend | null = null;
+  if (listSend) {
+    const pg = pendingSendGate(readCursorFile(cursorPath), sendFlags.resumePending);
+    if (!pg.ok) {
+      console.error(
+        pg.reason === "pending_partial_send"
+          ? `refused: pending_partial_send; the ${pg.pending!.edition_date} list edition (seq ${pg.pending!.after_seq}..${pg.pending!.through_seq}) did not finish. ` +
+              `Resume it with --list --send --resume-pending --confirm-list-send <N>; nothing sent`
+          : "refused: no_pending_send; there is no pending list send to resume; nothing sent",
+      );
+      process.exit(pg.reason === "pending_partial_send" ? 4 : 2);
+    }
+    resume = pg.resume;
+  }
+
   // Edition date: the day the edition covers, which is the day before the send (Pacific).
-  const editionDate = arg("edition-date") ?? ptDate(-1);
+  const editionDate = resume?.edition_date ?? arg("edition-date") ?? ptDate(-1);
   const kFrom = arg("knowledge-from");
   const kTo = arg("knowledge-to");
 
@@ -364,6 +435,10 @@ async function main() {
     if (!kFrom || !kTo) throw new Error("--knowledge-from and --knowledge-to go together");
     window = { basis: "knowledge_date", from: kFrom, to: kTo };
     rows = await getRows(`knowledge_at=gte.${kFrom}T00:00:00Z&knowledge_at=lt.${nextDay(kTo)}T00:00:00Z`);
+  } else if (resume) {
+    // Exactly the pending edition's rows, so its attachment (and sent.json) match.
+    rows = await getRows(`seq=gt.${resume.after_seq}&seq=lte.${resume.through_seq}`);
+    window = { basis: "ledger_seq", after_seq: resume.after_seq, through_seq: resume.through_seq };
   } else {
     const since = arg("since-seq") !== undefined ? Number(arg("since-seq")) : readCursor(cursorPath);
     if (since === null || !Number.isFinite(since)) {
@@ -388,8 +463,20 @@ async function main() {
   const subject = digestSubject(edition);
 
   // Recipients and their copies. Every copy is rendered and checked before the first send.
+  const listed = list ? await listRecipients() : null;
+  if (list && listed === null) {
+    console.error("refused: recipient_list_unreadable; feed_waitlist_edition_recipients() did not return a list; nothing sent");
+    process.exit(3);
+  }
+  if (sendFlags.scheduled) {
+    const g = listSendGate(sendFlags, (listed ?? []).length);
+    if (!g.ok) {
+      console.error(`refused: ${g.reason}; the cursor is unchanged; nothing sent`);
+      process.exit(3);
+    }
+  }
   const recipients: ListRecipient[] = list
-    ? await listRecipients()
+    ? (listed as ListRecipient[])
     : [{ email: to, unsubscribe_token: "", purpose: null, referral_code: null }];
   const copies: Copy[] = [];
   try {
@@ -471,6 +558,10 @@ async function main() {
   }
   const gate = listSendGate(sendFlags, copies.length);
   if (!gate.ok) {
+    if (gate.reason !== "confirm_list_send_required") {
+      console.error(`refused: ${gate.reason}; nothing sent`);
+      process.exit(2);
+    }
     console.error(`refused: a list send needs --confirm-list-send ${copies.length} (the exact recipient count); nothing sent`);
     process.exit(2);
   }
@@ -493,6 +584,17 @@ async function main() {
     }
   }
   const sent = readSentLog(logPath, edition);
+  // Recorded before the first send and cleared only when every copy went out, so a crash or a
+  // failed copy blocks the next list send instead of resending the window to everyone.
+  const trackPending = list && window.basis === "ledger_seq" && !sendFlags.sinceSeq;
+  if (trackPending && window.basis === "ledger_seq") {
+    setPending(cursorPath, {
+      edition_date: editionDate,
+      after_seq: window.after_seq,
+      through_seq: window.through_seq,
+      started_at: resume?.started_at ?? new Date().toISOString(),
+    });
+  }
   const already = new Set(sent.map((x) => x.to.toLowerCase()));
   const failed: string[] = [];
   const writeLog = (complete = false) =>
@@ -515,8 +617,10 @@ async function main() {
   }
   writeLog(failed.length === 0);
 
-  if (!failed.length && flag("advance-cursor") && window.basis === "ledger_seq") {
+  if (!failed.length && (flag("advance-cursor") || resume) && window.basis === "ledger_seq") {
     writeCursor(cursorPath, window.through_seq, { edition_date: editionDate, sent: sent.length, mode: summary.mode });
+  } else if (!failed.length && trackPending) {
+    setPending(cursorPath, null);
   }
   console.log(JSON.stringify({ ...summary, sent: sent.length, failed: failed.length }, null, 2));
   if (failed.length) process.exit(1);

@@ -22,8 +22,8 @@
  *     event is listed only when its knowledge_at falls within
  *     RECENT_KNOWLEDGE_DAYS of the edition date. Deliverable events published
  *     now but first knowable earlier (the Form 25 backfill, for one) are
- *     summarised as a single count line ("N older filings added to the
- *     ledger"), not listed and not in the attached file. Corrections and
+ *     summarised as a single count line ("N older events added to the
+ *     ledger"; verified events and candidates alike, so "events"), not listed and not in the attached file. Corrections and
  *     withdrawals are always listed. A knowledge-date sample is left alone: its
  *     window already selects by knowledge date. Applies to every audience.
  *   - Audience. A "client" edition never carries an internal_only row, whatever
@@ -879,7 +879,7 @@ export function windowText(w: DigestWindow): string {
 export function olderLine(ed: DigestEdition): string | null {
   const n = ed.older.total;
   if (!n) return null;
-  return `${n} older ${n === 1 ? "filing" : "filings"} added to the ledger: first knowable before ${ed.older.knowledgeBefore}, more than ${ed.older.days} days before this edition. ${n === 1 ? "It is" : "They are"} not listed here or in the attached file.`;
+  return `${n} older ${n === 1 ? "event" : "events"} added to the ledger: first knowable before ${ed.older.knowledgeBefore}, more than ${ed.older.days} days before this edition. ${n === 1 ? "It is" : "They are"} not listed here or in the attached file.`;
 }
 
 /** An edition with nothing to list, nothing under review and no older count. List mode sends nothing for it. */
