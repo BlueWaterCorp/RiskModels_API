@@ -205,6 +205,12 @@ export async function deleteCachePattern(
 ): Promise<number> {
   let deleted = 0;
 
+  // A production purge without Redis would clear only this instance's memory
+  // cache and report it as done, while other instances keep serving stale keys.
+  if (!redis && options.failOnError && process.env.NODE_ENV === "production") {
+    throw new Error("[Cache] Redis is not configured; cannot purge the shared cache");
+  }
+
   if (redis) {
     try {
       // Upstash Redis doesn't support KEYS, use scan instead
