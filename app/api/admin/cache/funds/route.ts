@@ -37,7 +37,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const deleted = await deleteCachePattern(FUNDS_ZARR_CACHE_PATTERN);
+    // Best-effort by design: a Redis scan/delete failure is logged and
+    // swallowed (the Funds_DAG sync treats this purge as non-fatal and the
+    // cache converges via TTL). Unlike /api/admin/cache/fundamentals, this
+    // route does not fail closed.
+    const deleted = await deleteCachePattern(FUNDS_ZARR_CACHE_PATTERN, {
+      failOnError: false,
+    });
     console.log(
       `[admin/cache/funds] purged ${deleted} keys (${FUNDS_ZARR_CACHE_PATTERN})`,
     );

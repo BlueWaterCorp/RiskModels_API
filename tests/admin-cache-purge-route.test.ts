@@ -49,6 +49,7 @@ describe("POST /api/admin/cache/funds", () => {
     });
     expect(vi.mocked(deleteCachePattern)).toHaveBeenCalledWith(
       "riskmodels:funds_zarr:*",
+      { failOnError: false },
     );
   });
 
