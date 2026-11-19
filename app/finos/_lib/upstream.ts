@@ -1,4 +1,8 @@
-import { upstreamBase } from "@/app/openbb/_lib/upstream";
+function riskModelsApiBase(): string {
+  return (
+    process.env.NEXT_PUBLIC_RISKMODELS_API_URL || "https://riskmodels.app/api"
+  ).replace(/\/+$/, "");
+}
 
 export function bearerFromFinosRequest(req: Request): string | null {
   const value = req.headers.get("authorization")?.trim() || "";
@@ -12,7 +16,7 @@ export async function getRiskModelsJson(
   path: string,
   token: string,
 ): Promise<{ status: number; body: unknown }> {
-  const url = `${upstreamBase()}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = `${riskModelsApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
