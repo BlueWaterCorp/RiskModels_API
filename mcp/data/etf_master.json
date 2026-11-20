@@ -1,10 +1,11 @@
 {
   "schema_version": "etf-master/2.0",
-  "n_entries": 148,
+  "n_entries": 185,
   "aliases": {
     "aaxj": "BW-ETF-AAXJ",
     "acwx": "BW-ETF-ACWX",
     "aia": "BW-ETF-AIA",
+    "amlp": "BW-ETF-AMLP",
     "arkf": "BW-ETF-ARKF",
     "arkg": "BW-ETF-ARKG",
     "arkk": "BW-ETF-ARKK",
@@ -36,6 +37,7 @@
     "epu": "BW-ETF-EPU",
     "esgd": "BW-ETF-ESGD",
     "eufn": "BW-ETF-EUFN",
+    "evx": "BW-ETF-EVX",
     "ewa": "BW-ETF-EWA",
     "ewc": "BW-ETF-EWC",
     "ewd": "BW-ETF-EWD",
@@ -61,20 +63,26 @@
     "ewzs": "BW-ETF-EWZS",
     "eza": "BW-ETF-EZA",
     "fxi": "BW-ETF-FXI",
+    "ggme": "BW-ETF-GGME",
     "hewj": "BW-ETF-HEWJ",
+    "iai": "BW-ETF-IAI",
     "idev": "BW-ETF-IDEV",
+    "idgt": "BW-ETF-IDGT",
     "iefa": "BW-ETF-IEFA",
     "iemg": "BW-ETF-IEMG",
     "ieur": "BW-ETF-IEUR",
     "ieus": "BW-ETF-IEUS",
     "iev": "BW-ETF-IEV",
     "igv": "BW-ETF-IGV",
+    "ihf": "BW-ETF-IHF",
+    "ihi": "BW-ETF-IHI",
     "ijh": "BW-ETF-IJH",
     "ijr": "BW-ETF-IJR",
     "ilf": "BW-ETF-ILF",
     "inda": "BW-ETF-INDA",
     "indy": "BW-ETF-INDY",
     "ipac": "BW-ETF-IPAC",
+    "itb": "BW-ETF-ITB",
     "itot": "BW-ETF-ITOT",
     "ivv": "BW-ETF-IVV",
     "iwb": "BW-ETF-IWB",
@@ -87,17 +95,42 @@
     "iwr": "BW-ETF-IWR",
     "iws": "BW-ETF-IWS",
     "ixus": "BW-ETF-IXUS",
+    "iye": "BW-ETF-IYE",
+    "iyg": "BW-ETF-IYG",
+    "iyj": "BW-ETF-IYJ",
+    "iyk": "BW-ETF-IYK",
+    "iym": "BW-ETF-IYM",
+    "iyt": "BW-ETF-IYT",
+    "iyw": "BW-ETF-IYW",
     "jpxn": "BW-ETF-JPXN",
     "kbe": "BW-ETF-KBE",
+    "kbwb": "BW-ETF-KBWB",
+    "kbwy": "BW-ETF-KBWY",
+    "kce": "BW-ETF-KCE",
     "kie": "BW-ETF-KIE",
     "kre": "BW-ETF-KRE",
     "ksa": "BW-ETF-KSA",
     "kwt": "BW-ETF-KWT",
     "mchi": "BW-ETF-MCHI",
     "mdy": "BW-ETF-MDY",
+    "moat": "BW-ETF-MOAT",
+    "mtum": "BW-ETF-MTUM",
+    "netl": "BW-ETF-NETL",
+    "pave": "BW-ETF-PAVE",
+    "pbj": "BW-ETF-PBJ",
+    "pbw": "BW-ETF-PBW",
+    "pej": "BW-ETF-PEJ",
+    "ppa": "BW-ETF-PPA",
     "qat": "BW-ETF-QAT",
     "qqq": "BW-ETF-QQQ",
+    "qual": "BW-ETF-QUAL",
+    "rem": "BW-ETF-REM",
+    "rez": "BW-ETF-REZ",
     "rsp": "BW-ETF-RSP",
+    "rspf": "BW-ETF-RSPF",
+    "rsps": "BW-ETF-RSPS",
+    "rspt": "BW-ETF-RSPT",
+    "schd": "BW-ETF-SCHD",
     "scj": "BW-ETF-SCJ",
     "scz": "BW-ETF-SCZ",
     "smh": "BW-ETF-SMH",
@@ -115,17 +148,21 @@
     "tok": "BW-ETF-TOK",
     "tur": "BW-ETF-TUR",
     "uae": "BW-ETF-UAE",
+    "usmv": "BW-ETF-USMV",
     "vb": "BW-ETF-VB",
+    "vlue": "BW-ETF-VLUE",
     "vnq": "BW-ETF-VNQ",
     "vo": "BW-ETF-VO",
     "voo": "BW-ETF-VOO",
     "vox": "BW-ETF-VOX",
     "vpu": "BW-ETF-VPU",
+    "vt": "BW-ETF-VT",
     "vti": "BW-ETF-VTI",
     "vtv": "BW-ETF-VTV",
     "vug": "BW-ETF-VUG",
     "vv": "BW-ETF-VV",
     "vxf": "BW-ETF-VXF",
+    "wood": "BW-ETF-WOOD",
     "wsml": "BW-ETF-WSML",
     "xar": "BW-ETF-XAR",
     "xbi": "BW-ETF-XBI",
@@ -167,6 +204,11 @@
       "bw_etf_id": "BW-ETF-AIA",
       "ticker": "AIA",
       "name": "iShares Asia 50 ETF"
+    },
+    "BW-ETF-AMLP": {
+      "bw_etf_id": "BW-ETF-AMLP",
+      "ticker": "AMLP",
+      "name": "Alerian MLP ETF"
     },
     "BW-ETF-ARKF": {
       "bw_etf_id": "BW-ETF-ARKF",
@@ -323,6 +365,11 @@
       "ticker": "EUFN",
       "name": "iShares MSCI Europe Financials ETF"
     },
+    "BW-ETF-EVX": {
+      "bw_etf_id": "BW-ETF-EVX",
+      "ticker": "EVX",
+      "name": "VanEck Environmental Services ETF"
+    },
     "BW-ETF-EWA": {
       "bw_etf_id": "BW-ETF-EWA",
       "ticker": "EWA",
@@ -448,15 +495,30 @@
       "ticker": "FXI",
       "name": "iShares China Large-Cap ETF"
     },
+    "BW-ETF-GGME": {
+      "bw_etf_id": "BW-ETF-GGME",
+      "ticker": "GGME",
+      "name": "Invesco Next Gen Media and Gaming ETF"
+    },
     "BW-ETF-HEWJ": {
       "bw_etf_id": "BW-ETF-HEWJ",
       "ticker": "HEWJ",
       "name": "iShares Currency Hedged MSCI Japan ETF"
     },
+    "BW-ETF-IAI": {
+      "bw_etf_id": "BW-ETF-IAI",
+      "ticker": "IAI",
+      "name": "iShares U.S. Broker-Dealers & Securities Exchanges ETF"
+    },
     "BW-ETF-IDEV": {
       "bw_etf_id": "BW-ETF-IDEV",
       "ticker": "IDEV",
       "name": "iShares Core MSCI International Developed Markets ETF"
+    },
+    "BW-ETF-IDGT": {
+      "bw_etf_id": "BW-ETF-IDGT",
+      "ticker": "IDGT",
+      "name": "iShares U.S. Digital Infrastructure and Real Estate ETF"
     },
     "BW-ETF-IEFA": {
       "bw_etf_id": "BW-ETF-IEFA",
@@ -488,6 +550,16 @@
       "ticker": "IGV",
       "name": "iShares Expanded Tech-Software Sector ETF"
     },
+    "BW-ETF-IHF": {
+      "bw_etf_id": "BW-ETF-IHF",
+      "ticker": "IHF",
+      "name": "iShares U.S. Healthcare Providers ETF"
+    },
+    "BW-ETF-IHI": {
+      "bw_etf_id": "BW-ETF-IHI",
+      "ticker": "IHI",
+      "name": "iShares U.S. Medical Devices ETF"
+    },
     "BW-ETF-IJH": {
       "bw_etf_id": "BW-ETF-IJH",
       "ticker": "IJH",
@@ -517,6 +589,11 @@
       "bw_etf_id": "BW-ETF-IPAC",
       "ticker": "IPAC",
       "name": "iShares Core MSCI Pacific ETF"
+    },
+    "BW-ETF-ITB": {
+      "bw_etf_id": "BW-ETF-ITB",
+      "ticker": "ITB",
+      "name": "iShares U.S. Home Construction ETF"
     },
     "BW-ETF-ITOT": {
       "bw_etf_id": "BW-ETF-ITOT",
@@ -578,6 +655,41 @@
       "ticker": "IXUS",
       "name": "iShares Core MSCI Total International Stock ETF"
     },
+    "BW-ETF-IYE": {
+      "bw_etf_id": "BW-ETF-IYE",
+      "ticker": "IYE",
+      "name": "iShares U.S. Energy ETF"
+    },
+    "BW-ETF-IYG": {
+      "bw_etf_id": "BW-ETF-IYG",
+      "ticker": "IYG",
+      "name": "iShares U.S. Financial Services ETF"
+    },
+    "BW-ETF-IYJ": {
+      "bw_etf_id": "BW-ETF-IYJ",
+      "ticker": "IYJ",
+      "name": "iShares U.S. Industrials ETF"
+    },
+    "BW-ETF-IYK": {
+      "bw_etf_id": "BW-ETF-IYK",
+      "ticker": "IYK",
+      "name": "iShares U.S. Consumer Staples ETF"
+    },
+    "BW-ETF-IYM": {
+      "bw_etf_id": "BW-ETF-IYM",
+      "ticker": "IYM",
+      "name": "iShares U.S. Basic Materials ETF"
+    },
+    "BW-ETF-IYT": {
+      "bw_etf_id": "BW-ETF-IYT",
+      "ticker": "IYT",
+      "name": "iShares U.S. Transportation ETF"
+    },
+    "BW-ETF-IYW": {
+      "bw_etf_id": "BW-ETF-IYW",
+      "ticker": "IYW",
+      "name": "iShares U.S. Technology ETF"
+    },
     "BW-ETF-JPXN": {
       "bw_etf_id": "BW-ETF-JPXN",
       "ticker": "JPXN",
@@ -587,6 +699,21 @@
       "bw_etf_id": "BW-ETF-KBE",
       "ticker": "KBE",
       "name": "SPDR S&P Bank ETF"
+    },
+    "BW-ETF-KBWB": {
+      "bw_etf_id": "BW-ETF-KBWB",
+      "ticker": "KBWB",
+      "name": "Invesco KBW Bank ETF"
+    },
+    "BW-ETF-KBWY": {
+      "bw_etf_id": "BW-ETF-KBWY",
+      "ticker": "KBWY",
+      "name": "Invesco KBW Premium Yield Equity REIT ETF"
+    },
+    "BW-ETF-KCE": {
+      "bw_etf_id": "BW-ETF-KCE",
+      "ticker": "KCE",
+      "name": "SPDR S&P Capital Markets ETF"
     },
     "BW-ETF-KIE": {
       "bw_etf_id": "BW-ETF-KIE",
@@ -618,6 +745,46 @@
       "ticker": "MDY",
       "name": "SPDR S&P MidCap 400 ETF Trust"
     },
+    "BW-ETF-MOAT": {
+      "bw_etf_id": "BW-ETF-MOAT",
+      "ticker": "MOAT",
+      "name": "VanEck Morningstar Wide Moat ETF"
+    },
+    "BW-ETF-MTUM": {
+      "bw_etf_id": "BW-ETF-MTUM",
+      "ticker": "MTUM",
+      "name": "iShares MSCI USA Momentum Factor ETF"
+    },
+    "BW-ETF-NETL": {
+      "bw_etf_id": "BW-ETF-NETL",
+      "ticker": "NETL",
+      "name": "NETLease Corporate Real Estate ETF"
+    },
+    "BW-ETF-PAVE": {
+      "bw_etf_id": "BW-ETF-PAVE",
+      "ticker": "PAVE",
+      "name": "Global X U.S. Infrastructure Development ETF"
+    },
+    "BW-ETF-PBJ": {
+      "bw_etf_id": "BW-ETF-PBJ",
+      "ticker": "PBJ",
+      "name": "Invesco Food & Beverage ETF"
+    },
+    "BW-ETF-PBW": {
+      "bw_etf_id": "BW-ETF-PBW",
+      "ticker": "PBW",
+      "name": "Invesco WilderHill Clean Energy ETF"
+    },
+    "BW-ETF-PEJ": {
+      "bw_etf_id": "BW-ETF-PEJ",
+      "ticker": "PEJ",
+      "name": "Invesco Leisure and Entertainment ETF"
+    },
+    "BW-ETF-PPA": {
+      "bw_etf_id": "BW-ETF-PPA",
+      "ticker": "PPA",
+      "name": "Invesco Aerospace & Defense ETF"
+    },
     "BW-ETF-QAT": {
       "bw_etf_id": "BW-ETF-QAT",
       "ticker": "QAT",
@@ -628,10 +795,45 @@
       "ticker": "QQQ",
       "name": "Invesco QQQ Trust (Nasdaq-100)"
     },
+    "BW-ETF-QUAL": {
+      "bw_etf_id": "BW-ETF-QUAL",
+      "ticker": "QUAL",
+      "name": "iShares MSCI USA Quality Factor ETF"
+    },
+    "BW-ETF-REM": {
+      "bw_etf_id": "BW-ETF-REM",
+      "ticker": "REM",
+      "name": "iShares Mortgage Real Estate ETF"
+    },
+    "BW-ETF-REZ": {
+      "bw_etf_id": "BW-ETF-REZ",
+      "ticker": "REZ",
+      "name": "iShares Residential and Multisector Real Estate ETF"
+    },
     "BW-ETF-RSP": {
       "bw_etf_id": "BW-ETF-RSP",
       "ticker": "RSP",
       "name": "Invesco S&P 500 Equal Weight ETF"
+    },
+    "BW-ETF-RSPF": {
+      "bw_etf_id": "BW-ETF-RSPF",
+      "ticker": "RSPF",
+      "name": "Invesco S&P 500 Equal Weight Financials ETF"
+    },
+    "BW-ETF-RSPS": {
+      "bw_etf_id": "BW-ETF-RSPS",
+      "ticker": "RSPS",
+      "name": "Invesco S&P 500 Equal Weight Consumer Staples ETF"
+    },
+    "BW-ETF-RSPT": {
+      "bw_etf_id": "BW-ETF-RSPT",
+      "ticker": "RSPT",
+      "name": "Invesco S&P 500 Equal Weight Technology ETF"
+    },
+    "BW-ETF-SCHD": {
+      "bw_etf_id": "BW-ETF-SCHD",
+      "ticker": "SCHD",
+      "name": "Schwab U.S. Dividend Equity ETF"
     },
     "BW-ETF-SCJ": {
       "bw_etf_id": "BW-ETF-SCJ",
@@ -713,10 +915,20 @@
       "ticker": "UAE",
       "name": "iShares MSCI UAE ETF"
     },
+    "BW-ETF-USMV": {
+      "bw_etf_id": "BW-ETF-USMV",
+      "ticker": "USMV",
+      "name": "iShares MSCI USA Min Vol Factor ETF"
+    },
     "BW-ETF-VB": {
       "bw_etf_id": "BW-ETF-VB",
       "ticker": "VB",
       "name": "Vanguard Small-Cap ETF"
+    },
+    "BW-ETF-VLUE": {
+      "bw_etf_id": "BW-ETF-VLUE",
+      "ticker": "VLUE",
+      "name": "iShares MSCI USA Value Factor ETF"
     },
     "BW-ETF-VNQ": {
       "bw_etf_id": "BW-ETF-VNQ",
@@ -743,6 +955,11 @@
       "ticker": "VPU",
       "name": "Vanguard Utilities ETF"
     },
+    "BW-ETF-VT": {
+      "bw_etf_id": "BW-ETF-VT",
+      "ticker": "VT",
+      "name": "Vanguard Total World Stock ETF"
+    },
     "BW-ETF-VTI": {
       "bw_etf_id": "BW-ETF-VTI",
       "ticker": "VTI",
@@ -767,6 +984,11 @@
       "bw_etf_id": "BW-ETF-VXF",
       "ticker": "VXF",
       "name": "Vanguard Extended Market ETF"
+    },
+    "BW-ETF-WOOD": {
+      "bw_etf_id": "BW-ETF-WOOD",
+      "ticker": "WOOD",
+      "name": "iShares Global Timber & Forestry ETF"
     },
     "BW-ETF-WSML": {
       "bw_etf_id": "BW-ETF-WSML",
