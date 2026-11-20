@@ -355,8 +355,9 @@ const isoTimestamp = (v: unknown) =>
 const accession = (v: unknown) => typeof v === "string" && /^\d{10}-\d{2}-\d{6}$/.test(v);
 
 /**
- * Value rules at allowed paths (client). Sets are the values seen in live data on 2026-11-13; a new
- * value is withheld until it is reviewed and added. Every other allowed scalar leaf must be a
+ * Value rules at allowed paths (client). Sets are the values seen in live data on 2026-11-13, and for the
+ * Form 25 adapter 1.2.0 keys the values its code can emit; a new value is withheld until it is reviewed
+ * and added. Every other allowed scalar leaf must be a
  * string or null (filing text, ids, dates), so a number, object or array cannot hide there.
  */
 const VALUE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
@@ -380,7 +381,7 @@ const VALUE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
   "payload.trading_stopped_source_accession": nullOr(accession),
   "payload.trading_stopped_source_form": nullOr(oneOf("8-K", "8-K/A")),
   "payload.trading_stopped_source_event_date": nullOr(isoDate),
-  "payload.trading_stopped_source_event_date_source": nullOr(oneOf("document_period_end_date", "filed_date_fallback")),
+  "payload.trading_stopped_source_event_date_source": nullOr(oneOf("document_period_end_date", "filed_date_fallback", "effective_as_of_regex")),
   // 8-K item numbers such as "3.01".
   "payload.trading_stopped_source_items[]": (v) => typeof v === "string" && /^\d{1,2}\.\d{2}$/.test(v),
   schema_version: oneOf("1.0.0"),
@@ -1343,7 +1344,7 @@ export const DATES_NOTE =
   "Dates are UTC. Known is when the event became publicly knowable. For a delisting, Listing removed is the removal date stated with the Form 25; " +
   "without one, the date the form was signed (Form 25 signed) or filed (Form 25 filed) is shown and named as such, with the Rule 12d2-2 default " +
   "(filing + 10 days). Trading stopped is shown only when the issuer's 8-K reports a completed transaction (item 2.01) whose date was read " +
-  "from the document; an 8-K delisting notice (item 3.01) alone is not a trading stop. Effective is when any other event takes effect.";
+  "from the document; that is the day trading stopped, and the last trade is normally the session before. An 8-K delisting notice (item 3.01) alone is not a trading stop. Effective is when any other event takes effect.";
 
 /** The dates of one event, in reading order: known, trading stopped (delistings), effective or removed. */
 export function itemDates(i: DigestItem): ItemDate[] {

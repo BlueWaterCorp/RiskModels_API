@@ -108,6 +108,7 @@ describe("Form 25 delisting, adapter 1.2.0 (BZH)", () => {
       ["trading_stopped_basis", "8k_item_2_01_date_not_parsed"],
       ["trading_stopped_basis", "8k_item_3_01_notice_date_not_a_trading_stop"],
       ["trading_stopped_source_event_date_source", "filed_date_fallback"],
+      ["trading_stopped_source_event_date_source", "effective_as_of_regex"],
       ["trading_stopped_source_form", "8-K/A"],
       ["trading_stopped_knowledge_at", "2026-10-20T16:54:22Z"],
     ];
@@ -160,6 +161,7 @@ describe("Form 25 delisting, adapter 1.2.0 (BZH)", () => {
     expect(text).toContain(lines.join("\n"));
     expect(text).not.toContain("; Rule 12d2-2 default");
     expect(text).toContain(DATES_NOTE);
+    expect(DATES_NOTE).toContain("the last trade is normally the session before");
     expect(headline(ed)).toBe("1 verified event: 1 delisting. No corrections to earlier events.");
     const html = unescapeHtml(await render(EventLedgerDigestEmail({ edition: ed })));
     for (const s of [
