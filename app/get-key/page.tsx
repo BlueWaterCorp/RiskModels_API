@@ -13,6 +13,7 @@ import { gtmAnalytics } from '@/lib/posthog-client';
 import { WORKFLOWS, AGENT_CLIENTS, WORKFLOW_LABELS, parseWorkflow, parseAgentClient, type SetupWorkflow, type AgentClient } from '@/emails/engagement-content';
 import { FIRST_LIVE_PROMPT_MCP } from '@/lib/mcp/activation';
 import { isAuthorizeReturn } from '@/lib/oauth/authorize-return';
+import { OrgKeyPanel } from './OrgKeyPanel';
 
 const MCP_CONNECTOR_URL = 'https://riskmodels.app/api/mcp/sse';
 const MCP_INSTALL_CMD = 'npx -y riskmodels@latest install';
@@ -923,6 +924,16 @@ function GetKeyPage() {
               </p>
             )}
           </div>
+
+        <OrgKeyPanel
+          keyName={newKeyName}
+          onKeyCreated={async (key) => {
+            setRevealedKey(key);
+            void copyTextToClipboard(key.plainKey);
+            setNewKeyName('');
+            await fetchAccountData();
+          }}
+        />
 
         {revealedKey && (
           <div

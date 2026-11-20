@@ -1,5 +1,6 @@
 import type { ChatCompletionMessageToolCall } from "openai/resources/chat/completions";
 import { deductBalance } from "@/lib/agent/billing";
+import { deductOrgBalance } from "@/lib/agent/orgs";
 import { calculateRequestCost } from "@/lib/agent/capabilities";
 import { TOOL_MAP, type ChatToolDef } from "@/lib/chat/tools";
 import { WORKSPACE_TOOL_MAP } from "@/lib/chat/workspace-action-tools";
@@ -19,6 +20,8 @@ export interface ExecuteToolCallsOptions {
   /** When false, run tool calls one after another (default true). */
   parallel?: boolean;
   userId: string;
+  /** Org that pays (org keys only); tool charges go to the org. */
+  orgId?: string | null;
   requestId: string;
   /** When true, skip deductBalance (keyless demo / landing proxy). */
   skipBilling?: boolean;
@@ -54,6 +57,7 @@ async function runOneTool(
   toolCall: ChatCompletionMessageToolCall,
   ctx: {
     userId: string;
+    orgId?: string | null;
     requestId: string;
     skipBilling?: boolean;
     rawFieldsPermitted?: boolean;
@@ -171,7 +175,11 @@ async function runOneTool(
   if (def.capabilityId && !ctx.skipBilling) {
     costUsd = calculateRequestCost(def.capabilityId);
     try {
-      await deductBalance(ctx.userId, costUsd, ctx.requestId, def.capabilityId);
+      if (ctx.orgId) {
+        await deductOrgBalance(ctx.orgId, ctx.userId, costUsd, ctx.requestId, def.capabilityId);
+      } else {
+        await deductBalance(ctx.userId, costUsd, ctx.requestId, def.capabilityId);
+      }
     } catch (err) {
       if (isInsufficientBalance(err)) {
         console.warn("[chat-tool]", name, "insufficient_balance");
@@ -216,9 +224,9 @@ export async function executeToolCalls(
   toolCalls: ChatCompletionMessageToolCall[],
   options: ExecuteToolCallsOptions,
 ): Promise<ToolCallResult[]> {
-  const { parallel = true, userId, requestId, skipBilling, rawFieldsPermitted, preFlightGuard } =
+  const { parallel = true, userId, orgId, requestId, skipBilling, rawFieldsPermitted, preFlightGuard } =
     options;
-  const ctx = { userId, requestId, skipBilling, rawFieldsPermitted, preFlightGuard };
+  const ctx = { userId, orgId, requestId, skipBilling, rawFieldsPermitted, preFlightGuard };
 
   if (!parallel) {
     const out: ToolCallResult[] = [];

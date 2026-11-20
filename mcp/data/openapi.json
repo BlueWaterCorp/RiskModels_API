@@ -16170,6 +16170,37 @@
                       "type": "string",
                       "example": "pay_as_you_go"
                     },
+                    "billed_to": {
+                      "type": "string",
+                      "enum": [
+                        "org"
+                      ],
+                      "description": "Present when the key is an organization key; balance_usd is then the organization balance."
+                    },
+                    "org": {
+                      "type": "object",
+                      "description": "Present for organization keys.",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "daily_spend_cap_usd": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "daily_spend_today_usd": {
+                          "type": "number"
+                        },
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        }
+                      }
+                    },
                     "status": {
                       "type": "object",
                       "properties": {

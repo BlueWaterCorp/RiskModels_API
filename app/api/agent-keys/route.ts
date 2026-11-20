@@ -14,6 +14,13 @@ import { parseValidatedSignupUtm, sanitizeGclid } from '@/lib/utm';
 import { saveSetup } from '@/lib/email-engagement';
 import { greetingName, parseWorkflow, parseAgentClient, setupExample } from '@/emails/engagement-content';
 import { persistFirstTouchAttribution } from '@/lib/agent/signup-attribution';
+import {
+  JOIN_ERROR_MESSAGES,
+  joinErrorStatus,
+  orgKeyExpiresAt,
+  resolveOrgForNewKey,
+  type OrgRow,
+} from '@/lib/agent/orgs';
 
 export async function GET() {
   const supabase = await createClient();
@@ -21,11 +28,21 @@ export async function GET() {
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const admin = createAdminClient();
-  const { data: keys } = await admin
-    .from('agent_api_keys')
-    .select('id, name, key_prefix, scopes, created_at, last_used_at, expires_at, revoked_at')
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false });
+  const KEY_COLUMNS = 'id, name, key_prefix, scopes, created_at, last_used_at, expires_at, revoked_at';
+  const listKeys = (columns: string) =>
+    admin
+      .from('agent_api_keys')
+      .select(columns)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+  // org_id marks keys billed to an org; fall back if the column is not there yet.
+  let { data: keys, error: keysErr } = (await listKeys(`${KEY_COLUMNS}, org_id`)) as {
+    data: Record<string, any>[] | null;
+    error: { code?: string } | null;
+  };
+  if (keysErr?.code === '42703') {
+    ({ data: keys } = (await listKeys(KEY_COLUMNS)) as { data: Record<string, any>[] | null });
+  }
 
   const now = new Date();
   const keysWithStatus = (keys ?? []).map((k) => ({
@@ -53,6 +70,28 @@ export async function POST(request: NextRequest) {
   const validatedSignupUtm =
     typeof body.utm !== 'undefined' ? parseValidatedSignupUtm(body.utm) : null;
   const gclid = sanitizeGclid(body.gclid);
+
+  /**
+   * Org key: `org_id` (already a member, or verified email domain on the org's
+   * allowlist) or `seat_code`. The key still belongs to this user; the org
+   * pays. Without either field the request is a personal key, as before.
+   */
+  const orgIdRaw = typeof body.org_id === 'string' ? body.org_id.trim() : '';
+  const seatCodeRaw = typeof body.seat_code === 'string' ? body.seat_code.trim() : '';
+  let keyOrg: OrgRow | null = null;
+  if (orgIdRaw || seatCodeRaw) {
+    const resolved = await resolveOrgForNewKey(user, {
+      orgId: orgIdRaw || null,
+      seatCode: seatCodeRaw || null,
+    });
+    if (!resolved.ok) {
+      return NextResponse.json(
+        { error: JOIN_ERROR_MESSAGES[resolved.error_code], error_code: resolved.error_code },
+        { status: joinErrorStatus(resolved.error_code) },
+      );
+    }
+    keyOrg = resolved.org;
+  }
 
   try {
     await ensureStarterCredits(user.id);
@@ -122,6 +161,13 @@ export async function POST(request: NextRequest) {
       expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
       referral_code: referralCodeForRow,
       referred_by_affiliate_id: referredByAffiliateId,
+      ...(keyOrg
+        ? {
+            org_id: keyOrg.id,
+            rate_limit_per_minute: keyOrg.key_rate_limit_per_minute ?? 60,
+            expires_at: orgKeyExpiresAt(keyOrg),
+          }
+        : {}),
     })
     .select('id, name, key_prefix, created_at, expires_at')
     .single();
@@ -185,7 +231,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, key: { ...newKey, plainKey } }, { status: 201 });
+  return NextResponse.json(
+    {
+      success: true,
+      key: { ...newKey, plainKey },
+      ...(keyOrg ? { org: { id: keyOrg.id, name: keyOrg.name } } : {}),
+    },
+    { status: 201 },
+  );
 }
 
 export async function PATCH(request: NextRequest) {

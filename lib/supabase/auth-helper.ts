@@ -13,7 +13,13 @@ import { getRequestId } from '@/lib/api/request-id';
  * 
  * Also enforces rate limiting for API key authentication.
  */
-export async function authenticateRequest(request: Request): Promise<{ user: User | null; error: string | null; serverError?: boolean }> {
+export async function authenticateRequest(request: Request): Promise<{
+  user: User | null;
+  error: string | null;
+  serverError?: boolean;
+  /** Set when the caller used an org key: the org that pays for its calls. */
+  orgId?: string;
+}> {
   console.debug('[Auth] authenticateRequest called');
 
   const authHeader = request.headers.get('authorization');
@@ -59,14 +65,14 @@ export async function authenticateRequest(request: Request): Promise<{ user: Use
             const { data: { user: fullUser } } = await supabaseAdmin.auth.admin.getUserById(validation.userId);
             if (fullUser) {
               console.debug('[Auth] API key authentication successful (full user)');
-              return { user: fullUser, error: null };
+              return { user: fullUser, error: null, ...(validation.orgId ? { orgId: validation.orgId } : {}) };
             }
           } catch {
             // Fall back to synthetic user if admin lookup fails
           }
           const syntheticUser = { id: validation.userId } as User;
           console.debug('[Auth] API key authentication successful (synthetic user)');
-          return { user: syntheticUser, error: null };
+          return { user: syntheticUser, error: null, ...(validation.orgId ? { orgId: validation.orgId } : {}) };
         }
         console.debug('[Auth] API key invalid:', validation.error);
         return { user: null, error: validation.error ?? 'Invalid API key' };

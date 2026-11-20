@@ -16,6 +16,8 @@ export interface TelemetryEvent {
   request_id: string;
   capability_id: string;
   user_id?: string;
+  /** Org charged for the request (org keys only). */
+  org_id?: string;
   latency_ms: number;
   status_code: number;
   success: boolean;
@@ -99,6 +101,7 @@ export async function logTelemetry(event: TelemetryEvent): Promise<void> {
       .from("billing_events")
       .insert({
         user_id: event.user_id,
+        ...(event.org_id ? { org_id: event.org_id } : {}),
         request_id: event.request_id,
         capability_id: event.capability_id,
         type: "telemetry",

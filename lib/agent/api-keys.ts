@@ -71,6 +71,11 @@ export interface ValidatedKey {
   keyScope?: string | null;
   /** Per-key daily spend cap in USD; falls back to account-level if unset. */
   dailySpendCapUsd?: number | null;
+  /**
+   * Org that pays for this key (agent_api_keys.org_id). Present only for org
+   * keys; absent means the key bills its own user exactly as before.
+   */
+  orgId?: string;
   error?: string;
   /**
    * True when validation failed due to a server-side issue (not a bad key).
@@ -289,13 +294,24 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
 
   const hashedKey = hashApiKey(plainKey);
 
-  const { data: keyRecord, error } = await getSupabase()
-    .from("agent_api_keys")
-    .select(
-      "id, user_id, key_prefix, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at",
-    )
-    .eq("key_hash", hashedKey)
-    .single();
+  const AGENT_KEY_COLUMNS =
+    "id, user_id, key_prefix, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at";
+  const selectKey = (columns: string) =>
+    getSupabase().from("agent_api_keys").select(columns).eq("key_hash", hashedKey).single();
+
+  // org_id is read alongside the existing columns; if the column is not there
+  // yet (schema behind the code), fall back to the original select so personal
+  // keys keep working.
+  let { data: keyRecord, error } = (await selectKey(`${AGENT_KEY_COLUMNS}, org_id`)) as {
+    data: Record<string, any> | null;
+    error: { code?: string; message: string } | null;
+  };
+  if (error && (error as { code?: string }).code === "42703") {
+    ({ data: keyRecord, error } = (await selectKey(AGENT_KEY_COLUMNS)) as {
+      data: Record<string, any> | null;
+      error: { code?: string; message: string } | null;
+    });
+  }
 
   if (error && (error as { code?: string }).code === "42703") {
     return {
@@ -314,6 +330,17 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
 
   if (keyRecord.expires_at && new Date(keyRecord.expires_at) < new Date()) {
     return { valid: false, error: "API key has expired" };
+  }
+
+  // Org keys: the org must be active and unexpired and the holder still a
+  // member. Personal keys (org_id NULL) skip this entirely.
+  const orgId: string | null = keyRecord.org_id ?? null;
+  if (orgId) {
+    const { checkOrgKeyAccess } = await import("./orgs");
+    const access = await checkOrgKeyAccess(orgId, keyRecord.user_id);
+    if (!access.ok) {
+      return { valid: false, error: access.error, serverError: access.serverError };
+    }
   }
 
   // Update last used timestamp (non-blocking)
@@ -350,6 +377,7 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
     rateLimit: keyRecord.rate_limit_per_minute,
     keyScope: keyRecord.key_scope ?? null,
     dailySpendCapUsd: perKeyDailyCap,
+    ...(orgId ? { orgId } : {}),
   };
 }
 
