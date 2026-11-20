@@ -174,6 +174,8 @@ const chatHandler = async (request: NextRequest, context: BillingContext) => {
         openai: backend.openai,
         userId: context.userId,
         orgId: context.orgId,
+        // A licensed org is metered, not charged: its tool calls must not debit the prepaid balance.
+        skipBilling: Boolean(context.orgId) && context.billingMode === "licensed",
         requestId: context.requestId,
         maxToolRounds: MAX_TOOL_ROUNDS,
         allowParallelOpenAI: backend.allowParallel && bodyParallelToolCalls !== false,
@@ -327,6 +329,7 @@ const chatStreamHandler = async (
             openai: backend.openai,
             userId: context.userId,
             orgId: context.orgId,
+            skipBilling: Boolean(context.orgId) && context.billingMode === "licensed",
             requestId: context.requestId,
             maxToolRounds: MAX_TOOL_ROUNDS,
             allowParallelOpenAI:
