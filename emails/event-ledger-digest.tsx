@@ -10,7 +10,9 @@ import {
   GDELT_CREDIT,
   digestDescriptorJson,
   editionFooter,
+  DATES_NOTE,
   headline,
+  itemDates,
   olderLine,
   reviewSectionNote,
   reviewSectionTitle,
@@ -88,8 +90,7 @@ const s = {
 };
 
 const COLUMNS: ReadonlyArray<[string, string]> = [
-  ["Effective", "13%"],
-  ["Known", "12%"],
+  ["Dates", "25%"],
   ["Ticker / company", "18%"],
   ["Event", "27%"],
   ["Status", "10%"],
@@ -100,20 +101,29 @@ const COLUMNS: ReadonlyArray<[string, string]> = [
 const Row = ({ i }: { i: DigestItem }) => (
   <tr>
     <td style={s.td}>
-      {i.effectiveDate ?? "not stated"}
-      <br />
-      <span style={s.sub}>{i.effectiveBasis}</span>
-      {i.effectiveEstimate ? (
-        <>
+      {itemDates(i).map((d, n) => (
+        <React.Fragment key={d.label}>
+          {n ? <br /> : null}
+          <strong>{d.label}</strong> {d.date}
           <br />
-          <span style={s.sub}>12d2-2 est. {i.effectiveEstimate}</span>
-        </>
-      ) : null}
-    </td>
-    <td style={s.td}>
-      {i.knowledgeDate ?? "not stated"}
-      <br />
-      <span style={s.sub}>{i.knowledgeBasis}</span>
+          <span style={s.sub}>
+            {d.basis}
+            {d.extra ? `; ${d.extra}` : ""}
+          </span>
+          {d.source ? (
+            <>
+              <br />
+              {d.source.url ? (
+                <Link href={d.source.url} style={{ ...s.link, fontSize: "11px" }}>
+                  {d.source.label ?? "filing"}
+                </Link>
+              ) : (
+                <span style={s.sub}>{d.source.label}</span>
+              )}
+            </>
+          ) : null}
+        </React.Fragment>
+      ))}
     </td>
     <td style={s.td}>
       {i.ticker ? <strong>{i.ticker} </strong> : null}
@@ -231,9 +241,8 @@ export const EventLedgerDigestEmail = ({
 
         <Text style={{ ...s.paragraph, marginTop: "22px", fontSize: "13px" }}>
           Attached: <strong>{edition.attachment.filename}</strong>, {edition.attachment.lines}{" "}
-          {edition.attachment.lines === 1 ? "line" : "lines"}, one event per line in the published envelope.
-          Dates are UTC. &ldquo;Known&rdquo; is when the event became publicly knowable; &ldquo;Effective&rdquo; is
-          when it takes effect.
+          {edition.attachment.lines === 1 ? "line" : "lines"}, one event per line in the published envelope.{" "}
+          {DATES_NOTE}
         </Text>
 
         <Section style={s.agentBox}>

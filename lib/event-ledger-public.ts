@@ -13,6 +13,7 @@
  *
  * Corrections. An event that a later event supersedes (supersedes_event_id), or
  * whose status is superseded, is dropped: a superseded original is never shown.
+ * buildDigest also keeps only the newest row of each dedupe_key.
  * The correction, or a withdrawal, is listed with its flag. The supersession is
  * read from every input row, even one the gate withholds, so a withheld
  * correction still removes the original it replaces.
@@ -45,6 +46,10 @@ export interface PublicLatestEvent {
   event: string;
   detail: string | null;
   effective_date: string | null;
+  // TODO(RM_ORG app/events): the email now names a delisting's date by its basis ("Listing removed",
+  // "Form 25 signed", "Form 25 filed") and shows the 8-K item 2.01 trading stop. Adding those keys
+  // (effective_label, trading_stopped) here needs the paired RM_ORG change to its strict check of this
+  // file first; until then the shape is unchanged.
   effective_basis: string;
   known_date: string | null;
   known_basis: string;
@@ -104,6 +109,7 @@ export function buildPublicLatest(
     audience: "client",
     includeUnderReview: false,
     recentDays: null,
+    markUnsentCorrections: false,
   });
   const superseded = new Set(
     rows.map((r) => r.envelope.supersedes_event_id).filter((id): id is string => typeof id === "string" && id !== ""),

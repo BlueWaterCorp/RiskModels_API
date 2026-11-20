@@ -20,6 +20,19 @@
  *   - an exclusive lock file around read-state -> send -> write-state, so two overlapping runs
  *     cannot both send. A lock older than LOCK_STALE_MS is reported and refused, never broken.
  *
+ * Flood guard (sendGuard) on every send, list or single address, scheduled or not. Nothing is sent
+ * and the cursor is unchanged (exit 6) when any check fails; each is confirmed only by its exact
+ * count, and a wrong count refuses too:
+ *   - window: deliverable rows in the window, listed or only counted (main + older + under review +
+ *     internal only), above SEND_WINDOW_CAP; --confirm-window-count N;
+ *   - list editions only, old corrections: corrections or withdrawals of facts first knowable before
+ *     the age cutoff, as a history load produces; --confirm-old-corrections N;
+ *   - list editions only, withheld corrections: corrections the gate withholds, whose fact would
+ *     otherwise vanish from the edition without a word; --confirm-withheld-corrections N.
+ * A scheduled run takes no confirmation: it fails and the operator decides, either an ad-hoc send
+ * with the counts confirmed or parking the cursor (--init-cursor [--list] [--park-through-seq N]),
+ * which sends nothing. --window-cap N lowers the cap for one run (0..cap).
+ *
  * One scheduled edition per edition date: once an edition date has gone out in full (sent.json
  * marked complete), a later scheduled run for that date sends nothing, whatever its events; those
  * events stay behind the cursor for the next edition. A partial send of different events for the
@@ -27,7 +40,7 @@
  */
 
 import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export interface ListSendFlags {
   list: boolean;
@@ -50,6 +63,8 @@ export interface ListSendFlags {
   cursor: boolean;
   /** --include-under-review, --no-under-review or --review-cap given. */
   reviewOptions: boolean;
+  /** Any --confirm-window-count, --confirm-old-corrections or --confirm-withheld-corrections given. */
+  confirmGuard?: boolean;
 }
 
 export type GateResult =
@@ -64,6 +79,7 @@ export type GateResult =
         | "scheduled_cursor_only"
         | "scheduled_fixed_state"
         | "scheduled_no_recipients"
+        | "scheduled_takes_no_confirmation"
         | "resume_needs_list_send"
         | "list_send_fixed_state"
         | "resume_takes_pending_window";
@@ -82,6 +98,7 @@ export function listSendGate(f: ListSendFlags, recipients: number | null): GateR
       return { ok: false, reason: "scheduled_cursor_only" };
     }
     if (f.out || f.cursor) return { ok: false, reason: "scheduled_fixed_state" };
+    if (f.confirmGuard) return { ok: false, reason: "scheduled_takes_no_confirmation" };
     if (recipients === 0) return { ok: false, reason: "scheduled_no_recipients" };
     return { ok: true };
   }
@@ -192,4 +209,94 @@ export function scheduledEditionState(log: SentLogState | null, sha: string): Sc
   const anySent = Array.isArray(log.sent) && log.sent.length > 0;
   if (log.attachment_sha256 === sha) return anySent ? "resume" : "fresh";
   return anySent ? "conflict" : "fresh";
+}
+
+/** Most deliverable rows a send window may hold without --confirm-window-count. */
+export const SEND_WINDOW_CAP = 50;
+
+export interface GuardCounts {
+  /** DigestEdition.windowCount. */
+  windowCount: number;
+  /** DigestEdition.oldCorrectionCount. */
+  oldCorrections: number;
+  /** DigestEdition.withheldCorrections. */
+  withheldCorrections: number;
+}
+
+/** Values of the confirmation flags, as given. */
+export interface GuardConfirm {
+  windowCount?: string;
+  oldCorrections?: string;
+  withheldCorrections?: string;
+}
+
+export interface GuardIssue {
+  check: "window_over_cap" | "old_corrections" | "withheld_corrections";
+  /** unconfirmed: the check fails and no confirmation was given; mismatch: the given count is wrong. */
+  reason: "unconfirmed" | "mismatch";
+  count: number;
+  /** The flag that confirms it, with the count to pass. */
+  confirm: string;
+}
+
+/**
+ * The flood guard. Empty means the send may go ahead. A confirmation must equal its count exactly,
+ * whether or not the check would fail without it. The two correction checks apply to list editions.
+ */
+export function sendGuard(
+  counts: GuardCounts,
+  confirm: GuardConfirm,
+  opts: { list: boolean; cap?: number },
+): GuardIssue[] {
+  const cap = opts.cap ?? SEND_WINDOW_CAP;
+  const out: GuardIssue[] = [];
+  const check = (name: GuardIssue["check"], flag: string, count: number, given: string | undefined, fails: boolean) => {
+    if (given !== undefined) {
+      if (given !== String(count)) out.push({ check: name, reason: "mismatch", count, confirm: `--${flag} ${count}` });
+    } else if (fails) {
+      out.push({ check: name, reason: "unconfirmed", count, confirm: `--${flag} ${count}` });
+    }
+  };
+  check("window_over_cap", "confirm-window-count", counts.windowCount, confirm.windowCount, counts.windowCount > cap);
+  if (opts.list) {
+    check("old_corrections", "confirm-old-corrections", counts.oldCorrections, confirm.oldCorrections, counts.oldCorrections > 0);
+    check(
+      "withheld_corrections",
+      "confirm-withheld-corrections",
+      counts.withheldCorrections,
+      confirm.withheldCorrections,
+      counts.withheldCorrections > 0,
+    );
+  }
+  return out;
+}
+
+/** --window-cap: an integer from 0 to SEND_WINDOW_CAP (it can only lower the cap); null when invalid. */
+export function windowCapOption(value: string | undefined): number | null {
+  if (value === undefined) return SEND_WINDOW_CAP;
+  if (!/^\d+$/.test(value)) return null;
+  const n = Number(value);
+  return n <= SEND_WINDOW_CAP ? n : null;
+}
+
+/** --park-through-seq: a whole number no lower than the current cursor and no higher than the head. */
+export function parkTarget(
+  value: string | undefined,
+  current: number | null,
+  head: number,
+): { ok: true; seq: number } | { ok: false; reason: "park_seq_invalid" | "park_seq_behind_cursor" | "park_seq_past_head" } {
+  if (value === undefined) return { ok: true, seq: head };
+  if (!/^\d+$/.test(value)) return { ok: false, reason: "park_seq_invalid" };
+  const n = Number(value);
+  if (current !== null && n < current) return { ok: false, reason: "park_seq_behind_cursor" };
+  if (n > head) return { ok: false, reason: "park_seq_past_head" };
+  return { ok: true, seq: n };
+}
+
+/**
+ * The lock that guards a cursor file: list-send.lock for the list cursor (by whatever path it is
+ * named), <cursor>.lock for any other.
+ */
+export function lockPathFor(cursorPath: string, listCursorPath: string, stateDir: string): string {
+  return resolve(cursorPath) === resolve(listCursorPath) ? join(stateDir, "list-send.lock") : `${resolve(cursorPath)}.lock`;
 }

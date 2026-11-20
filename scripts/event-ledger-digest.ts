@@ -41,6 +41,18 @@
  *               same date refuses (exit 4). It refuses (exit 3, cursor unchanged) an empty or
  *               unreadable recipient list, and takes no --out, --cursor or --edition-date: its state
  *               is always in ~/.riskmodels/event-ledger-digest. See lib/event-ledger-digest-schedule.ts.
+ *   Flood guard. Every send, list or single address (the 07:30 internal run included), refuses
+ *               (exit 6, nothing sent, cursor unchanged) when its window holds more than
+ *               SEND_WINDOW_CAP (50) deliverable events, listed or only counted as older. A list
+ *               send also refuses when it would list a correction of an event first knowable before
+ *               the 30-day cutoff, or when the gate withholds a correction (its fact would vanish).
+ *               Each check is confirmed only by its exact count, on an ad-hoc run:
+ *               --confirm-window-count N, --confirm-old-corrections N,
+ *               --confirm-withheld-corrections N (a wrong N refuses too). --scheduled takes none
+ *               of them: the run fails and the operator decides. To skip a history load instead,
+ *               park the cursor: --init-cursor [--list] [--park-through-seq N] (sends nothing, and
+ *               prints what it skips). --window-cap N lowers the cap for one run (0..50). A dry run
+ *               reports the checks under "guard" instead of refusing.
  *   Pending list send. Before the first copy goes out, the list cursor file records pending_send
  *               (edition date, seq window); it is cleared when every copy went out. While it is set,
  *               every list send refuses (exit 4), so a partial send is never resent to everyone.
@@ -75,6 +87,11 @@
  * (~/.riskmodels/event-ledger-digest/cursor.json and cursor-list.json), so the internal
  * daily edition never swallows the window of a list edition. --cursor overrides.
  * First run of either: --init-cursor (with --list for the list cursor) starts at the ledger head.
+ * --init-cursor also parks a cursor after a history load, skipping those events without sending:
+ * at the head, or with --park-through-seq N exactly at N (from the cursor to the head), and prints
+ * the main, older and other counts it skips. It holds that cursor's lock (list-send.lock for the
+ * list cursor, whether named by --list or by --cursor) and refuses (exit 4) while a list send is
+ * pending. Every run that may move a cursor (--send with --advance-cursor) holds the same lock.
  * The cursor moves only after every send succeeded and only with --advance-cursor.
  *
  * Review sample by knowledge date (does not read or move a cursor):
@@ -122,8 +139,14 @@ import {
 import { loadPublicLatest } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
 import {
+  SEND_WINDOW_CAP,
   acquireSendLock,
   listSendGate,
+  lockPathFor,
+  parkTarget,
+  sendGuard,
+  windowCapOption,
+  type GuardConfirm,
   pendingSendGate,
   scheduledEditionState,
   type CursorFile,
@@ -136,6 +159,7 @@ import {
 const ALLOWED_RECIPIENTS = ["conrad@bwmacro.com"] as const;
 
 const STATE_DIR = join(homedir(), ".riskmodels", "event-ledger-digest");
+const LIST_CURSOR = join(STATE_DIR, "cursor-list.json");
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -341,16 +365,113 @@ async function writePublicJson(path: string) {
   return { path: resolve(path), events: file.count, latest_known_date: file.latest_known_date };
 }
 
+/**
+ * Holds the lock that guards `cursorPath` until the process ends; exits 5 when it is held. A signal
+ * ends the run with the lock released (a pending list send stays recorded, so it is resumed, not resent).
+ */
+function holdCursorLock(cursorPath: string, what: string) {
+  const path = lockPathFor(cursorPath, LIST_CURSOR, STATE_DIR);
+  mkdirSync(STATE_DIR, { recursive: true });
+  const lock = acquireSendLock(path);
+  if (!lock.ok) {
+    console.error(
+      `refused: ${lock.reason}; ${path} is held (${Math.round(lock.ageMs / 60000)} min, ${lock.holder || "no holder"}). ` +
+        (lock.reason === "stale_lock" ? "Check no run is alive, then remove it by hand. " : "") +
+        what,
+    );
+    process.exit(5);
+  }
+  process.on("exit", lock.release);
+  for (const [sig, code] of [["SIGTERM", 143], ["SIGINT", 130]] as const) {
+    process.on(sig, () => {
+      lock.release();
+      console.error(`event-ledger-digest: ${sig}; lock released; any pending send stays recorded`);
+      process.exit(code);
+    });
+  }
+}
+
+/** A cursor whose file records an unfinished list send is moved only by --resume-pending. */
+function refuseIfPending(cursorPath: string, what: string) {
+  const pending = readCursorFile(cursorPath)?.pending_send;
+  if (pending) {
+    console.error(
+      `refused: pending_partial_send; the ${pending.edition_date} list edition (seq ${pending.after_seq}..${pending.through_seq}) did not finish. ` +
+        `Resume it with --list --send --resume-pending --confirm-list-send <N>; ${what}`,
+    );
+    process.exit(4);
+  }
+}
+
 async function main() {
   const list = flag("list");
-  const cursorPath = arg("cursor") ?? join(STATE_DIR, list ? "cursor-list.json" : "cursor.json");
+  const cursorPath = arg("cursor") ?? (list ? LIST_CURSOR : join(STATE_DIR, "cursor.json"));
+
+  if (process.argv.includes("--park-through-seq")) {
+    const v = arg("park-through-seq");
+    if (v === undefined || v.startsWith("--")) {
+      console.error("refused: --park-through-seq needs a ledger position; cursor unchanged");
+      process.exit(2);
+    }
+  }
+  if (arg("park-through-seq") !== undefined && !flag("init-cursor")) {
+    console.error("refused: --park-through-seq goes with --init-cursor; nothing sent");
+    process.exit(2);
+  }
 
   if (flag("init-cursor")) {
+    // Parking moves a cursor under its lock (list-send.lock for the list cursor, however it is
+    // named), and never while a list send is pending: that would drop the record of who still has
+    // to receive the pending edition.
+    holdCursorLock(cursorPath, "cursor unchanged");
+    refuseIfPending(cursorPath, "cursor unchanged");
+    const before = readCursor(cursorPath);
     const head = await headSeq();
-    writeCursor(cursorPath, head, { note: "initialised at ledger head; no edition sent" });
-    console.log(`cursor initialised at seq ${head}: ${cursorPath}`);
+    const target = parkTarget(arg("park-through-seq"), before, head);
+    if (!target.ok) {
+      console.error(`refused: ${target.reason}; --park-through-seq takes a ledger position from the cursor (${before ?? "none"}) to the head (${head}); cursor unchanged`);
+      process.exit(2);
+    }
+    // What parking skips, counted the way the next edition would have counted it (client gate).
+    let skipped: Record<string, unknown> | null = null;
+    if (before !== null && target.seq > before) {
+      const rows = await getRows(`seq=gt.${before}&seq=lte.${target.seq}`);
+      const ed = buildDigest(rows, {
+        editionDate: ptDate(-1),
+        window: { basis: "ledger_seq", after_seq: before, through_seq: target.seq },
+      });
+      skipped = {
+        rows: rows.length,
+        main: ed.mainCount,
+        corrections: ed.correctionCount,
+        older_not_listed: ed.older.total,
+        under_review: ed.underReview.total,
+        window_count: ed.windowCount,
+        withheld: Object.values(ed.withheld).reduce((a, b) => a + b, 0),
+        replaced_by_later_event: ed.replaced,
+      };
+    }
+    writeCursor(cursorPath, target.seq, {
+      note: arg("park-through-seq") !== undefined ? "parked; no edition sent" : "initialised at ledger head; no edition sent",
+      ...(before !== null ? { previous_seq: before } : {}),
+    });
+    console.log(
+      `cursor initialised at seq ${target.seq}${before !== null ? ` (was ${before}; positions ${before + 1}..${target.seq} skipped, nothing sent)` : ""}: ${cursorPath}`,
+    );
+    if (skipped) console.log(JSON.stringify({ skipped }, null, 2));
     return;
   }
+
+  const windowCap = windowCapOption(arg("window-cap"));
+  if (windowCap === null) {
+    console.error(`refused: --window-cap takes an integer from 0 to ${SEND_WINDOW_CAP}; it can only lower the cap; nothing sent`);
+    process.exit(2);
+  }
+  const guardConfirm: GuardConfirm = {
+    windowCount: arg("confirm-window-count"),
+    oldCorrections: arg("confirm-old-corrections"),
+    withheldCorrections: arg("confirm-withheld-corrections"),
+  };
 
   const sendFlags: ListSendFlags = {
     list,
@@ -366,39 +487,24 @@ async function main() {
     out: arg("out") !== undefined,
     cursor: arg("cursor") !== undefined,
     reviewOptions: flag("include-under-review") || flag("no-under-review") || arg("review-cap") !== undefined,
+    confirmGuard: Object.values(guardConfirm).some((v) => v !== undefined),
   };
   const early = listSendGate(sendFlags, null);
   if (!early.ok) {
     console.error(
-      `refused: ${early.reason}; --scheduled is --list --send --advance-cursor from the fixed list cursor only, ` +
+      `refused: ${early.reason}; --scheduled is --list --send --advance-cursor from the fixed list cursor only, with no confirmations; ` +
         "--resume-pending is --list --send --confirm-list-send N alone; nothing sent",
     );
     process.exit(2);
   }
 
-  // Every list send holds the lock from reading its state to writing it, so overlapping runs
-  // cannot both send. Released on any exit; a stale lock is reported, never broken.
+  // Every list send, and every run that may move a cursor, holds that cursor's lock from reading its
+  // state to writing it, so overlapping runs cannot both send. Released on any exit.
   const listSend = list && sendFlags.send;
-  if (listSend) {
-    mkdirSync(STATE_DIR, { recursive: true });
-    const lock = acquireSendLock(join(STATE_DIR, "list-send.lock"));
-    if (!lock.ok) {
-      console.error(
-        `refused: ${lock.reason}; ${join(STATE_DIR, "list-send.lock")} is held (${Math.round(lock.ageMs / 60000)} min, ${lock.holder || "no holder"}). ` +
-          (lock.reason === "stale_lock" ? "Check no run is alive, then remove it by hand. " : "") +
-          "nothing sent",
-      );
-      process.exit(5);
-    }
-    process.on("exit", lock.release);
-    // A signal ends the run with the lock released; pending_send stays, so the send is resumed, not resent.
-    for (const [sig, code] of [["SIGTERM", 143], ["SIGINT", 130]] as const) {
-      process.on(sig, () => {
-        lock.release();
-        console.error(`event-ledger-digest: ${sig}; lock released; any pending send stays recorded`);
-        process.exit(code);
-      });
-    }
+  if (listSend || (sendFlags.send && flag("advance-cursor"))) {
+    holdCursorLock(cursorPath, "nothing sent");
+    // A single-address run pointed at a cursor with a pending list send must not move it.
+    if (!listSend) refuseIfPending(cursorPath, "nothing sent");
   }
 
   const audience = flag("internal") ? "internal" : "client";
@@ -473,6 +579,28 @@ async function main() {
   });
   const subject = digestSubject(edition);
 
+  // Flood guard, before the recipient list is read or anything is recorded or sent.
+  const guard = sendGuard(
+    { windowCount: edition.windowCount, oldCorrections: edition.oldCorrectionCount, withheldCorrections: edition.withheldCorrections },
+    guardConfirm,
+    { list, cap: windowCap },
+  );
+  if (sendFlags.send && guard.length) {
+    const what = guard.map((g) =>
+      g.check === "window_over_cap"
+        ? `window_over_cap${g.reason === "mismatch" ? " (count mismatch)" : ""}: ${g.count} events in the window (cap ${windowCap})`
+        : g.check === "old_corrections"
+          ? `old_corrections${g.reason === "mismatch" ? " (count mismatch)" : ""}: ${g.count} corrections of events first knowable before ${edition.older.knowledgeBefore}`
+          : `withheld_corrections${g.reason === "mismatch" ? " (count mismatch)" : ""}: ${g.count} corrections withheld by the gate, so their facts would not appear`,
+    );
+    console.error(
+      `refused: ${what.join("; ")}. Nothing sent; the cursor is unchanged. ` +
+        `To send anyway, on an ad-hoc run: ${guard.map((g) => g.confirm).join(" ")}. ` +
+        `To skip these events: --init-cursor${list ? " --list" : ""} [--park-through-seq N] parks the cursor without sending`,
+    );
+    process.exit(6);
+  }
+
   // Recipients and their copies. Every copy is rendered and checked before the first send.
   const listed = list ? await listRecipients() : null;
   if (list && listed === null) {
@@ -538,6 +666,14 @@ async function main() {
     rows_read: rows.length,
     main: edition.mainCount,
     corrections: edition.correctionCount,
+    replaced_by_later_event: edition.replaced,
+    guard: {
+      window_count: edition.windowCount,
+      window_cap: windowCap,
+      old_corrections: edition.oldCorrectionCount,
+      withheld_corrections: edition.withheldCorrections,
+      issues: guard,
+    },
     older_not_listed: edition.older,
     scheduled: sendFlags.scheduled,
     audience,

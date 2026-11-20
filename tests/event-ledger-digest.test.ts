@@ -157,7 +157,10 @@ describe("event ledger digest", () => {
     const ed = build([...ROWS, corr]);
     expect(ed.correctionCount).toBe(1);
     const flagged = ed.families[0].items.find((i) => i.flag)!;
-    expect(flagged.flag).toBe(`Correction of event ${ROWS[5].envelope.event_id.slice(0, 8)}: accession re-read`);
+    // The event it corrects is in the same window, so it was never listed; the flag says so.
+    expect(flagged.flag).toBe(
+      `Correction of an earlier event (${ROWS[5].envelope.event_id.slice(0, 8)}): accession re-read. The event it corrects entered the ledger in this same window and was not listed.`,
+    );
     expect(renderDigestText(ed)).toContain("FLAG:");
   });
 
@@ -629,7 +632,7 @@ describe("event ledger digest", () => {
       const ids = file.events.map((e) => e.event_id);
       expect(ids).not.toContain(ROWS[5].envelope.event_id);
       const shown = file.events.find((e) => e.event_id === corr.envelope.event_id)!;
-      expect(shown.flag).toBe(`Correction of event ${ROWS[5].envelope.event_id.slice(0, 8)}: accession re-read`);
+      expect(shown.flag).toBe(`Correction of an earlier event (${ROWS[5].envelope.event_id.slice(0, 8)}): accession re-read.`);
       // A withheld correction still removes the original it replaces.
       const hidden = clone(corr);
       hidden.envelope.license = { basis: null, classification: "internal_only", redistributable: false };
@@ -670,7 +673,7 @@ describe("event ledger digest", () => {
       expect(queries).toEqual([...PUBLIC_LATEST_QUERIES]);
       const ids = file.events.map((e) => e.event_id);
       expect(ids).not.toContain(ROWS[2].envelope.event_id);
-      expect(file.events.find((e) => e.event_id === wd.envelope.event_id)?.flag).toContain("Correction of event");
+      expect(file.events.find((e) => e.event_id === wd.envelope.event_id)?.flag).toContain("Correction of an earlier event");
       // The old verified-only read would have shown the original unflagged.
       const verifiedOnly = buildPublicLatest(table.filter((r) => r.envelope.lifecycle_status === "verified"), {
         generatedAt: "2026-11-13T18:00:00Z",
