@@ -5,6 +5,7 @@ import AudienceCards from '@/components/landing/AudienceCards';
 import TerminalShowcase from '@/components/TerminalShowcase';
 import ResearchProof from '@/components/landing/ResearchProof';
 import CompareCallout from '@/components/landing/CompareCallout';
+import SecurityMasterFeedCallout from '@/components/landing/SecurityMasterFeedCallout';
 import FailureContrast from '@/components/landing/FailureContrast';
 import RiskWalkthroughWithToggle from '@/components/landing/RiskWalkthroughWithToggle';
 import BridgeSection from '@/components/landing/BridgeSection';
@@ -31,6 +32,7 @@ export default function HomePage() {
       <TerminalShowcase />
       <ResearchProof />
       <CompareCallout />
+      <SecurityMasterFeedCallout />
       {SHOW_LEGACY_SECTIONS && (
         <>
           <FailureContrast />
