@@ -428,6 +428,12 @@ describe("event-ledger-digest.ts --scheduled (process)", () => {
       expect(bad.err).toContain(reason);
     }
     expect(cursorOf(h).last_seq).toBe(4600);
+    for (const args of [["--init-cursor", "--list", "--park-through-seq"], ["--init-cursor", "--park-through-seq", "--list"]]) {
+      const missing = await run(h, args);
+      expect(missing.code).toBe(2);
+      expect(missing.err).toContain("--park-through-seq needs a ledger position");
+    }
+    expect(cursorOf(h).last_seq).toBe(4600);
     const alone = await run(h, ["--list", "--park-through-seq", "4601"]);
     expect(alone.code).toBe(2);
     expect(alone.err).toContain("--park-through-seq goes with --init-cursor");

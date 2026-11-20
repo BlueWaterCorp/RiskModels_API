@@ -407,6 +407,13 @@ async function main() {
   const list = flag("list");
   const cursorPath = arg("cursor") ?? (list ? LIST_CURSOR : join(STATE_DIR, "cursor.json"));
 
+  if (process.argv.includes("--park-through-seq")) {
+    const v = arg("park-through-seq");
+    if (v === undefined || v.startsWith("--")) {
+      console.error("refused: --park-through-seq needs a ledger position; cursor unchanged");
+      process.exit(2);
+    }
+  }
   if (arg("park-through-seq") !== undefined && !flag("init-cursor")) {
     console.error("refused: --park-through-seq goes with --init-cursor; nothing sent");
     process.exit(2);
