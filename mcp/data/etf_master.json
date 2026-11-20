@@ -1,6 +1,6 @@
 {
   "schema_version": "etf-master/2.0",
-  "n_entries": 185,
+  "n_entries": 184,
   "aliases": {
     "aaxj": "BW-ETF-AAXJ",
     "acwx": "BW-ETF-ACWX",
@@ -45,7 +45,6 @@
     "ewh": "BW-ETF-EWH",
     "ewi": "BW-ETF-EWI",
     "ewj": "BW-ETF-EWJ",
-    "ewjv": "BW-ETF-EWJV",
     "ewk": "BW-ETF-EWK",
     "ewl": "BW-ETF-EWL",
     "ewm": "BW-ETF-EWM",
@@ -404,11 +403,6 @@
       "bw_etf_id": "BW-ETF-EWJ",
       "ticker": "EWJ",
       "name": "iShares MSCI Japan ETF"
-    },
-    "BW-ETF-EWJV": {
-      "bw_etf_id": "BW-ETF-EWJV",
-      "ticker": "EWJV",
-      "name": "iShares MSCI Japan Value ETF"
     },
     "BW-ETF-EWK": {
       "bw_etf_id": "BW-ETF-EWK",
