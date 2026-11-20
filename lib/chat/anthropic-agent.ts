@@ -86,6 +86,7 @@ export async function runAnthropicChatAgent(
     userMessages,
     model,
     userId,
+    orgId,
     requestId,
     maxToolRounds = 5,
     maxCompletionTokens,
@@ -230,6 +231,7 @@ export async function runAnthropicChatAgent(
     const results = await executeToolCalls(fakeCalls, {
       parallel: execParallel,
       userId,
+      orgId,
       requestId,
       skipBilling,
       rawFieldsPermitted,

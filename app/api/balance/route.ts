@@ -16,6 +16,7 @@ import {
   getUsageStats,
   getBillingHistory,
 } from "@/lib/agent/billing";
+import { getOrgBalance, loadOrg, orgDailyCap, orgDailySpendToday } from "@/lib/agent/orgs";
 import { createAgentErrorResponse } from "@/lib/agent/response-utils";
 import { generateRequestId } from "@/lib/agent/telemetry";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
 
   try {
     // Authenticate request
-    const { user, error: authError, serverError } = await authenticateRequest(request);
+    const { user, error: authError, serverError, orgId } = await authenticateRequest(request);
 
     if (serverError) {
       return createAgentErrorResponse(
@@ -69,8 +70,10 @@ export async function GET(request: Request) {
     const days = parseInt(searchParams.get("days") || "30");
     const limit = parseInt(searchParams.get("limit") || "50");
 
-    // Get current balance
-    const balance = await getUserBalance(user.id);
+    // Get current balance. An org key draws on the org balance, so that is the
+    // balance it reports.
+    const org = orgId ? await loadOrg(orgId) : null;
+    const balance = org ? await getOrgBalance(org.id) : await getUserBalance(user.id);
 
     // Get auto-refill settings from agent_accounts
     const supabase = createAdminClient();
@@ -94,6 +97,18 @@ export async function GET(request: Request) {
       currency: "USD",
       last_updated: new Date().toISOString(),
       account_type: "agent", // Will be 'standard' for non-agent accounts during transition
+      ...(org
+        ? {
+            billed_to: "org",
+            org: {
+              id: org.id,
+              name: org.name,
+              daily_spend_cap_usd: orgDailyCap(org),
+              daily_spend_today_usd: orgDailySpendToday(org),
+              expires_at: org.expires_at,
+            },
+          }
+        : {}),
       auto_refill: {
         enabled: agentAccount?.auto_top_up ?? false,
         min_threshold_tokens: agentAccount?.auto_top_up_threshold

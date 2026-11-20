@@ -95,6 +95,8 @@ The metric keys below are the same ones the API exposes in range-history respons
 
 `agent_accounts.signup_attribution` (jsonb, nullable): first-touch UTM + landing metadata (`utm_*`, `landing_path`, `referrer`, `timestamp`); written once on first `rm_agent_*` key creation from `/get-key` when the client sends validated `utm` in `POST /api/agent-keys`. Migration: `20260524120000_add_agent_accounts_signup_attribution.sql`.
 
+Org accounts: `api_orgs` (one balance, daily cap, expiry, email-domain allowlist, seat limit), `api_org_members` (role `admin` | `member`; `removed_at` ends access), `api_org_invites` (seat codes). `agent_api_keys.org_id` set = the key is charged and checked at the org (`deduct_org_balance`); NULL = personal billing, unchanged. `billing_events.org_id` records the org charged. Join and removal go through `api_org_join` / `api_org_remove_member`. Migration: `BWMACRO/supabase/migrations/20261120160000_api_orgs.sql`. Routes: `GET /api/orgs`, `GET|POST|DELETE /api/orgs/{orgId}/members`, `POST /api/agent-keys` with `org_id` or `seat_code`.
+
 `agent_accounts.billing_mode` (`prepaid` default | `licensed`) and `license_tier` (`desk` | `firm` | `production`, null on prepaid): institutional keys skip prepaid deduct/402; usage is `billing_events` `type=telemetry` with `metadata.list_price_usd`. Views: `licensed_usage_daily`, `licensed_usage_totals`, `licensed_usage_tickers_daily`. Migration: `BWMACRO/supabase/migrations/20260816010000_agent_accounts_licensed_billing.sql`. Admin: `/admin/licensed-usage`.
 
 ---

@@ -29,6 +29,8 @@ export interface RunChatAgentOptions {
   userMessages: AgentMessage[];
   model: string;
   userId: string;
+  /** Org that pays for tool calls (org keys only). */
+  orgId?: string | null;
   requestId: string;
   maxToolRounds?: number;
   maxCompletionTokens?: number;
@@ -274,6 +276,7 @@ async function runOpenAIChatAgent(
     userMessages,
     model,
     userId,
+    orgId,
     requestId,
     maxToolRounds = 5,
     maxCompletionTokens,
@@ -443,6 +446,7 @@ async function runOpenAIChatAgent(
     const results = await executeToolCalls(toolCalls, {
       parallel: execParallel,
       userId,
+      orgId,
       requestId,
       skipBilling,
       rawFieldsPermitted,

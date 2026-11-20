@@ -259,6 +259,7 @@ The platform uses Supabase for persistence; the ERM3 nightly sync writes the dat
 | `trading_calendar` | Canonical trading dates |
 | `erm3_sync_state_v4` | Sync health and freshness |
 | `agent_accounts`, `agent_api_keys` | Agent keys and provisioning |
+| `api_orgs`, `api_org_members`, `api_org_invites` | Org accounts: shared balance / cap / expiry; keys with `org_id` bill the org |
 | `billing_events`, `agent_invoices`, `balance_top_ups`, `user_generated_api_keys` | Billing and prepaid balance |
 | `ticker_request_logs` | Request logging / analytics (internal) |
 

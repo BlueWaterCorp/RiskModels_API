@@ -27,11 +27,22 @@ import {
   licensedTelemetryMetadata,
   shouldSkipCharge,
   type BillingMode,
+  type LicenseAccount,
 } from "./licensed-billing";
 import {
   extractRequestFacetsFromRequest,
   type RequestFacets,
 } from "./request-facets";
+import {
+  OrgChargeError,
+  checkOrgDailySpendCap,
+  deductOrgBalance,
+  getOrgBalance,
+  loadOrg,
+  orgDailyCap,
+  orgDailySpendToday,
+  orgLicense,
+} from "./orgs";
 import { isPublicSampleKey } from "@/lib/data-license";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { Ratelimit } from "@upstash/ratelimit";
@@ -203,6 +214,39 @@ async function checkDailySpendCap(
   }
 }
 
+/** 402 for an org whose org-wide daily cap would be exceeded. */
+function orgDailyCapResponse(
+  currentSpend: number,
+  cap: number,
+  costUsd: number,
+  keyScope: string | null,
+): NextResponse {
+  const remaining = Math.max(0, cap - currentSpend);
+  return NextResponse.json(
+    {
+      error: "Daily spend cap exceeded",
+      message: `Daily spend cap of $${cap.toFixed(2)} (org) reached. $${remaining.toFixed(4)} remaining today; resets at 00:00 UTC.`,
+      _agent: {
+        action: "wait_or_raise_cap",
+        current_daily_spend_usd: currentSpend,
+        daily_cap_usd: cap,
+        request_cost_usd: costUsd,
+        cap_source: "org",
+        key_scope: keyScope,
+        resets_at: "next 00:00 UTC",
+      },
+    },
+    {
+      status: 402,
+      headers: {
+        "X-Daily-Spend-Cap-USD": cap.toFixed(2),
+        "X-Current-Daily-Spend-USD": currentSpend.toFixed(2),
+        "X-Daily-Cap-Source": "org",
+      },
+    },
+  );
+}
+
 // Lazy singleton — only initialised when Upstash env vars are present
 let _redis: Redis | null = null;
 function getRedis(): Redis | null {
@@ -333,6 +377,11 @@ export interface BillingContext {
   licenseTier?: string | null;
   keyId?: string | null;
   keyPrefix?: string | null;
+  /**
+   * Org that pays for this request (org keys only). When set, balance, daily
+   * cap and charges apply to the org; `userId` is still the member who called.
+   */
+  orgId?: string | null;
   /**
    * Present only with `deferBillingToHandler`: the handler MUST call this once
    * when the request outcome is known (e.g. at the SSE `final`/`error` event).
@@ -522,6 +571,8 @@ export function withBilling(
       let apiKeyScope: string | null = null;
       let apiKeyId: string | null = null;
       let apiKeyPrefix: string | null = null;
+      /** Org keys only: the org that pays. Null keeps every step below on the personal path. */
+      let apiKeyOrgId: string | null = null;
 
       const serviceKeyEnv = process.env.RISKMODELS_API_SERVICE_KEY?.trim();
       const isTrustedServiceGateway = Boolean(
@@ -598,6 +649,7 @@ export function withBilling(
           apiKeyScope = validation.keyScope ?? null;
           apiKeyId = validation.keyId ?? null;
           apiKeyPrefix = validation.keyPrefix ?? null;
+          apiKeyOrgId = validation.orgId ?? null;
         }
       }
 
@@ -633,7 +685,12 @@ export function withBilling(
         userId = user.id;
       }
 
-      const license = await loadLicenseAccount(userId);
+      // Org keys take billing mode / license tier from the org row.
+      const license: LicenseAccount = apiKeyOrgId
+        ? await loadOrg(apiKeyOrgId).then((org) =>
+            org ? orgLicense(org) : { billingMode: "prepaid", licenseTier: null },
+          )
+        : await loadLicenseAccount(userId);
       const skipCharge = shouldSkipCharge({
         internalUnlimited,
         billingMode: license.billingMode,
@@ -780,8 +837,9 @@ export function withBilling(
         }
       }
 
-      // 3.5. Ensure starter credits for first-time users (before balance check)
-      if (costUsd > 0 && !skipCharge) {
+      // 3.5. Ensure starter credits for first-time users (before balance check).
+      // Org keys draw on the org balance, so no personal credit is granted here.
+      if (costUsd > 0 && !skipCharge && !apiKeyOrgId) {
         await ensureStarterCredits(userId).catch(() => {});
         await ensureMinimumBalanceForUserKeyHolder(userId).catch(() => {});
       }
@@ -790,7 +848,21 @@ export function withBilling(
       // Early balance check — cheap read to give a fast 402 before running
       // the handler. The definitive atomic check happens at deduction time
       // below, so this is a best-effort short-circuit only.
-      if (costUsd > 0 && freeTierCheck?.tier !== "free" && !skipCharge) {
+      if (costUsd > 0 && freeTierCheck?.tier !== "free" && !skipCharge && apiKeyOrgId) {
+        // Org key: org balance and org-wide daily cap. Per-key and monthly
+        // account caps belong to personal accounts and do not apply.
+        const orgBalance = await getOrgBalance(apiKeyOrgId);
+        if (orgBalance < 0 || orgBalance < costUsd) {
+          const payRes = createPaymentRequiredResponse(costUsd, Math.max(0, orgBalance));
+          payRes.headers.set("X-Pricing-Tier", capability.pricing.tier);
+          payRes.headers.set("X-Billed-To", "org");
+          return payRes;
+        }
+        const orgDaily = await checkOrgDailySpendCap(apiKeyOrgId, costUsd);
+        if (orgDaily.exceeded && orgDaily.cap != null) {
+          return orgDailyCapResponse(orgDaily.currentSpend, orgDaily.cap, costUsd, apiKeyScope);
+        }
+      } else if (costUsd > 0 && freeTierCheck?.tier !== "free" && !skipCharge) {
         const currentBalance = await getUserBalance(userId);
         // Block if balance is negative (user is in debt) or insufficient
         if (currentBalance < 0 || currentBalance < costUsd) {
@@ -875,6 +947,7 @@ export function withBilling(
         licenseTier: license.licenseTier,
         keyId: apiKeyId,
         keyPrefix: apiKeyPrefix,
+        ...(apiKeyOrgId ? { orgId: apiKeyOrgId } : {}),
       };
 
       if (options.getItemCount || options.itemCount !== undefined) {
@@ -902,17 +975,29 @@ export function withBilling(
           settled = true;
           if (costUsd > 0 && settleSuccess && !skipCharge) {
             try {
-              await deductBalance(
-                settleUserId,
-                costUsd,
-                requestId,
-                options.capabilityId,
-                {
-                  original_url: req.url,
-                  user_agent: req.headers.get("user-agent"),
-                  ip_address: req.headers.get("x-forwarded-for") || "unknown",
-                },
-              );
+              const deductMeta = {
+                original_url: req.url,
+                user_agent: req.headers.get("user-agent"),
+                ip_address: req.headers.get("x-forwarded-for") || "unknown",
+              };
+              if (apiKeyOrgId) {
+                await deductOrgBalance(
+                  apiKeyOrgId,
+                  settleUserId,
+                  costUsd,
+                  requestId,
+                  options.capabilityId,
+                  deductMeta,
+                );
+              } else {
+                await deductBalance(
+                  settleUserId,
+                  costUsd,
+                  requestId,
+                  options.capabilityId,
+                  deductMeta,
+                );
+              }
             } catch (deductError) {
               // Mid-stream there is no way to return 402 — pre-flight balance
               // check above is the gate; log and continue.
@@ -926,6 +1011,7 @@ export function withBilling(
             request_id: requestId,
             capability_id: options.capabilityId,
             user_id: settleUserId,
+            ...(apiKeyOrgId ? { org_id: apiKeyOrgId } : {}),
             latency_ms: Date.now() - startTime,
             status_code: settleSuccess ? 200 : 502,
             success: settleSuccess,
@@ -955,7 +1041,52 @@ export function withBilling(
       // 6. Atomically deduct balance on success (only if cost > 0).
       //    The deduct_balance RPC uses FOR UPDATE — immune to race conditions.
       //    (Deferred mode: the handler settles via context.settleBilling.)
-      if (costUsd > 0 && success && !skipCharge && !options.deferBillingToHandler) {
+      if (
+        costUsd > 0 &&
+        success &&
+        !skipCharge &&
+        !options.deferBillingToHandler &&
+        apiKeyOrgId
+      ) {
+        try {
+          await deductOrgBalance(apiKeyOrgId, userId, costUsd, requestId, options.capabilityId, {
+            original_url: req.url,
+            user_agent: req.headers.get("user-agent"),
+            ip_address: req.headers.get("x-forwarded-for") || "unknown",
+          });
+        } catch (deductError) {
+          if (deductError instanceof OrgChargeError) {
+            // Exhausted or capped by a concurrent member call, or access ended
+            // mid-request: same answers as the pre-flight checks.
+            if (deductError.reason === "daily_cap") {
+              return orgDailyCapResponse(
+                deductError.detail.dailySpendUsd ?? 0,
+                deductError.detail.dailyCapUsd ?? 0,
+                costUsd,
+                apiKeyScope,
+              );
+            }
+            if (deductError.reason === "org_inactive" || deductError.reason === "org_not_found") {
+              return NextResponse.json(
+                {
+                  error: "Organization access has ended",
+                  message: "This key's organization is no longer active.",
+                  _agent: { action: "contact_org_admin" },
+                },
+                { status: 403 },
+              );
+            }
+            const payRes = createPaymentRequiredResponse(
+              costUsd,
+              Math.max(0, deductError.detail.balanceUsd ?? 0),
+            );
+            payRes.headers.set("X-Pricing-Tier", capability.pricing.tier);
+            payRes.headers.set("X-Billed-To", "org");
+            return payRes;
+          }
+          console.error("[Billing] Failed to deduct org balance:", deductError);
+        }
+      } else if (costUsd > 0 && success && !skipCharge && !options.deferBillingToHandler) {
         try {
           await deductBalance(
             userId,
@@ -994,6 +1125,7 @@ export function withBilling(
           request_id: requestId,
           capability_id: options.capabilityId,
           user_id: userId,
+          ...(apiKeyOrgId ? { org_id: apiKeyOrgId } : {}),
           latency_ms: latencyMs,
           status_code: response.status,
           success,
@@ -1043,11 +1175,16 @@ export function withBilling(
       const TOKEN_PRICE_USD = 0.00002;
       const tokensConsumed = Math.ceil(costUsd / TOKEN_PRICE_USD);
       response.headers.set("X-Tokens-Consumed", String(tokensConsumed));
+      if (apiKeyOrgId) {
+        response.headers.set("X-Billed-To", "org");
+      }
       if (license.billingMode === "licensed") {
         response.headers.set("X-Balance-Remaining", "unlimited");
       } else {
         try {
-          const balanceRemaining = await getUserBalance(userId);
+          const balanceRemaining = apiKeyOrgId
+            ? await getOrgBalance(apiKeyOrgId)
+            : await getUserBalance(userId);
           const tokensRemaining = Math.floor(balanceRemaining / TOKEN_PRICE_USD);
           response.headers.set("X-Balance-Remaining", String(tokensRemaining));
         } catch (balanceHeaderErr) {
@@ -1056,44 +1193,62 @@ export function withBilling(
         }
       }
 
-      // 8.6. Add monthly + daily spend cap headers (if user has caps set)
-      try {
-        const supabase = createAdminClient();
-        const { data: account } = await supabase
-          .from("agent_accounts")
-          .select(
-            "monthly_spend_cap, monthly_spend_usd, monthly_spend_reset_at, daily_spend_cap, daily_spend_usd",
-          )
-          .eq("user_id", userId)
-          .single();
-
-        if (account != null && account.monthly_spend_cap != null) {
-          const cap = parseFloat(String(account.monthly_spend_cap));
-          const currentSpend = parseFloat(String(account.monthly_spend_usd ?? 0));
-          const resetAt = new Date(account.monthly_spend_reset_at ?? Date.now());
-
-          // Calculate next reset
-          const nextReset = new Date(resetAt);
-          nextReset.setMonth(nextReset.getMonth() + 1);
-          nextReset.setDate(1);
-
-          const now = new Date();
-          const daysUntilReset = Math.max(0, Math.ceil((nextReset.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
-
-          response.headers.set("X-Monthly-Spend-Cap-USD", cap.toFixed(2));
-          response.headers.set("X-Current-Monthly-Spend-USD", currentSpend.toFixed(2));
-          response.headers.set("X-Monthly-Cap-Reset-At", nextReset.toISOString());
-          response.headers.set("X-Days-Until-Reset", String(daysUntilReset));
+      // 8.6. Add monthly + daily spend cap headers (if user has caps set).
+      // Org keys report the org-wide daily cap instead.
+      if (apiKeyOrgId) {
+        try {
+          const org = await loadOrg(apiKeyOrgId);
+          const orgCap = org ? orgDailyCap(org) : null;
+          if (org && orgCap != null) {
+            response.headers.set("X-Daily-Spend-Cap-USD", orgCap.toFixed(2));
+            response.headers.set(
+              "X-Current-Daily-Spend-USD",
+              orgDailySpendToday(org).toFixed(2),
+            );
+            response.headers.set("X-Daily-Cap-Source", "org");
+          }
+        } catch {
+          // Best-effort headers only
         }
+      } else {
+        try {
+          const supabase = createAdminClient();
+          const { data: account } = await supabase
+            .from("agent_accounts")
+            .select(
+              "monthly_spend_cap, monthly_spend_usd, monthly_spend_reset_at, daily_spend_cap, daily_spend_usd",
+            )
+            .eq("user_id", userId)
+            .single();
 
-        if (account != null && account.daily_spend_cap != null) {
-          const dailyCap = parseFloat(String(account.daily_spend_cap));
-          const dailyCurrent = parseFloat(String(account.daily_spend_usd ?? 0));
-          response.headers.set("X-Daily-Spend-Cap-USD", dailyCap.toFixed(2));
-          response.headers.set("X-Current-Daily-Spend-USD", dailyCurrent.toFixed(2));
+          if (account != null && account.monthly_spend_cap != null) {
+            const cap = parseFloat(String(account.monthly_spend_cap));
+            const currentSpend = parseFloat(String(account.monthly_spend_usd ?? 0));
+            const resetAt = new Date(account.monthly_spend_reset_at ?? Date.now());
+
+            // Calculate next reset
+            const nextReset = new Date(resetAt);
+            nextReset.setMonth(nextReset.getMonth() + 1);
+            nextReset.setDate(1);
+
+            const now = new Date();
+            const daysUntilReset = Math.max(0, Math.ceil((nextReset.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+            response.headers.set("X-Monthly-Spend-Cap-USD", cap.toFixed(2));
+            response.headers.set("X-Current-Monthly-Spend-USD", currentSpend.toFixed(2));
+            response.headers.set("X-Monthly-Cap-Reset-At", nextReset.toISOString());
+            response.headers.set("X-Days-Until-Reset", String(daysUntilReset));
+          }
+
+          if (account != null && account.daily_spend_cap != null) {
+            const dailyCap = parseFloat(String(account.daily_spend_cap));
+            const dailyCurrent = parseFloat(String(account.daily_spend_usd ?? 0));
+            response.headers.set("X-Daily-Spend-Cap-USD", dailyCap.toFixed(2));
+            response.headers.set("X-Current-Daily-Spend-USD", dailyCurrent.toFixed(2));
+          }
+        } catch {
+          // Silently skip if we can't fetch spend cap data
         }
-      } catch {
-        // Silently skip if we can't fetch spend cap data
       }
 
       // Inject measured latency / provenance into the JSON body. Done before
@@ -1209,12 +1364,14 @@ export async function createBillingContext(
 
   // Authenticate
   let userId: string | undefined;
+  let orgId: string | null = null;
 
   const extractedKey = extractApiKey(req);
   if (extractedKey) {
     const validation = await validateApiKey(extractedKey);
     if (validation.valid && validation.userId) {
       userId = validation.userId;
+      orgId = validation.orgId ?? null;
     }
   }
 
@@ -1263,6 +1420,7 @@ export async function createBillingContext(
       costUsd,
       startTime,
       rawFieldsPermitted: !isPublicSampleKey(extractedKey),
+      ...(orgId ? { orgId } : {}),
     },
   };
 }
@@ -1295,16 +1453,28 @@ export async function finalizeBilling(
     })
   ) {
     try {
-      await deductBalance(
-        context.userId,
-        costUsd,
-        context.requestId,
-        context.capabilityId,
-        {
-          response_status: res.status,
-          actual_cost: actualCostUsd !== undefined,
-        },
-      );
+      const meta = {
+        response_status: res.status,
+        actual_cost: actualCostUsd !== undefined,
+      };
+      if (context.orgId) {
+        await deductOrgBalance(
+          context.orgId,
+          context.userId,
+          costUsd,
+          context.requestId,
+          context.capabilityId,
+          meta,
+        );
+      } else {
+        await deductBalance(
+          context.userId,
+          costUsd,
+          context.requestId,
+          context.capabilityId,
+          meta,
+        );
+      }
     } catch (error) {
       console.error("[Billing] Failed to deduct balance:", error);
     }
@@ -1315,6 +1485,7 @@ export async function finalizeBilling(
     request_id: context.requestId,
     capability_id: context.capabilityId,
     user_id: context.userId,
+    ...(context.orgId ? { org_id: context.orgId } : {}),
     latency_ms: latencyMs,
     status_code: res.status,
     success,

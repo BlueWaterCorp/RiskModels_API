@@ -15,6 +15,7 @@ import {
   type ChatStreamEvent,
 } from "@/lib/chat/stream-events";
 import { getUserBalance } from "@/lib/agent/billing";
+import { getOrgBalance } from "@/lib/agent/orgs";
 import { resolveAgentBackend, hasChatBackend } from "@/lib/chat/llm-backend";
 import { getRiskMetadata } from "@/lib/dal/risk-metadata";
 import { addMetadataHeaders, buildMetadataBody } from "@/lib/dal/response-headers";
@@ -172,6 +173,7 @@ const chatHandler = async (request: NextRequest, context: BillingContext) => {
         model: backend.model,
         openai: backend.openai,
         userId: context.userId,
+        orgId: context.orgId,
         requestId: context.requestId,
         maxToolRounds: MAX_TOOL_ROUNDS,
         allowParallelOpenAI: backend.allowParallel && bodyParallelToolCalls !== false,
@@ -324,6 +326,7 @@ const chatStreamHandler = async (
             model: backend.model,
             openai: backend.openai,
             userId: context.userId,
+            orgId: context.orgId,
             requestId: context.requestId,
             maxToolRounds: MAX_TOOL_ROUNDS,
             allowParallelOpenAI:
@@ -358,7 +361,9 @@ const chatStreamHandler = async (
 
         let quota: ChatQuota | null = null;
         try {
-          const balance = await getUserBalance(context.userId);
+          const balance = context.orgId
+            ? await getOrgBalance(context.orgId)
+            : await getUserBalance(context.userId);
           quota = {
             tokens_consumed: Math.ceil(
               (context.costUsd + toolCostTotal) / TOKEN_PRICE_USD,
