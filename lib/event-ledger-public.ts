@@ -46,11 +46,11 @@ export interface PublicLatestEvent {
   event: string;
   detail: string | null;
   effective_date: string | null;
-  /** What effective_date is: "Listing removed" (stated removal date), "Form 25 signed", "Form 25 filed" or "Effective". */
-  effective_label: string;
+  // TODO(RM_ORG app/events): the email now names a delisting's date by its basis ("Listing removed",
+  // "Form 25 signed", "Form 25 filed") and shows the 8-K item 2.01 trading stop. Adding those keys
+  // (effective_label, trading_stopped) here needs the paired RM_ORG change to its strict check of this
+  // file first; until then the shape is unchanged.
   effective_basis: string;
-  /** Delistings: trading stop from the issuer's 8-K item 2.01 completion date; null otherwise. */
-  trading_stopped: { date: string; basis: string; source: string | null } | null;
   known_date: string | null;
   known_basis: string;
   source_url: string | null;
@@ -86,9 +86,7 @@ function toPublic(i: DigestItem): PublicLatestEvent {
     event: i.event,
     detail: i.eventDetail,
     effective_date: i.effectiveDate,
-    effective_label: i.effectiveLabel,
-    effective_basis: i.effectiveNote ? `${i.effectiveBasis}; ${i.effectiveNote}` : i.effectiveBasis,
-    trading_stopped: i.tradingStopped,
+    effective_basis: i.effectiveBasis,
     known_date: i.knowledgeDate,
     known_basis: i.knowledgeBasis,
     source_url: i.sourceUrl,
@@ -111,6 +109,7 @@ export function buildPublicLatest(
     audience: "client",
     includeUnderReview: false,
     recentDays: null,
+    markUnsentCorrections: false,
   });
   const superseded = new Set(
     rows.map((r) => r.envelope.supersedes_event_id).filter((id): id is string => typeof id === "string" && id !== ""),

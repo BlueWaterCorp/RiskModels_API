@@ -316,54 +316,129 @@ describe("event-ledger-digest.ts --scheduled (process)", () => {
     expect(log.complete).toBe(true);
   }, 180_000);
 
-  it("flood guard: refuses a list edition over the main-section cap, sends nothing, keeps the cursor", async () => {
-    // Dated 2026-07-11 so the seven real June rows are listed: main section 7, cap lowered to 5.
+  it("flood guard: refuses a window over the cap, sends nothing, keeps the cursor; confirms only the exact count", async () => {
+    // Dated 2026-07-11 so the seven real June rows are listed: a window of 7, cap lowered to 5.
     const h = home();
     const adhoc = ["--list", "--send", "--advance-cursor", "--confirm-list-send", "2", "--edition-date", "2026-07-11"];
     const before = readFileSync(join(stateDir(h), "cursor-list.json"), "utf8");
     const sends = fake.sends.length;
-    const over = await run(h, [...adhoc, "--main-cap", "5"]);
+    const over = await run(h, [...adhoc, "--window-cap", "5"]);
     expect(over.code).toBe(6);
-    expect(over.err).toContain("main_section_over_cap");
-    expect(over.err).toContain("--confirm-main-count 7");
-    expect(over.err).toContain("--init-cursor --list");
-    const wrong = await run(h, [...adhoc, "--main-cap", "5", "--confirm-main-count", "6"]);
+    expect(over.err).toContain("window_over_cap: 7 events in the window (cap 5)");
+    expect(over.err).toContain("--confirm-window-count 7");
+    expect(over.err).toContain("--init-cursor --list [--park-through-seq N]");
+    const wrong = await run(h, [...adhoc, "--window-cap", "5", "--confirm-window-count", "6"]);
     expect(wrong.code).toBe(6);
-    expect(wrong.err).toContain("confirm_main_count_mismatch");
+    expect(wrong.err).toContain("window_over_cap (count mismatch)");
     expect(fake.sends.length).toBe(sends);
     expect(readFileSync(join(stateDir(h), "cursor-list.json"), "utf8")).toBe(before);
 
-    const ok = await run(h, [...adhoc, "--main-cap", "5", "--confirm-main-count", "7"]);
+    // A dry run reports the mismatch instead of refusing.
+    const dry = await run(h, ["--list", "--edition-date", "2026-07-11", "--window-cap", "5", "--confirm-window-count", "6", "--out", join(h, "dry")]);
+    expect(dry.code).toBe(0);
+    expect(JSON.parse(dry.out).guard).toMatchObject({
+      window_count: 7,
+      window_cap: 5,
+      issues: [{ check: "window_over_cap", reason: "mismatch", count: 7 }],
+    });
+
+    const ok = await run(h, [...adhoc, "--window-cap", "5", "--confirm-window-count", "7"]);
     expect(ok.code).toBe(0);
     expect(fake.sends.slice(sends).sort()).toEqual(["conrad@bwmacro.com", "team-inbox@example.com"]);
     expect(cursorOf(h).last_seq).toBe(4604);
   }, 180_000);
 
-  it("flood guard holds in a scheduled run: a correction is always listed, so it counts", async () => {
-    // A planted correction of a real row (corrections are listed however old the event).
+  /** A planted correction of a real row (corrections are listed however old the event). */
+  const plantedCorrection = (extra: Record<string, unknown> = {}): Row => {
     const corr = JSON.parse(JSON.stringify(ROWS[0])) as Row;
     corr.seq = 4605;
     corr.envelope.event_id = "0b1e5c55-2c43-5c6e-9d0a-5d2c1a9e7f02";
     corr.envelope.supersedes_event_id = ROWS[0].envelope.event_id;
-    corr.envelope.correction_reason = "remapped by edgar_delisting 1.2.0";
-    fake.extraRows = [corr];
+    corr.envelope.correction_reason = "Listing removal date updated.";
+    Object.assign(corr.envelope.payload as Record<string, unknown>, extra);
+    return corr;
+  };
+
+  it("a scheduled run refuses a correction of an old event, and takes no confirmation", async () => {
+    fake.extraRows = [plantedCorrection()];
     const h = home();
     const sends = fake.sends.length;
-    const r = await run(h, [...SCHEDULED, "--main-cap", "0"]);
+    const r = await run(h, SCHEDULED);
+    const confirmed = await run(h, [...SCHEDULED, "--confirm-old-corrections", "1"]);
     fake.extraRows = [];
     expect(r.code).toBe(6);
-    expect(r.err).toContain("main_section_over_cap");
+    expect(r.err).toContain("old_corrections: 1 corrections of events first knowable before");
+    expect(confirmed.code).toBe(2);
+    expect(confirmed.err).toContain("scheduled_takes_no_confirmation");
     expect(fake.sends.length).toBe(sends);
     expect(cursorOf(h)).toEqual({ last_seq: 4597 });
   }, 90_000);
 
-  it("refuses a --main-cap above the cap, before reading anything", async () => {
+  it("a list send refuses while the gate withholds a correction, unless its count is confirmed", async () => {
+    fake.extraRows = [plantedCorrection({ trading_stopped_note: "not reviewed" })];
+    const h = home();
+    const adhoc = ["--list", "--send", "--advance-cursor", "--confirm-list-send", "2", "--edition-date", "2026-07-11"];
+    const sends = fake.sends.length;
+    const r = await run(h, adhoc);
+    expect(r.code).toBe(6);
+    expect(r.err).toContain("withheld_corrections: 1 corrections withheld by the gate");
+    expect(fake.sends.length).toBe(sends);
+    const ok = await run(h, [...adhoc, "--confirm-withheld-corrections", "1"]);
+    fake.extraRows = [];
+    expect(ok.code).toBe(0);
+    expect(fake.sends.length).toBe(sends + 2);
+    expect(cursorOf(h).last_seq).toBe(4605);
+  }, 180_000);
+
+  it("the internal single-address send is capped too", async () => {
+    const h = home();
+    const sends = fake.sends.length;
+    const args = ["--internal", "--send", "--since-seq", "4597", "--edition-date", "2026-07-11", "--window-cap", "5"];
+    const r = await run(h, args);
+    expect(r.code).toBe(6);
+    expect(r.err).toContain("window_over_cap: 7 events in the window (cap 5)");
+    expect(r.err).toContain("--init-cursor [--park-through-seq N]");
+    expect(fake.sends.length).toBe(sends);
+    const ok = await run(h, [...args, "--confirm-window-count", "7"]);
+    expect(ok.code).toBe(0);
+    expect(fake.sends.slice(sends)).toEqual(["conrad@bwmacro.com"]);
+  }, 90_000);
+
+  it("refuses a --window-cap above the cap, before reading anything", async () => {
     const h = home();
     const reads = fake.ledgerReads;
-    const r = await run(h, [...SCHEDULED, "--main-cap", "51"]);
+    const r = await run(h, [...SCHEDULED, "--window-cap", "51"]);
     expect(r.code).toBe(2);
-    expect(r.err).toContain("--main-cap");
+    expect(r.err).toContain("--window-cap");
     expect(fake.ledgerReads).toBe(reads);
+  }, 90_000);
+
+  it("--init-cursor --list --park-through-seq parks exactly there and prints what it skips", async () => {
+    const h = home();
+    const r = await run(h, ["--init-cursor", "--list", "--park-through-seq", "4600"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("cursor initialised at seq 4600 (was 4597; positions 4598..4600 skipped, nothing sent)");
+    const skipped = JSON.parse(r.out.slice(r.out.indexOf("{"))).skipped;
+    expect(skipped).toMatchObject({ rows: 3, window_count: 3 });
+    expect(skipped.main + skipped.older_not_listed).toBe(3);
+    expect(cursorOf(h)).toMatchObject({ last_seq: 4600, previous_seq: 4597, note: "parked; no edition sent" });
+    for (const [n, reason] of [["4599", "park_seq_behind_cursor"], ["4700", "park_seq_past_head"], ["x", "park_seq_invalid"]]) {
+      const bad = await run(h, ["--init-cursor", "--list", "--park-through-seq", n]);
+      expect(bad.code).toBe(2);
+      expect(bad.err).toContain(reason);
+    }
+    expect(cursorOf(h).last_seq).toBe(4600);
+    const alone = await run(h, ["--list", "--park-through-seq", "4601"]);
+    expect(alone.code).toBe(2);
+    expect(alone.err).toContain("--park-through-seq goes with --init-cursor");
+  }, 120_000);
+
+  it("--init-cursor on the list cursor by path takes the list lock too", async () => {
+    const h = home();
+    writeFileSync(join(stateDir(h), "list-send.lock"), JSON.stringify({ pid: 99999, started_at: new Date().toISOString() }));
+    const r = await run(h, ["--init-cursor", "--cursor", join(stateDir(h), "cursor-list.json")]);
+    expect(r.code).toBe(5);
+    expect(cursorOf(h)).toEqual({ last_seq: 4597 });
   }, 90_000);
 
   it("--init-cursor --list parks the list cursor at the ledger head without sending", async () => {

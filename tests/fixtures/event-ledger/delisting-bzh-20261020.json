@@ -1,5 +1,5 @@
 {
-  "note": "One Form 25 delisting envelope (Beazer Homes, accession 0000876661-26-000851) from edgar_delisting 1.2.0. Payload and entity are as the adapter's second review round (ERM3 702d3688) mints them for the CIK-only daily job; the other envelope fields are from run ledger-20261120T223236Z. seq is assigned by this fixture, not the live ledger position.",
+  "note": "One Form 25 delisting envelope (Beazer Homes, accession 0000876661-26-000851) from edgar_delisting 1.2.0. Payload and entity are as the adapter's second review round mints them for the CIK-only daily job (ERM3 702d3688; trading_stopped_source_event_date_source added in d9450b67, document_period_end_date being the only source under which the adapter sets trading_stopped_date). The other envelope fields are from run ledger-20261120T223236Z. seq is assigned by this fixture, not the live ledger position.",
   "rows": [
     {
       "seq": 5200,
@@ -52,6 +52,7 @@
           "trading_stopped_knowledge_at": "2026-10-20T16:54:22+00:00",
           "trading_stopped_source_accession": "0001104659-26-117198",
           "trading_stopped_source_event_date": "2026-10-20",
+          "trading_stopped_source_event_date_source": "document_period_end_date",
           "trading_stopped_source_form": "8-K",
           "trading_stopped_source_items": [
             "1.02",

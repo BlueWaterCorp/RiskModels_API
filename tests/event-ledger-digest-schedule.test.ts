@@ -3,11 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  MAIN_SECTION_CAP,
+  SEND_WINDOW_CAP,
   acquireSendLock,
   listSendGate,
-  mainCapOption,
-  mainSectionGate,
+  lockPathFor,
+  parkTarget,
+  sendGuard,
+  windowCapOption,
   pendingSendGate,
   scheduledEditionState,
   type ListSendFlags,
@@ -197,29 +199,82 @@ describe("list send lock (two overlapping runs cannot both send)", () => {
   });
 });
 
-describe("main-section flood guard", () => {
+describe("flood guard (sendGuard)", () => {
+  const counts = (windowCount: number, oldCorrections = 0, withheldCorrections = 0) => ({
+    windowCount,
+    oldCorrections,
+    withheldCorrections,
+  });
+  const LIST = { list: true };
+
   // The planned Form 25 history load: about 3,750 historical events and 2,400 corrections.
-  it("lets an ordinary edition through and refuses one over the cap", () => {
-    expect(MAIN_SECTION_CAP).toBe(50);
-    expect(mainSectionGate(0, undefined)).toEqual({ ok: true });
-    expect(mainSectionGate(50, undefined)).toEqual({ ok: true });
-    expect(mainSectionGate(51, undefined)).toEqual({ ok: false, reason: "main_section_over_cap", mainCount: 51, cap: 50 });
-    expect(mainSectionGate(2400, undefined)).toMatchObject({ ok: false, reason: "main_section_over_cap" });
+  it("lets an ordinary edition through and refuses a window over the cap, older rows included", () => {
+    expect(SEND_WINDOW_CAP).toBe(50);
+    expect(sendGuard(counts(0), {}, LIST)).toEqual([]);
+    expect(sendGuard(counts(50), {}, LIST)).toEqual([]);
+    expect(sendGuard(counts(51), {}, LIST)).toEqual([
+      { check: "window_over_cap", reason: "unconfirmed", count: 51, confirm: "--confirm-window-count 51" },
+    ]);
+    expect(sendGuard(counts(6150, 2400), {}, LIST).map((g) => g.check)).toEqual(["window_over_cap", "old_corrections"]);
   });
 
-  it("sends over the cap only when --confirm-main-count equals the count", () => {
-    expect(mainSectionGate(2400, "2400")).toEqual({ ok: true });
-    expect(mainSectionGate(2400, "2399")).toEqual({ ok: false, reason: "confirm_main_count_mismatch", mainCount: 2400, cap: 50 });
-    // A wrong confirmation refuses even under the cap: it means the operator expected other events.
-    expect(mainSectionGate(7, "8")).toMatchObject({ ok: false, reason: "confirm_main_count_mismatch" });
-    expect(mainSectionGate(7, "7")).toEqual({ ok: true });
+  it("confirms each check only by its exact count; a wrong count refuses even under the cap", () => {
+    expect(sendGuard(counts(6150, 2400, 3), { windowCount: "6150", oldCorrections: "2400", withheldCorrections: "3" }, LIST)).toEqual([]);
+    expect(sendGuard(counts(6150), { windowCount: "6149" }, LIST)).toEqual([
+      { check: "window_over_cap", reason: "mismatch", count: 6150, confirm: "--confirm-window-count 6150" },
+    ]);
+    expect(sendGuard(counts(7), { windowCount: "8" }, LIST)).toMatchObject([{ check: "window_over_cap", reason: "mismatch" }]);
+    expect(sendGuard(counts(7), { windowCount: "7" }, LIST)).toEqual([]);
+  });
+
+  it("refuses a list edition with any old or withheld correction, however small", () => {
+    expect(sendGuard(counts(1, 1), {}, LIST)).toEqual([
+      { check: "old_corrections", reason: "unconfirmed", count: 1, confirm: "--confirm-old-corrections 1" },
+    ]);
+    expect(sendGuard(counts(1, 0, 1), {}, LIST)).toEqual([
+      { check: "withheld_corrections", reason: "unconfirmed", count: 1, confirm: "--confirm-withheld-corrections 1" },
+    ]);
+    expect(sendGuard(counts(1, 1, 1), { oldCorrections: "1", withheldCorrections: "1" }, LIST)).toEqual([]);
+  });
+
+  it("applies the window cap, not the correction checks, to a single-address send", () => {
+    const single = { list: false };
+    expect(sendGuard(counts(3, 2, 2), {}, single)).toEqual([]);
+    expect(sendGuard(counts(51), {}, single)).toMatchObject([{ check: "window_over_cap" }]);
   });
 
   it("takes a lower cap, never a higher one", () => {
-    expect(mainSectionGate(6, undefined, 5)).toMatchObject({ ok: false, reason: "main_section_over_cap", cap: 5 });
-    expect(mainCapOption(undefined)).toBe(MAIN_SECTION_CAP);
-    expect(mainCapOption("0")).toBe(0);
-    expect(mainCapOption("5")).toBe(5);
-    for (const bad of ["51", "1000", "-1", "2.5", "x", ""]) expect(mainCapOption(bad)).toBeNull();
+    expect(sendGuard(counts(6), {}, { list: true, cap: 5 })).toMatchObject([{ check: "window_over_cap" }]);
+    expect(windowCapOption(undefined)).toBe(SEND_WINDOW_CAP);
+    expect(windowCapOption("0")).toBe(0);
+    expect(windowCapOption("5")).toBe(5);
+    for (const bad of ["51", "1000", "-1", "2.5", "x", ""]) expect(windowCapOption(bad)).toBeNull();
+  });
+
+  it("refuses confirmations on a scheduled run", () => {
+    expect(listSendGate(flags({ scheduled: true, confirmGuard: true }), null)).toEqual({
+      ok: false,
+      reason: "scheduled_takes_no_confirmation",
+    });
+    expect(listSendGate(flags({ scheduled: true }), null)).toEqual({ ok: true });
+  });
+});
+
+describe("parking and cursor locks", () => {
+  it("parks at the head by default, or exactly at a position between the cursor and the head", () => {
+    expect(parkTarget(undefined, 4597, 4604)).toEqual({ ok: true, seq: 4604 });
+    expect(parkTarget("4600", 4597, 4604)).toEqual({ ok: true, seq: 4600 });
+    expect(parkTarget("4597", 4597, 4604)).toEqual({ ok: true, seq: 4597 });
+    expect(parkTarget("4596", 4597, 4604)).toEqual({ ok: false, reason: "park_seq_behind_cursor" });
+    expect(parkTarget("4605", 4597, 4604)).toEqual({ ok: false, reason: "park_seq_past_head" });
+    expect(parkTarget("x", 4597, 4604)).toEqual({ ok: false, reason: "park_seq_invalid" });
+    expect(parkTarget("10", null, 4604)).toEqual({ ok: true, seq: 10 });
+  });
+
+  it("guards the list cursor with list-send.lock however it is named", () => {
+    const dir = "/state";
+    expect(lockPathFor("/state/cursor-list.json", "/state/cursor-list.json", dir)).toBe("/state/list-send.lock");
+    expect(lockPathFor("/state/../state/cursor-list.json", "/state/cursor-list.json", dir)).toBe("/state/list-send.lock");
+    expect(lockPathFor("/state/cursor.json", "/state/cursor-list.json", dir)).toBe("/state/cursor.json.lock");
   });
 });

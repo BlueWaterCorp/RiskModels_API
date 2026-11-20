@@ -10,6 +10,7 @@ import {
   GDELT_CREDIT,
   digestDescriptorJson,
   editionFooter,
+  DATES_NOTE,
   headline,
   itemDates,
   olderLine,
@@ -109,6 +110,18 @@ const Row = ({ i }: { i: DigestItem }) => (
             {d.basis}
             {d.extra ? `; ${d.extra}` : ""}
           </span>
+          {d.source ? (
+            <>
+              <br />
+              {d.source.url ? (
+                <Link href={d.source.url} style={{ ...s.link, fontSize: "11px" }}>
+                  {d.source.label ?? "filing"}
+                </Link>
+              ) : (
+                <span style={s.sub}>{d.source.label}</span>
+              )}
+            </>
+          ) : null}
         </React.Fragment>
       ))}
     </td>
@@ -228,11 +241,8 @@ export const EventLedgerDigestEmail = ({
 
         <Text style={{ ...s.paragraph, marginTop: "22px", fontSize: "13px" }}>
           Attached: <strong>{edition.attachment.filename}</strong>, {edition.attachment.lines}{" "}
-          {edition.attachment.lines === 1 ? "line" : "lines"}, one event per line in the published envelope.
-          Dates are UTC. &ldquo;Known&rdquo; is when the event became publicly knowable; &ldquo;Effective&rdquo; is
-          when it takes effect. For a delisting, &ldquo;Listing removed&rdquo; is the removal date the exchange states
-          on the Form 25; without one, the date the form was signed or filed is shown and named as such. A trading
-          stop is shown only when the issuer&rsquo;s 8-K reports a completed transaction (item 2.01), dated by it.
+          {edition.attachment.lines === 1 ? "line" : "lines"}, one event per line in the published envelope.{" "}
+          {DATES_NOTE}
         </Text>
 
         <Section style={s.agentBox}>
