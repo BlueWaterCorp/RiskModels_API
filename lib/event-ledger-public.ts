@@ -13,6 +13,7 @@
  *
  * Corrections. An event that a later event supersedes (supersedes_event_id), or
  * whose status is superseded, is dropped: a superseded original is never shown.
+ * buildDigest also keeps only the newest row of each dedupe_key.
  * The correction, or a withdrawal, is listed with its flag. The supersession is
  * read from every input row, even one the gate withholds, so a withheld
  * correction still removes the original it replaces.
@@ -45,7 +46,11 @@ export interface PublicLatestEvent {
   event: string;
   detail: string | null;
   effective_date: string | null;
+  /** What effective_date is: "Listing removed" (stated removal date), "Form 25 signed", "Form 25 filed" or "Effective". */
+  effective_label: string;
   effective_basis: string;
+  /** Delistings: trading stop from the issuer's 8-K item 2.01 completion date; null otherwise. */
+  trading_stopped: { date: string; basis: string; source: string | null } | null;
   known_date: string | null;
   known_basis: string;
   source_url: string | null;
@@ -81,7 +86,9 @@ function toPublic(i: DigestItem): PublicLatestEvent {
     event: i.event,
     detail: i.eventDetail,
     effective_date: i.effectiveDate,
-    effective_basis: i.effectiveBasis,
+    effective_label: i.effectiveLabel,
+    effective_basis: i.effectiveNote ? `${i.effectiveBasis}; ${i.effectiveNote}` : i.effectiveBasis,
+    trading_stopped: i.tradingStopped,
     known_date: i.knowledgeDate,
     known_basis: i.knowledgeBasis,
     source_url: i.sourceUrl,

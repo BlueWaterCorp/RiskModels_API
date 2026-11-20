@@ -13,9 +13,13 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const ROOT = join(__dirname, "..");
+interface Row {
+  seq: number;
+  envelope: Record<string, unknown>;
+}
 const ROWS = JSON.parse(
   readFileSync(join(__dirname, "fixtures", "event-ledger", "delisting-rows-20260611-20260615.json"), "utf8"),
-).rows as { seq: number }[];
+).rows as Row[];
 
 // Recipient rows in the shape feed_waitlist_edition_recipients() returns.
 const TWO = [
@@ -30,6 +34,8 @@ interface Fake {
   sends: string[];
   /** Ledger rows left out of reads (to make a rebuilt edition differ). */
   dropSeq: Set<number>;
+  /** Planted rows served after the real ones. */
+  extraRows: Row[];
   /** Hold every /emails request open until the test releases it. */
   holdSends: boolean;
   onSend: (() => void) | null;
@@ -40,6 +46,7 @@ const fake: Fake = {
   ledgerReads: 0,
   sends: [],
   dropSeq: new Set(),
+  extraRows: [],
   holdSends: false,
   onSend: null,
 };
@@ -67,9 +74,14 @@ beforeAll(async () => {
       if (Number(url.searchParams.get("offset") ?? 0) > 0) return send(200, []);
       const gt = (url.search.match(/seq=gt\.(\d+)/) ?? [])[1];
       const lte = (url.search.match(/seq=lte\.(\d+)/) ?? [])[1];
+      const all = [...ROWS, ...fake.extraRows];
+      // headSeq(): select=seq&order=seq.desc&limit=1.
+      if (url.searchParams.get("order") === "seq.desc") {
+        return send(200, all.map((r) => ({ seq: r.seq })).sort((a, b) => b.seq - a.seq).slice(0, 1));
+      }
       return send(
         200,
-        ROWS.filter(
+        all.filter(
           (r) =>
             !fake.dropSeq.has(r.seq) && (gt === undefined || r.seq > Number(gt)) && (lte === undefined || r.seq <= Number(lte)),
         ),
@@ -303,4 +315,84 @@ describe("event-ledger-digest.ts --scheduled (process)", () => {
     const log = JSON.parse(readFileSync(join(moved, "sent.json"), "utf8"));
     expect(log.complete).toBe(true);
   }, 180_000);
+
+  it("flood guard: refuses a list edition over the main-section cap, sends nothing, keeps the cursor", async () => {
+    // Dated 2026-07-11 so the seven real June rows are listed: main section 7, cap lowered to 5.
+    const h = home();
+    const adhoc = ["--list", "--send", "--advance-cursor", "--confirm-list-send", "2", "--edition-date", "2026-07-11"];
+    const before = readFileSync(join(stateDir(h), "cursor-list.json"), "utf8");
+    const sends = fake.sends.length;
+    const over = await run(h, [...adhoc, "--main-cap", "5"]);
+    expect(over.code).toBe(6);
+    expect(over.err).toContain("main_section_over_cap");
+    expect(over.err).toContain("--confirm-main-count 7");
+    expect(over.err).toContain("--init-cursor --list");
+    const wrong = await run(h, [...adhoc, "--main-cap", "5", "--confirm-main-count", "6"]);
+    expect(wrong.code).toBe(6);
+    expect(wrong.err).toContain("confirm_main_count_mismatch");
+    expect(fake.sends.length).toBe(sends);
+    expect(readFileSync(join(stateDir(h), "cursor-list.json"), "utf8")).toBe(before);
+
+    const ok = await run(h, [...adhoc, "--main-cap", "5", "--confirm-main-count", "7"]);
+    expect(ok.code).toBe(0);
+    expect(fake.sends.slice(sends).sort()).toEqual(["conrad@bwmacro.com", "team-inbox@example.com"]);
+    expect(cursorOf(h).last_seq).toBe(4604);
+  }, 180_000);
+
+  it("flood guard holds in a scheduled run: a correction is always listed, so it counts", async () => {
+    // A planted correction of a real row (corrections are listed however old the event).
+    const corr = JSON.parse(JSON.stringify(ROWS[0])) as Row;
+    corr.seq = 4605;
+    corr.envelope.event_id = "0b1e5c55-2c43-5c6e-9d0a-5d2c1a9e7f02";
+    corr.envelope.supersedes_event_id = ROWS[0].envelope.event_id;
+    corr.envelope.correction_reason = "remapped by edgar_delisting 1.2.0";
+    fake.extraRows = [corr];
+    const h = home();
+    const sends = fake.sends.length;
+    const r = await run(h, [...SCHEDULED, "--main-cap", "0"]);
+    fake.extraRows = [];
+    expect(r.code).toBe(6);
+    expect(r.err).toContain("main_section_over_cap");
+    expect(fake.sends.length).toBe(sends);
+    expect(cursorOf(h)).toEqual({ last_seq: 4597 });
+  }, 90_000);
+
+  it("refuses a --main-cap above the cap, before reading anything", async () => {
+    const h = home();
+    const reads = fake.ledgerReads;
+    const r = await run(h, [...SCHEDULED, "--main-cap", "51"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--main-cap");
+    expect(fake.ledgerReads).toBe(reads);
+  }, 90_000);
+
+  it("--init-cursor --list parks the list cursor at the ledger head without sending", async () => {
+    const h = home();
+    const sends = fake.sends.length;
+    const r = await run(h, ["--init-cursor", "--list"]);
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("cursor initialised at seq 4604 (was 4597; positions 4598..4604 skipped, nothing sent)");
+    expect(cursorOf(h)).toMatchObject({ last_seq: 4604, previous_seq: 4597 });
+    expect(fake.sends.length).toBe(sends);
+    expect(existsSync(join(stateDir(h), "list-send.lock"))).toBe(false);
+    // The next scheduled run then has nothing to send.
+    const next = await run(h, SCHEDULED);
+    expect(next.code).toBe(0);
+    expect(JSON.parse(next.out)).toMatchObject({ rows_read: 0, skipped_empty: true });
+    expect(fake.sends.length).toBe(sends);
+  }, 90_000);
+
+  it("--init-cursor --list refuses while a list send is pending, or the lock is held", async () => {
+    const pending = { edition_date: "2026-11-19", after_seq: 4597, through_seq: 4604, started_at: "2026-11-20T14:00:00Z" };
+    const h = home({ last_seq: 4597, pending_send: pending });
+    const r = await run(h, ["--init-cursor", "--list"]);
+    expect(r.code).toBe(4);
+    expect(r.err).toContain("pending_partial_send");
+    expect(cursorOf(h)).toEqual({ last_seq: 4597, pending_send: pending });
+    const h2 = home();
+    writeFileSync(join(stateDir(h2), "list-send.lock"), JSON.stringify({ pid: 99999, started_at: new Date().toISOString() }));
+    const locked = await run(h2, ["--init-cursor", "--list"]);
+    expect(locked.code).toBe(5);
+    expect(cursorOf(h2)).toEqual({ last_seq: 4597 });
+  }, 90_000);
 });

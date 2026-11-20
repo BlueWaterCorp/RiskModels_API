@@ -3,8 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  MAIN_SECTION_CAP,
   acquireSendLock,
   listSendGate,
+  mainCapOption,
+  mainSectionGate,
   pendingSendGate,
   scheduledEditionState,
   type ListSendFlags,
@@ -191,5 +194,32 @@ describe("list send lock (two overlapping runs cannot both send)", () => {
     utimesSync(path, old, old);
     expect(acquireSendLock(path, NOW)).toMatchObject({ ok: false, reason: "stale_lock" });
     expect(existsSync(path)).toBe(true);
+  });
+});
+
+describe("main-section flood guard", () => {
+  // The planned Form 25 history load: about 3,750 historical events and 2,400 corrections.
+  it("lets an ordinary edition through and refuses one over the cap", () => {
+    expect(MAIN_SECTION_CAP).toBe(50);
+    expect(mainSectionGate(0, undefined)).toEqual({ ok: true });
+    expect(mainSectionGate(50, undefined)).toEqual({ ok: true });
+    expect(mainSectionGate(51, undefined)).toEqual({ ok: false, reason: "main_section_over_cap", mainCount: 51, cap: 50 });
+    expect(mainSectionGate(2400, undefined)).toMatchObject({ ok: false, reason: "main_section_over_cap" });
+  });
+
+  it("sends over the cap only when --confirm-main-count equals the count", () => {
+    expect(mainSectionGate(2400, "2400")).toEqual({ ok: true });
+    expect(mainSectionGate(2400, "2399")).toEqual({ ok: false, reason: "confirm_main_count_mismatch", mainCount: 2400, cap: 50 });
+    // A wrong confirmation refuses even under the cap: it means the operator expected other events.
+    expect(mainSectionGate(7, "8")).toMatchObject({ ok: false, reason: "confirm_main_count_mismatch" });
+    expect(mainSectionGate(7, "7")).toEqual({ ok: true });
+  });
+
+  it("takes a lower cap, never a higher one", () => {
+    expect(mainSectionGate(6, undefined, 5)).toMatchObject({ ok: false, reason: "main_section_over_cap", cap: 5 });
+    expect(mainCapOption(undefined)).toBe(MAIN_SECTION_CAP);
+    expect(mainCapOption("0")).toBe(0);
+    expect(mainCapOption("5")).toBe(5);
+    for (const bad of ["51", "1000", "-1", "2.5", "x", ""]) expect(mainCapOption(bad)).toBeNull();
   });
 });

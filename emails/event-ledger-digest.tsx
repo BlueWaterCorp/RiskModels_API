@@ -11,6 +11,7 @@ import {
   digestDescriptorJson,
   editionFooter,
   headline,
+  itemDates,
   olderLine,
   reviewSectionNote,
   reviewSectionTitle,
@@ -88,8 +89,7 @@ const s = {
 };
 
 const COLUMNS: ReadonlyArray<[string, string]> = [
-  ["Effective", "13%"],
-  ["Known", "12%"],
+  ["Dates", "25%"],
   ["Ticker / company", "18%"],
   ["Event", "27%"],
   ["Status", "10%"],
@@ -100,20 +100,17 @@ const COLUMNS: ReadonlyArray<[string, string]> = [
 const Row = ({ i }: { i: DigestItem }) => (
   <tr>
     <td style={s.td}>
-      {i.effectiveDate ?? "not stated"}
-      <br />
-      <span style={s.sub}>{i.effectiveBasis}</span>
-      {i.effectiveEstimate ? (
-        <>
+      {itemDates(i).map((d, n) => (
+        <React.Fragment key={d.label}>
+          {n ? <br /> : null}
+          <strong>{d.label}</strong> {d.date}
           <br />
-          <span style={s.sub}>12d2-2 est. {i.effectiveEstimate}</span>
-        </>
-      ) : null}
-    </td>
-    <td style={s.td}>
-      {i.knowledgeDate ?? "not stated"}
-      <br />
-      <span style={s.sub}>{i.knowledgeBasis}</span>
+          <span style={s.sub}>
+            {d.basis}
+            {d.extra ? `; ${d.extra}` : ""}
+          </span>
+        </React.Fragment>
+      ))}
     </td>
     <td style={s.td}>
       {i.ticker ? <strong>{i.ticker} </strong> : null}
@@ -233,7 +230,9 @@ export const EventLedgerDigestEmail = ({
           Attached: <strong>{edition.attachment.filename}</strong>, {edition.attachment.lines}{" "}
           {edition.attachment.lines === 1 ? "line" : "lines"}, one event per line in the published envelope.
           Dates are UTC. &ldquo;Known&rdquo; is when the event became publicly knowable; &ldquo;Effective&rdquo; is
-          when it takes effect.
+          when it takes effect. For a delisting, &ldquo;Listing removed&rdquo; is the removal date the exchange states
+          on the Form 25; without one, the date the form was signed or filed is shown and named as such. A trading
+          stop is shown only when the issuer&rsquo;s 8-K reports a completed transaction (item 2.01), dated by it.
         </Text>
 
         <Section style={s.agentBox}>

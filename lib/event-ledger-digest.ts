@@ -26,6 +26,13 @@
  *     ledger"; verified events and candidates alike, so "events"), not listed and not in the attached file. Corrections and
  *     withdrawals are always listed. A knowledge-date sample is left alone: its
  *     window already selects by knowledge date. Applies to every audience.
+ *   - Latest event per fact. An edition lists only the newest row of each dedupe_key in its window,
+ *     and never a row another row in the window supersedes (supersedes_event_id), even when the gate
+ *     withholds that later row. A correction is listed with its "Correction of event ..." flag.
+ *   - Delisting dates. Each delisting shows Known (knowledge_at), Trading stopped (only on the
+ *     8-K item 2.01 completion basis; an item 3.01 notice date is never called a trading stop) and
+ *     the effective date named by its basis: "Listing removed" only for the exchange's stated
+ *     removal date, "Form 25 signed" or "Form 25 filed" for the fallbacks.
  *   - Audience. A "client" edition never carries an internal_only row, whatever
  *     the other settings. An "internal" edition may, under its own heading
  *     ("Internal only, not for clients"), and only to INTERNAL_RECIPIENTS;
@@ -280,6 +287,18 @@ export const CLIENT_ALLOWED_PATHS: Readonly<Record<string, ReadonlySet<string>>>
     "payload.source_item",
     "payload.affected_bw_sym_ids",
     "payload.affected_bw_sym_ids[]",
+    // edgar_delisting 1.2.0: the Form 25's own dates and the trading stop read from the issuer's 8-K.
+    "payload.signature_date",
+    "payload.stated_effective_date",
+    "payload.stated_effective_date_rejected",
+    "payload.trading_stopped_date",
+    "payload.trading_stopped_basis",
+    "payload.trading_stopped_knowledge_at",
+    "payload.trading_stopped_source_accession",
+    "payload.trading_stopped_source_event_date",
+    "payload.trading_stopped_source_form",
+    "payload.trading_stopped_source_items",
+    "payload.trading_stopped_source_items[]",
   ]),
 };
 
@@ -327,6 +346,10 @@ const VALUE_RULES: Readonly<Record<string, (v: unknown) => boolean>> = {
   "license.redistributable": (v) => typeof v === "boolean",
   "entity.ticker": nullOr((v) => typeof v === "string" && /^[A-Z][A-Z0-9]{0,5}([.-][A-Z0-9]{1,3})?$/.test(v)),
   "programs[]": oneOf("changefeed"),
+  // Why the Form 25's stated date was not used (edgar_delisting STATED_REJECTED_*).
+  "payload.stated_effective_date_rejected": nullOr(oneOf("before_filing")),
+  // 8-K item numbers such as "3.01".
+  "payload.trading_stopped_source_items[]": (v) => typeof v === "string" && /^\d{1,2}\.\d{2}$/.test(v),
   schema_version: oneOf("1.0.0"),
   lifecycle_status: oneOf("candidate", "verified", "rejected", "superseded"),
   source_role: oneOf("discovery", "primary", "corroborating", "contributor", "internal_derived"),
@@ -521,6 +544,7 @@ export function provisionLabel(rule: unknown): string | null {
 }
 
 const BASIS_LABELS: Record<string, string> = {
+  form25_stated_effective_date: "exchange's stated removal date",
   form25_signature_date: "Form 25 signature date",
   filed_date_fallback: "filing date",
   rule_12d2_2_filed_plus_10d: "filing date + 10 days (Rule 12d2-2)",
@@ -533,6 +557,51 @@ const BASIS_LABELS: Record<string, string> = {
 export function basisLabel(basis: string | null | undefined): string {
   if (!basis) return "basis not recorded";
   return BASIS_LABELS[basis] ?? basis.replace(/_/g, " ");
+}
+
+/**
+ * What a delisting's effective_at is, by its basis. Only the exchange's stated removal date is
+ * called a removal; a signature or filing date is named as what it is.
+ */
+const DELISTING_EFFECTIVE_LABELS: Record<string, string> = {
+  form25_stated_effective_date: "Listing removed",
+  form25_signature_date: "Form 25 signed",
+  filed_date_fallback: "Form 25 filed",
+};
+
+/** Note shown after a delisting date that is not the stated removal date. */
+export const NO_STATED_REMOVAL_NOTE = "the form states no removal date";
+
+/**
+ * The one trading-stop basis that dates a trading stop (edgar_delisting TRADING_STOPPED_BASIS_2_01):
+ * the completion date of the transaction in the issuer's 8-K item 2.01. The other bases,
+ * "8k_item_3_01_notice_date_not_a_trading_stop" (an item 3.01 notice alone; date null, evidence kept)
+ * and "no_8k_2_01_or_3_01_accepted_by_form25" (date null), show no trading-stop line: a 3.01 notice
+ * date is never called a trading stop.
+ */
+export const TRADING_STOPPED_BASIS_2_01 = "8k_item_2_01_completion_date";
+const TRADING_STOPPED_BASIS_LABELS: Record<string, string> = {
+  [TRADING_STOPPED_BASIS_2_01]: "completion date in the issuer's 8-K (item 2.01)",
+};
+
+export function tradingStoppedBasisLabel(basis: string | null | undefined): string {
+  if (!basis) return "basis not recorded";
+  return TRADING_STOPPED_BASIS_LABELS[basis] ?? basis.replace(/_/g, " ");
+}
+
+/** The trading stop of a delisting: only on the item 2.01 basis with a date; null otherwise. */
+function tradingStopOf(env: EventEnvelope): DigestItem["tradingStopped"] {
+  if (env.event_type !== "delisting") return null;
+  const p = env.payload ?? {};
+  const date = str(p.trading_stopped_date);
+  if (!date || p.trading_stopped_basis !== TRADING_STOPPED_BASIS_2_01) return null;
+  const form = str(p.trading_stopped_source_form);
+  const acc = str(p.trading_stopped_source_accession);
+  return {
+    date: date.slice(0, 10),
+    basis: tradingStoppedBasisLabel(str(p.trading_stopped_basis)),
+    source: acc ? `${form ?? "filing"} ${acc}` : null,
+  };
 }
 
 function dateOf(ts: string | null | undefined): string | null {
@@ -548,7 +617,13 @@ export interface DigestItem {
   eventId: string;
   eventType: string;
   effectiveDate: string | null;
+  /** What effectiveDate is: "Listing removed", "Form 25 signed", "Form 25 filed", or "Effective". */
+  effectiveLabel: string;
   effectiveBasis: string;
+  /** Set when effectiveDate is a delisting date other than the stated removal date. */
+  effectiveNote: string | null;
+  /** Delistings: when trading stopped, from the issuer's 8-K; null when none was matched. */
+  tradingStopped: { date: string; basis: string; source: string | null } | null;
   /** Payload's Rule 12d2-2 estimate (filing + 10 days), when the adapter recorded one. */
   effectiveEstimate: string | null;
   knowledgeDate: string | null;
@@ -611,6 +686,11 @@ function flagOf(env: EventEnvelope): string | null {
   return null;
 }
 
+function effectiveLabelOf(env: EventEnvelope): string {
+  if (env.event_type !== "delisting") return "Effective";
+  return DELISTING_EFFECTIVE_LABELS[env.effective_basis ?? ""] ?? "Effective";
+}
+
 export function toItem(row: LedgerRow): DigestItem {
   const env = row.envelope;
   const p = env.payload ?? {};
@@ -626,7 +706,11 @@ export function toItem(row: LedgerRow): DigestItem {
     eventId: env.event_id,
     eventType: env.event_type,
     effectiveDate: dateOf(env.effective_at),
+    effectiveLabel: effectiveLabelOf(env),
     effectiveBasis: basisLabel(env.effective_basis),
+    effectiveNote:
+      env.event_type === "delisting" && env.effective_basis !== "form25_stated_effective_date" ? NO_STATED_REMOVAL_NOTE : null,
+    tradingStopped: tradingStopOf(env),
     effectiveEstimate: str(p.rule_12d2_2_effective_estimate),
     knowledgeDate: dateOf(env.knowledge_at),
     knowledgeBasis: basisLabel(env.knowledge_basis),
@@ -688,6 +772,11 @@ export interface DigestEdition {
   /** Count in the headline and subject: verified events plus corrections. */
   mainCount: number;
   correctionCount: number;
+  /**
+   * Rows left out because a later row of the same dedupe_key, or a row naming them in
+   * supersedes_event_id, is in the window (withheld or not). Operator log only; never rendered.
+   */
+  replaced: number;
   /** True when any delivered event is GDELT-derived; the edition then shows GDELT_CREDIT. */
   gdeltCredit: boolean;
   /** Withheld rows, by reason. Operator log only; never rendered. */
@@ -768,6 +857,18 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
   const days = opts.recentDays === undefined ? RECENT_KNOWLEDGE_DAYS : opts.recentDays;
   const cutoff = opts.window.basis === "ledger_seq" && days !== null ? knowledgeCutoff(opts.editionDate, days) : null;
   let older = 0;
+  let replaced = 0;
+  // Latest event per fact: an edition lists only the newest row of each dedupe_key, and never a row
+  // another row in the window supersedes. Read from every row, even one the gate withholds, so a
+  // withheld correction still keeps the original it replaces out.
+  const latestSeq = new Map<string, number>();
+  const supersededIds = new Set<string>();
+  for (const r of rows) {
+    const k = r.envelope.dedupe_key;
+    if (typeof k === "string" && k) latestSeq.set(k, Math.max(latestSeq.get(k) ?? -Infinity, r.seq));
+    const s = r.envelope.supersedes_event_id;
+    if (typeof s === "string" && s) supersededIds.add(s);
+  }
   const withheld: Record<WithheldReason, number> = {
     not_redistributable: 0,
     internal_only_in_client_edition: 0,
@@ -780,6 +881,11 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
   const review: DigestItem[] = [];
   const internal: DigestItem[] = [];
   for (const row of [...rows].sort((a, b) => a.seq - b.seq)) {
+    const key = row.envelope.dedupe_key;
+    if (supersededIds.has(row.envelope.event_id) || (typeof key === "string" && key && latestSeq.get(key) !== row.seq)) {
+      replaced++;
+      continue;
+    }
     const why = withheldReason(row.envelope, audience);
     if (why) {
       withheld[why]++;
@@ -831,6 +937,7 @@ export function buildDigest(rows: readonly LedgerRow[], opts: BuildOptions): Dig
     older: { total: older, knowledgeBefore: cutoff, days },
     mainCount: main.length,
     correctionCount: main.filter((i) => i.flag).length,
+    replaced,
     gdeltCredit: delivered.some((i) => isGdeltDerived(i.envelope)),
     withheld,
     attachment: {
@@ -1092,19 +1199,39 @@ function footerText(f: EditionFooter): string[] {
 
 // ── plain-text part ──────────────────────────────────────────────────────────
 
+/** The dates of one event, in reading order: known, trading stopped (delistings), effective or removed. */
+export function itemDates(i: DigestItem): { label: string; date: string; basis: string; extra: string | null }[] {
+  const out = [{ label: "Known", date: i.knowledgeDate ?? "not stated", basis: i.knowledgeBasis, extra: null as string | null }];
+  if (i.tradingStopped) {
+    out.push({ label: "Trading stopped", date: i.tradingStopped.date, basis: i.tradingStopped.basis, extra: i.tradingStopped.source });
+  }
+  out.push({
+    label: i.effectiveLabel,
+    date: i.effectiveDate ?? "not stated",
+    basis: i.effectiveNote ? `${i.effectiveBasis}; ${i.effectiveNote}` : i.effectiveBasis,
+    extra: i.effectiveEstimate ? `Rule 12d2-2 estimate ${i.effectiveEstimate}` : null,
+  });
+  return out;
+}
+
 function itemText(i: DigestItem): string[] {
   const who = [i.ticker, i.company].filter(Boolean).join(" · ") || "Name not recorded";
+  const pad = (label: string) => `  ${`${label}:`.padEnd(17)}`;
   const lines = [
     `- ${who}${i.identifiers.length ? ` (${i.identifiers.join(", ")})` : ""}`,
-    `  Event:     ${i.event}${i.eventDetail ? ` (${i.eventDetail})` : ""}`,
-    `  Effective: ${i.effectiveDate ?? "not stated"} (${i.effectiveBasis})${
-      i.effectiveEstimate ? `; Rule 12d2-2 estimate ${i.effectiveEstimate}` : ""
-    }`,
-    `  Known:     ${i.knowledgeDate ?? "not stated"} (${i.knowledgeBasis})`,
-    `  Status:    ${i.status}; source role ${i.sourceRole}`,
+    `${pad("Event")}${i.event}${i.eventDetail ? ` (${i.eventDetail})` : ""}`,
   ];
-  if (i.sourceUrl) lines.push(`  Source:    ${i.sourceLabel} ${i.sourceUrl}`);
-  if (i.flag) lines.push(`  FLAG:      ${i.flag}`);
+  for (const d of itemDates(i)) {
+    // A trading stop's source sits inside the brackets; the Rule 12d2-2 estimate follows them.
+    lines.push(
+      d.label === "Trading stopped"
+        ? `${pad(d.label)}${d.date} (${d.basis}${d.extra ? `; ${d.extra}` : ""})`
+        : `${pad(d.label)}${d.date} (${d.basis})${d.extra ? `; ${d.extra}` : ""}`,
+    );
+  }
+  lines.push(`${pad("Status")}${i.status}; source role ${i.sourceRole}`);
+  if (i.sourceUrl) lines.push(`${pad("Source")}${i.sourceLabel} ${i.sourceUrl}`);
+  if (i.flag) lines.push(`${pad("FLAG")}${i.flag}`);
   return lines;
 }
 

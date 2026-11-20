@@ -20,6 +20,14 @@
  *   - an exclusive lock file around read-state -> send -> write-state, so two overlapping runs
  *     cannot both send. A lock older than LOCK_STALE_MS is reported and refused, never broken.
  *
+ * Flood guard on every list send (scheduled, ad hoc and resume): an edition whose main section
+ * (verified events plus corrections and withdrawals) holds more than MAIN_SECTION_CAP events is
+ * refused, nothing sent and the cursor unchanged, unless --confirm-main-count <N> equals that count.
+ * A history load (the Form 25 backfill of 2006-2026 events and its corrections) must never reach a
+ * client edition by accident: the age rule counts old new events in one line, but corrections are
+ * always listed. The operator either confirms the count or parks the list cursor at the ledger head
+ * with --init-cursor --list, which sends nothing. --main-cap N lowers the cap for one run (0..cap).
+ *
  * One scheduled edition per edition date: once an edition date has gone out in full (sent.json
  * marked complete), a later scheduled run for that date sends nothing, whatever its events; those
  * events stay behind the cursor for the next edition. A partial send of different events for the
@@ -192,4 +200,36 @@ export function scheduledEditionState(log: SentLogState | null, sha: string): Sc
   const anySent = Array.isArray(log.sent) && log.sent.length > 0;
   if (log.attachment_sha256 === sha) return anySent ? "resume" : "fresh";
   return anySent ? "conflict" : "fresh";
+}
+
+/** Most main-section events a list edition may carry without --confirm-main-count. */
+export const MAIN_SECTION_CAP = 50;
+
+export type MainSectionGateResult =
+  | { ok: true }
+  | { ok: false; reason: "main_section_over_cap" | "confirm_main_count_mismatch"; mainCount: number; cap: number };
+
+/**
+ * The flood guard. With --confirm-main-count the value must equal the count, whatever the cap;
+ * without it, the count must not exceed the cap.
+ */
+export function mainSectionGate(
+  mainCount: number,
+  confirmMainCount: string | undefined,
+  cap: number = MAIN_SECTION_CAP,
+): MainSectionGateResult {
+  if (confirmMainCount !== undefined) {
+    return confirmMainCount === String(mainCount)
+      ? { ok: true }
+      : { ok: false, reason: "confirm_main_count_mismatch", mainCount, cap };
+  }
+  return mainCount <= cap ? { ok: true } : { ok: false, reason: "main_section_over_cap", mainCount, cap };
+}
+
+/** --main-cap: an integer from 0 to MAIN_SECTION_CAP (it can only lower the cap); null when invalid. */
+export function mainCapOption(value: string | undefined): number | null {
+  if (value === undefined) return MAIN_SECTION_CAP;
+  if (!/^\d+$/.test(value)) return null;
+  const n = Number(value);
+  return n <= MAIN_SECTION_CAP ? n : null;
 }

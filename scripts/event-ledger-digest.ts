@@ -41,6 +41,14 @@
  *               same date refuses (exit 4). It refuses (exit 3, cursor unchanged) an empty or
  *               unreadable recipient list, and takes no --out, --cursor or --edition-date: its state
  *               is always in ~/.riskmodels/event-ledger-digest. See lib/event-ledger-digest-schedule.ts.
+ *   Flood guard. Every list send (scheduled, ad hoc, resume) refuses (exit 6, nothing sent, cursor
+ *               unchanged) when the main section (verified events plus corrections and withdrawals)
+ *               holds more than MAIN_SECTION_CAP (50) events, unless --confirm-main-count <N> equals
+ *               that count (a wrong N refuses even under the cap). This keeps a history load, such
+ *               as the Form 25 backfill and its corrections, out of a client edition: confirm the
+ *               count to send it, or park the list cursor at the head with --init-cursor --list
+ *               (sends nothing). --main-cap N lowers the cap for one run (0..50). A dry run reports
+ *               main_over_cap instead of refusing.
  *   Pending list send. Before the first copy goes out, the list cursor file records pending_send
  *               (edition date, seq window); it is cleared when every copy went out. While it is set,
  *               every list send refuses (exit 4), so a partial send is never resent to everyone.
@@ -75,6 +83,8 @@
  * (~/.riskmodels/event-ledger-digest/cursor.json and cursor-list.json), so the internal
  * daily edition never swallows the window of a list edition. --cursor overrides.
  * First run of either: --init-cursor (with --list for the list cursor) starts at the ledger head.
+ * --init-cursor --list also parks the list cursor at the head after a history load, skipping those
+ * events without sending; it holds the send lock and refuses (exit 4) while a list send is pending.
  * The cursor moves only after every send succeeded and only with --advance-cursor.
  *
  * Review sample by knowledge date (does not read or move a cursor):
@@ -122,8 +132,11 @@ import {
 import { loadPublicLatest } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
 import {
+  MAIN_SECTION_CAP,
   acquireSendLock,
   listSendGate,
+  mainCapOption,
+  mainSectionGate,
   pendingSendGate,
   scheduledEditionState,
   type CursorFile,
@@ -346,10 +359,41 @@ async function main() {
   const cursorPath = arg("cursor") ?? join(STATE_DIR, list ? "cursor-list.json" : "cursor.json");
 
   if (flag("init-cursor")) {
+    // The list cursor is moved under the send lock, and never while a list send is pending: that
+    // would drop the record of who still has to receive the pending edition.
+    if (list) {
+      mkdirSync(STATE_DIR, { recursive: true });
+      const lock = acquireSendLock(join(STATE_DIR, "list-send.lock"));
+      if (!lock.ok) {
+        console.error(`refused: ${lock.reason}; ${join(STATE_DIR, "list-send.lock")} is held; cursor unchanged`);
+        process.exit(5);
+      }
+      process.on("exit", lock.release);
+      const pending = readCursorFile(cursorPath)?.pending_send;
+      if (pending) {
+        console.error(
+          `refused: pending_partial_send; the ${pending.edition_date} list edition did not finish. Resume it first ` +
+            "(--list --send --resume-pending --confirm-list-send <N>); cursor unchanged",
+        );
+        process.exit(4);
+      }
+    }
+    const before = readCursor(cursorPath);
     const head = await headSeq();
-    writeCursor(cursorPath, head, { note: "initialised at ledger head; no edition sent" });
-    console.log(`cursor initialised at seq ${head}: ${cursorPath}`);
+    writeCursor(cursorPath, head, {
+      note: "initialised at ledger head; no edition sent",
+      ...(before !== null ? { previous_seq: before } : {}),
+    });
+    console.log(
+      `cursor initialised at seq ${head}${before !== null ? ` (was ${before}; positions ${before + 1}..${head} skipped, nothing sent)` : ""}: ${cursorPath}`,
+    );
     return;
+  }
+
+  const mainCap = mainCapOption(arg("main-cap"));
+  if (mainCap === null) {
+    console.error(`refused: --main-cap takes an integer from 0 to ${MAIN_SECTION_CAP}; it can only lower the cap; nothing sent`);
+    process.exit(2);
   }
 
   const sendFlags: ListSendFlags = {
@@ -473,6 +517,18 @@ async function main() {
   });
   const subject = digestSubject(edition);
 
+  // Flood guard, before the recipient list is read or anything is recorded or sent.
+  const flood = mainSectionGate(edition.mainCount, arg("confirm-main-count"), mainCap);
+  if (listSend && !flood.ok) {
+    console.error(
+      flood.reason === "confirm_main_count_mismatch"
+        ? `refused: confirm_main_count_mismatch; the main section holds ${flood.mainCount} events, not ${arg("confirm-main-count")}; nothing sent; the cursor is unchanged`
+        : `refused: main_section_over_cap; the main section holds ${flood.mainCount} events (cap ${flood.cap}); nothing sent; the cursor is unchanged. ` +
+            `To send it: --confirm-main-count ${flood.mainCount} on an ad-hoc list send. To skip these events: --init-cursor --list parks the list cursor at the ledger head`,
+    );
+    process.exit(6);
+  }
+
   // Recipients and their copies. Every copy is rendered and checked before the first send.
   const listed = list ? await listRecipients() : null;
   if (list && listed === null) {
@@ -538,6 +594,9 @@ async function main() {
     rows_read: rows.length,
     main: edition.mainCount,
     corrections: edition.correctionCount,
+    replaced_by_later_event: edition.replaced,
+    main_cap: mainCap,
+    main_over_cap: !flood.ok,
     older_not_listed: edition.older,
     scheduled: sendFlags.scheduled,
     audience,

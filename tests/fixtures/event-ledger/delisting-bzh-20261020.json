@@ -1,0 +1,93 @@
+{
+  "note": "One Form 25 delisting envelope (Beazer Homes, accession 0000876661-26-000851) from edgar_delisting 1.2.0. Payload and entity are as the adapter's second review round (ERM3 702d3688) mints them for the CIK-only daily job; the other envelope fields are from run ledger-20261120T223236Z. seq is assigned by this fixture, not the live ledger position.",
+  "rows": [
+    {
+      "seq": 5200,
+      "envelope": {
+        "affected": {},
+        "confidence": 0.95,
+        "correction_reason": null,
+        "corroborates_event_id": null,
+        "dedupe_key": "7cff724e27a026114d3ed1dbd899e61b92157466d4259a4eaf7026f0a041111a",
+        "effective_at": "2026-11-02T00:00:00+00:00",
+        "effective_basis": "form25_stated_effective_date",
+        "entity": {
+          "bw_sym_id": null,
+          "cik": "0000915840",
+          "entity_name": null,
+          "figi": null,
+          "mapping_confidence": null,
+          "match_tier": null,
+          "quarantined": false,
+          "ticker": null
+        },
+        "event_id": "7d77612c-5106-58d7-9aca-dba5ed92cbdd",
+        "event_type": "delisting",
+        "first_observed_at": "2026-10-21T05:22:36.259555+00:00",
+        "first_observed_basis": "edgar_first_seen_at",
+        "ingested_at": "2026-11-20T22:32:38.959614+00:00",
+        "knowledge_at": "2026-10-20T19:05:47+00:00",
+        "knowledge_basis": "sec_acceptance_datetime",
+        "license": {
+          "basis": "sec_public_record",
+          "classification": "public_record",
+          "redistributable": true
+        },
+        "lifecycle_status": "verified",
+        "payload": {
+          "confidence": 0.95,
+          "entity_mapping": "unmapped_cik",
+          "file_number": "001-12822",
+          "issuer_name": "BEAZER HOMES USA INC",
+          "rule_12d2_2_effective_estimate": "2026-10-30",
+          "rule_provision": "17 CFR 240.12d2-2(a)(3)",
+          "security_description": "Common Stock",
+          "signature_date": "2026-10-20",
+          "source_form": "25-NSE",
+          "source_item": null,
+          "stated_effective_date": "2026-11-02",
+          "stated_effective_date_rejected": null,
+          "trading_stopped_basis": "8k_item_2_01_completion_date",
+          "trading_stopped_date": "2026-10-20",
+          "trading_stopped_knowledge_at": "2026-10-20T16:54:22+00:00",
+          "trading_stopped_source_accession": "0001104659-26-117198",
+          "trading_stopped_source_event_date": "2026-10-20",
+          "trading_stopped_source_form": "8-K",
+          "trading_stopped_source_items": [
+            "1.02",
+            "2.01",
+            "3.01",
+            "3.03",
+            "5.01",
+            "5.02",
+            "5.03",
+            "9.01"
+          ]
+        },
+        "programs": [
+          "changefeed"
+        ],
+        "provenance": {
+          "adapter": "edgar_delisting",
+          "adapter_version": "1.2.0",
+          "contributor": null,
+          "run_id": "ledger-20261120T223236Z"
+        },
+        "risk_layers": [],
+        "schema_version": "1.0.0",
+        "source": {
+          "accession_number": "0000876661-26-000851",
+          "evidence_ref": "0000876661-26-000851",
+          "evidence_sha256": null,
+          "source_id": "0000876661-26-000851",
+          "source_system": "edgar_corporate_actions",
+          "url": "https://www.sec.gov/Archives/edgar/data/915840/000087666126000851/xslF25X02/primary_doc.xml"
+        },
+        "source_published_at": null,
+        "source_role": "primary",
+        "supersedes_event_id": null,
+        "validation_state": null
+      }
+    }
+  ]
+}
