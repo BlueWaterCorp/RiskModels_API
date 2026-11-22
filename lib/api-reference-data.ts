@@ -689,13 +689,24 @@ export const ENDPOINT_GROUPS: EndpointGroup[] = [
         path: '/auth/provision',
         method: 'post',
         summary: 'Provision API Key',
-        description: 'Create a new API key for the authenticated user.',
+        description:
+          'Unauthenticated agent self-signup. One POST with agent_name, agent_id and contact_email returns a working key. The key runs at free-tier limits (100 requests/day, 10/minute) until the owner of contact_email confirms from an emailed link. Never returns a key for an existing account. 3 accounts per IP per 24h, shared with /auth/provision-free.',
         operationId: 'provisionApiKey',
         tag: 'Authentication',
         params: [],
+        requestBody: {
+          contentType: 'application/json',
+          example: JSON.stringify(
+            { agent_name: 'my-research-bot', agent_id: 'my-research-bot-1', contact_email: 'you@example.com' },
+            null,
+            2,
+          ),
+        },
         responses: [
-          { status: 200, description: 'API key created.' },
-          { status: 401, description: 'Authentication required.' },
+          { status: 201, description: 'Account created; credentials.api_key shown once.' },
+          { status: 400, description: 'Missing or invalid agent_name, agent_id or contact_email.' },
+          { status: 409, description: 'agent_id already registered.' },
+          { status: 429, description: 'Provisioning rate limit exceeded.' },
         ],
       },
     ],

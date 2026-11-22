@@ -28,6 +28,8 @@ export async function POST(request: NextRequest) {
   const landing_path =
     typeof body.landing_path === "string" ? body.landing_path : null;
 
+  const referrer = typeof body.referrer === "string" ? body.referrer : null;
+
   if (!gclid && !utm && !landing_path) {
     return NextResponse.json({ ok: true, persisted: false });
   }
@@ -40,7 +42,7 @@ export async function POST(request: NextRequest) {
     admin,
     user.id,
     user.email ?? null,
-    { gclid, utm, landing_path },
+    { gclid, utm, landing_path, referrer },
     { createIfMissing },
   );
   return NextResponse.json({ ok: true, persisted: true });

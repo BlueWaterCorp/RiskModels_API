@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-31`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-32`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -177,3 +177,7 @@ Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 o
 ## RMAPI-30 · Fund look-through for individual accounts (from RMWEB-25)
 
 **Impact:** IMPROVEMENT · Individual accounts are mostly mutual funds, which the workspace cannot model today. Design notes are held privately; ask Conrad. **Needs:** engineering.
+
+## RMAPI-31 · Free-tier keys still receive the $20 starter balance on their first billed call (2026-11-21)
+
+**Impact:** IMPROVEMENT · `withBilling` calls `ensureStarterCredits` for every caller (`lib/agent/billing-middleware.ts`, step 3.5), so an anonymous `provision-free` account, and an unverified `provision` account, gets a $20 balance on its first billed request. The free tier's 100 requests/day cap is the only bound; the balance is not held until the contact email is confirmed. Holding it back today would return 402 to every free-tier key, because the deduct step needs a balance on the free tier too. **Needs:** DECISION: either free-tier requests stop deducting (the daily cap is the limit) and the starter credit is granted only on verification, or the current behaviour is accepted. Related: RMAPI-11 (free-tier posture).

@@ -14,8 +14,15 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { syntheticAgentEmail } from "@/lib/agent/provision-claim";
+import {
+  checkProvisionRateLimit,
+  provisionClientIp,
+  provisionRateLimitBody,
+  recentProvisionsFromIp,
+} from "@/lib/agent/provision-rate-limit";
+import { SIGNUP_SITE } from "@/lib/auth/signup-site";
 import { generateApiKey } from "@/lib/agent/api-keys";
 import {
   findActiveAffiliateByCode,
@@ -32,15 +39,9 @@ const FREE_TIER_LIMITS = {
 };
 
 // Anti-abuse: this endpoint is unauthenticated and creates a real auth user +
-// free key per request. Cap provisions per source IP per rolling 24h so it
-// can't be spammed into unlimited free accounts.
-const MAX_FREE_KEYS_PER_IP_PER_DAY = 3;
-
-function clientIp(request: NextRequest): string {
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim();
-  return request.headers.get("x-real-ip") || "unknown";
-}
+// free key per request. The per-IP daily cap is shared with /api/auth/provision
+// and fails closed (lib/agent/provision-rate-limit.ts): an unknown client IP or
+// an unavailable limiter backend gets a small shared allowance, not a pass.
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -71,33 +72,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createAdminClient();
-    const ip = clientIp(request);
+    const ip = provisionClientIp(request.headers);
+    const rl = await checkProvisionRateLimit(ip);
+    if (!rl.ok) {
+      return NextResponse.json(provisionRateLimitBody(rl, Date.now() - startTime), {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfterSec) },
+      });
+    }
 
-    // --- Anti-abuse: per-IP daily cap (best-effort; skipped if IP unknown) ---
-    if (ip !== "unknown") {
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { count } = await supabase
-        .from("agent_accounts")
-        .select("id", { count: "exact", head: true })
-        .eq("signup_attribution->>provisioned_via", "provision-free")
-        .eq("signup_attribution->>ip", ip)
-        .gte("created_at", since);
-      if ((count ?? 0) >= MAX_FREE_KEYS_PER_IP_PER_DAY) { // allow-default: counter - unavailable provisioning count means no prior keys
-        return NextResponse.json(
-          {
-            error: "Rate limit exceeded",
-            message:
-              "Too many free keys from this IP in the last 24h. Create a free $20-credit key at https://riskmodels.app/get-key instead.",
-            _agent: { latency_ms: Date.now() - startTime },
-          },
-          { status: 429 },
-        );
-      }
+    const supabase = createAdminClient();
+
+    // Durable second layer (works without Redis). A failed count refuses.
+    const ipCap = await recentProvisionsFromIp(supabase, ip);
+    if (ipCap === "unavailable") {
+      return NextResponse.json(
+        {
+          error: "Provisioning temporarily unavailable",
+          message: "Could not check the provisioning limit. Retry shortly.",
+          _agent: { action: "retry", retry_after_seconds: 60, latency_ms: Date.now() - startTime },
+        },
+        { status: 503, headers: { "Retry-After": "60" } },
+      );
+    }
+    if (ipCap === "capped") {
+      return NextResponse.json(
+        provisionRateLimitBody({ ...rl, ok: false, mode: "per_ip", retryAfterSec: 3600 }, Date.now() - startTime),
+        { status: 429, headers: { "Retry-After": "3600" } },
+      );
     }
 
     // --- Create a real anonymous auth user (FK target for the account/key) ---
-    const syntheticEmail = `agent-free+${randomUUID()}@noreply.riskmodels.app`;
+    const syntheticEmail = syntheticAgentEmail("agent-free");
     const { data: createdUser, error: userError } =
       await supabase.auth.admin.createUser({
         email: syntheticEmail,
@@ -107,6 +113,7 @@ export async function POST(request: NextRequest) {
           agent_name,
           provisioned_via: "provision-free",
         },
+        app_metadata: { signup_site: SIGNUP_SITE },
       });
     if (userError || !createdUser?.user) {
       console.error("[Provision-Free] Auth user creation error:", userError);

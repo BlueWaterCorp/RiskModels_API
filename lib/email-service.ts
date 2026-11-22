@@ -18,6 +18,7 @@ import { SnapshotDigestEmail } from "@/emails/snapshot-digest";
 import type { SnapshotDigestEmailProps } from "@/emails/snapshot-digest";
 import { PrepaidReceiptEmail } from "@/emails/prepaid-receipt";
 import type { PrepaidReceiptEmailProps } from "@/emails/prepaid-receipt";
+import { AccountClaimEmail, type AccountClaimEmailProps } from "@/emails/account-claim";
 import { DEFAULT_RESEND_FROM } from "@/emails/constants";
 
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -46,7 +47,8 @@ export type EmailTemplate =
   | "key-expiring"
   | "key-issued"
   | "snapshot-digest"
-  | "prepaid-receipt";
+  | "prepaid-receipt"
+  | "account-claim";
 
 interface EmailData {
   welcome: {
@@ -123,6 +125,7 @@ interface EmailData {
   "key-issued": KeyIssuedEmailProps;
   "snapshot-digest": SnapshotDigestEmailProps;
   "prepaid-receipt": PrepaidReceiptEmailProps;
+  "account-claim": AccountClaimEmailProps;
 }
 
 /** Default outbound From when `RESEND_FROM_EMAIL` is unset (re-export for callers). */
@@ -207,6 +210,11 @@ export async function sendEmail<T extends EmailTemplate>({
       case "prepaid-receipt":
         emailHtml = await render(
           PrepaidReceiptEmail(data as EmailData["prepaid-receipt"]),
+        );
+        break;
+      case "account-claim":
+        emailHtml = await render(
+          AccountClaimEmail(data as EmailData["account-claim"]),
         );
         break;
       default: {

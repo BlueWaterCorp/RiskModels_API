@@ -21,7 +21,8 @@ This file is reference documentation: endpoints, access, pricing, terms and fiel
 
 | Use | How | Key |
 |---|---|---|
-| Try it without an account | Public sample key below (Magnificent 7 only, derived analytics only), or \`POST /api/auth/provision-free\` | Sample or free key |
+| Try it without an account | Public sample key below (Magnificent 7 only, derived analytics only), or \`POST /api/auth/provision-free\` (100 requests/day; 3 accounts per IP per 24h) | Sample or free key |
+| An agent that signs itself up | \`POST /api/auth/provision\` with JSON \`agent_name\`, \`agent_id\`, \`contact_email\`. Key in the response. Free-tier limits until the owner of \`contact_email\` confirms from an emailed link | Free key, upgradable |
 | Full universe, personal | Free key at https://riskmodels.app/get-key (browser, no terminal) | Personal key |
 | An AI assistant used by one person | Hosted MCP with OAuth sign-in (table below) | Sign-in per person |
 | A platform serving its own users | REST from the platform's servers with one organization key, cached per security per trading day: https://riskmodels.app/docs/platform-integration | Organization key |

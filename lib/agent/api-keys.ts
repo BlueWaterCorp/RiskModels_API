@@ -7,6 +7,11 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import crypto from "crypto";
+import {
+  apiKeyChecksumSecret,
+  apiKeyHashSalt,
+  KeySecretConfigError,
+} from "./key-secrets";
 
 // Lazy initialization to avoid build-time errors
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -121,9 +126,7 @@ export function generateApiKey(
   // and editors, so the issued key should contain only [A-Za-z0-9x].
   let checksum = crypto
     .createHash("sha256")
-    .update(
-      keyWithoutChecksum + (process.env.API_KEY_SECRET || "default-secret"),
-    )
+    .update(keyWithoutChecksum + apiKeyChecksumSecret())
     .digest("base64url")
     .substring(0, 8)
     .replace(/[_-]/g, "");
@@ -151,8 +154,7 @@ export function generateApiKey(
  * For production, consider using bcrypt or Argon2.
  */
 export function hashApiKey(plainKey: string): string {
-  const salt =
-    process.env.API_KEY_SALT || process.env.API_KEY_SECRET || "default-salt";
+  const salt = apiKeyHashSalt();
 
   return crypto
     .createHash("sha256")
@@ -185,8 +187,7 @@ export function isValidApiKeyFormat(key: string): boolean {
   const keyWithoutChecksum = key.slice(0, lastUnderscore);
   const checksum = key.slice(lastUnderscore + 1);
 
-  const hashInput =
-    keyWithoutChecksum + (process.env.API_KEY_SECRET || "default-secret");
+  const hashInput = keyWithoutChecksum + apiKeyChecksumSecret();
 
   const rawBase64url = crypto
     .createHash("sha256")
@@ -227,6 +228,23 @@ export function isValidApiKeyFormat(key: string): boolean {
  * and user-generated keys (rm_user_* → user_generated_api_keys).
  */
 export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
+  try {
+    return await validateApiKeyUnchecked(plainKey);
+  } catch (e) {
+    // Missing key secrets in production: a server fault, not a bad key.
+    if (e instanceof KeySecretConfigError) {
+      console.error("[API Keys]", e.message);
+      return {
+        valid: false,
+        serverError: true,
+        error: "SERVER_CONFIG_ERROR: API key secrets are not configured.",
+      };
+    }
+    throw e;
+  }
+}
+
+async function validateApiKeyUnchecked(plainKey: string): Promise<ValidatedKey> {
   const isUserKey = plainKey.startsWith("rm_user_");
 
   if (isUserKey) {

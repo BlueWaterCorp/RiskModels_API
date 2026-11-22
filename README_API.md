@@ -177,7 +177,7 @@ All data endpoints require:
 Authorization: Bearer rm_agent_live_<random>_<checksum>
 ```
 
-Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → API Keys, or provision programmatically via `POST /api/auth/provision`. See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) for full details including the AI agent provisioning flow.
+Get your key at [riskmodels.net/settings](https://riskmodels.net/settings) → API Keys, or provision programmatically via `POST /api/auth/provision` (JSON body `agent_name`, `agent_id`, `contact_email`; free-tier limits until the contact email is confirmed). See [AUTHENTICATION_GUIDE.md](AUTHENTICATION_GUIDE.md) for full details including the AI agent provisioning flow.
 
 ---
 

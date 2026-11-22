@@ -49,6 +49,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 import { isUpstashRedisConfigured } from "@/lib/upstash-redis-config";
 import { checkFreeTierLimit, incrementFreeTierUsage } from "./free-tier";
+import { PROVISION_AUTH_HINT } from "./provision-hints";
 import { checkMemoryRateLimit } from "@/lib/ratelimit/memory-fallback";
 import { rateLimitKeyId } from "./rate-limiter";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -677,7 +678,7 @@ export function withBilling(
               message: "Valid API key or authentication required",
               _agent: hadBearer
                 ? { action: "check_key", help_url: "https://riskmodels.app/get-key" }
-                : { action: "authenticate", authenticate_url: "/api/auth/provision" },
+                : PROVISION_AUTH_HINT,
             },
             { status: 401 },
           );
@@ -1400,7 +1401,7 @@ export async function createBillingContext(
             error: "Unauthorized",
             _agent: hadBearer
               ? { action: "check_key", help_url: "https://riskmodels.app/get-key" }
-              : { action: "authenticate", authenticate_url: "/api/auth/provision" },
+              : PROVISION_AUTH_HINT,
           },
           { status: 401 },
         ),

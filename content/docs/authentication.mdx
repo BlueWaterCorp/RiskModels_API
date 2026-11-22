@@ -34,23 +34,29 @@ Keys from [Get your API key](/get-key) look like **`rm_agent_live_…`**. That i
 
 **Option A — Dashboard:**
 1. [Get your API key](/get-key) (sign up if you haven't already)
-2. Generate a new key and copy the token
+2. Your first key is created when you sign in and shown once; copy it then. Generate more keys on the same page
 3. Store securely in your environment variables
 
 **Option B — API provisioning endpoint (for AI agents):**
 ```bash
 curl -X POST https://riskmodels.app/api/auth/provision \
-  -H "Authorization: Bearer <session-jwt>" \
-  -H "Content-Type: application/json"
+  -H "Content-Type: application/json" \
+  -d '{"agent_name": "my-research-bot", "agent_id": "my-research-bot-1", "contact_email": "you@example.com"}'
 ```
+No session or browser is needed. The `201` response carries `credentials.api_key` once.
+`contact_email` is unverified until its owner confirms from the emailed link. Until then the
+key runs at the free-tier limits (100 requests/day, 10/minute); after, 60 requests/minute with
+no daily cap and the one-time $20 starter credit. The call never returns a key for an existing
+account and does not create a web login. Limit: 3 accounts per IP per 24 hours, shared with
+`POST /api/auth/provision-free` (no email, same free-tier limits).
 
 ### Plaid and Account Identity
 
 If you plan to use `GET /api/plaid/holdings`, the Plaid connection and the API key must belong to the **same user account**.
 
-- For dashboard signup and `POST /api/auth/provision`, that account is identified by **email**
+- For dashboard signup, that account is identified by **email**
 - Sign in at riskmodels.net with that same email to connect Plaid in the web app
-- `POST /api/auth/provision-free` creates an anonymous API account with no web login, so Plaid holdings are not available for that account
+- `POST /api/auth/provision` and `POST /api/auth/provision-free` create API accounts with no web login (confirming the `contact_email` of a provisioned account does not add one), so Plaid holdings are not available for those accounts
 
 ### Billing
 
@@ -196,7 +202,7 @@ Recommended pattern for LLM agents integrating with the RiskModels API:
    ```
    POST /api/auth/provision
    ```
-   Exchange a session JWT for a long-lived Bearer API key.
+   Send `agent_name`, `agent_id` and `contact_email`; the response carries a Bearer API key (free-tier limits until the contact email is confirmed).
 
 3. **Check balance before starting a workflow**
    ```

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { captureGclid, getStoredGclid } from '@/lib/google-ads-conversion';
-import { captureUTMFromURL, getUTMData } from '@/lib/utm';
+import { captureFirstTouch, captureUTMFromURL, getFirstTouch, getUTMData } from '@/lib/utm';
 import { trackEvent } from '@/lib/posthog-client';
 
 declare global {
@@ -29,6 +29,7 @@ const ATTRIBUTION_SENT_KEY = 'rm_attribution_posted';
 export function UTMTracker() {
   useEffect(() => {
     const search = window.location.search;
+    captureFirstTouch(search);
     captureUTMFromURL(search);
     captureGclid(search);
     const utm = getUTMData();
@@ -49,6 +50,10 @@ export function UTMTracker() {
         ...(utm.utm_content != null && { utm_content: utm.utm_content }),
       });
     }
+    // /get-key creates the account and writes attribution in one server call
+    // (POST /api/get-key/bootstrap); a second writer here would race it.
+    if (window.location.pathname === '/get-key') return;
+    const firstTouch = getFirstTouch();
     try {
       if (sessionStorage.getItem(ATTRIBUTION_SENT_KEY) === '1') return;
     } catch {
@@ -61,7 +66,8 @@ export function UTMTracker() {
       body: JSON.stringify({
         gclid,
         utm,
-        landing_path: window.location.pathname,
+        landing_path: firstTouch?.landing_path ?? utm?.landing_path ?? window.location.pathname,
+        referrer: firstTouch?.referrer ?? null,
       }),
     })
       .then((res) => {

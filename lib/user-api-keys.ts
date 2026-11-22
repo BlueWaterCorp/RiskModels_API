@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { apiKeyChecksumSecret, apiKeyHashSalt } from '@/lib/agent/key-secrets';
 
 export interface UserApiKeyResult {
   plainKey: string;
@@ -20,7 +21,7 @@ export function generateUserApiKey(environment: 'live' | 'test' = 'live'): UserA
   const checksum = toAlphanumeric(
     crypto
       .createHash('sha256')
-      .update(keyWithoutChecksum + (process.env.API_KEY_SECRET || 'default-secret'))
+      .update(keyWithoutChecksum + apiKeyChecksumSecret())
       .digest('base64url')
       .substring(0, 8)
   );
@@ -36,6 +37,6 @@ export function generateUserApiKey(environment: 'live' | 'test' = 'live'): UserA
 }
 
 export function hashApiKey(plainKey: string): string {
-  const salt = process.env.API_KEY_SALT || process.env.API_KEY_SECRET || 'default-salt';
+  const salt = apiKeyHashSalt();
   return crypto.createHash('sha256').update(plainKey + salt).digest('hex');
 }

@@ -6,12 +6,11 @@
  *  - $20 free, granted at most once per account.
  *  - For Payment-mode sessions, the prepaid amount on top, credited at most
  *    once per PaymentIntent (idempotent on page refresh / handler re-run).
- * Also generates a user API key (rm_user_*) on first activation.
+ * Does not create an API key: /get-key issues the first key on load and shows it once.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { generateUserApiKey } from '@/lib/user-api-keys';
 import { getAppUrl } from '@/lib/app-url';
 import { stampAttributionEvent } from '@/lib/agent/signup-attribution';
 import { chargeFactsForPaymentIntent, resolveAccountName, sendPrepaidReceipt } from '@/lib/agent/prepaid-receipt';
@@ -280,44 +279,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // ── Ensure the user has a key ──────────────────────────────────────────────────
-    const { data: existingUserKey, error: keySelectErr } = await admin
-      .from('user_generated_api_keys')
-      .select('id')
-      .eq('user_id', userId)
-      .is('revoked_at', null)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (keySelectErr) {
-      console.error('[setup-success] user_generated_api_keys select error:', keySelectErr);
-    }
-
-    if (!existingUserKey) {
-      const keyMaterial = generateUserApiKey('live');
-      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-
-      const { error: keyErr } = await admin.from('user_generated_api_keys').insert({
-        user_id: userId,
-        key_hash: keyMaterial.hashedKey,
-        key_prefix: keyMaterial.prefix,
-        name: 'API Key (Card Verified)',
-        scopes: ['read'],
-        rate_limit_per_minute: 60,
-        expires_at: expiresAt,
-      });
-
-      if (keyErr) {
-        console.error('[setup-success] user_generated_api_keys insert error:', keyErr);
-        return NextResponse.redirect(`${appUrl}/get-key?stripe=key_error`);
-      }
-
-      return NextResponse.redirect(
-        `${appUrl}/get-key?stripe=success&free=${grantFree ? '1' : '0'}&kp=${encodeURIComponent(keyMaterial.prefix)}`,
-      );
-    }
-
+    // No key is minted here. This route used to insert an `rm_user_*` key and
+    // drop the plaintext, so nobody could ever use it while the banner on
+    // /get-key said "Your API key is active below". /get-key now issues the
+    // first key itself on load (POST /api/get-key/bootstrap) and shows it once.
     return NextResponse.redirect(`${appUrl}/get-key?stripe=success&free=${grantFree ? '1' : '0'}`);
   } catch (err) {
     console.error('[setup-success]', err);

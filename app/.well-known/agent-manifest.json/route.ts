@@ -115,6 +115,10 @@ export async function GET() {
     onboarding: {
       auth: "Bearer token (rm_agent_* / rm_user_*)",
       provision_free_url: `${base}/api/auth/provision-free`,
+      // POST {agent_name, agent_id, contact_email}: key in one call; free-tier limits
+      // until the contact address is confirmed from an emailed link.
+      provision_url: `${base}/api/auth/provision`,
+      provision_rate_limit: "3 accounts per IP per 24h across both provisioning routes",
       create_key_url: `${base}/api/agent-keys`,
       first_call_mcp: FIRST_LIVE_PROMPT_MCP,
       first_call_rest: FIRST_LIVE_PROMPT_REST,

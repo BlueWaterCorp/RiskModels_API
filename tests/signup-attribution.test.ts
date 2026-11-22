@@ -57,6 +57,61 @@ describe("firstTouchPatch", () => {
   });
 });
 
+describe("firstTouchPatch keeps the first touch", () => {
+  const utm = (over: Record<string, unknown> = {}) => ({
+    utm_source: "google",
+    utm_medium: "cpc",
+    utm_campaign: "launch",
+    utm_content: null,
+    timestamp: "2026-11-01T10:00:00.000Z",
+    referrer: "https://www.google.com/",
+    landing_path: "/pricing",
+    ...over,
+  });
+
+  it("records the real landing path, not the page that posted it", () => {
+    const next = firstTouchPatch({}, { utm: utm(), landing_path: "/pricing" });
+    expect(next.landing_path).toBe("/pricing");
+    expect(next.referrer).toBe("https://www.google.com/");
+  });
+
+  it("a later write cannot replace landing path, referrer or any utm field", () => {
+    const first = firstTouchPatch({}, { utm: utm(), landing_path: "/pricing" });
+    const later = firstTouchPatch(first, {
+      utm: utm({ utm_source: "newsletter", utm_medium: "email", utm_campaign: "later", referrer: "https://mail.example.com/", landing_path: "/get-key" }),
+      landing_path: "/get-key",
+      referrer: "https://mail.example.com/",
+    });
+    expect(later).toMatchObject({
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "launch",
+      landing_path: "/pricing",
+      referrer: "https://www.google.com/",
+      channel: "ads",
+    });
+  });
+
+  it("does not splice a later campaign into vacant utm fields of the first touch", () => {
+    const first = firstTouchPatch({}, { utm: utm({ utm_medium: null, utm_campaign: null }) });
+    const later = firstTouchPatch(first, { utm: utm({ utm_source: "other", utm_campaign: "later", utm_content: "ad2" }) });
+    expect(later.utm_source).toBe("google");
+    expect(later.utm_campaign).toBeUndefined();
+    expect(later.utm_content).toBeUndefined();
+  });
+
+  it("drops a landing path or referrer that is not a path / http(s) URL", () => {
+    const next = firstTouchPatch({}, { landing_path: "https://evil.com/", referrer: "javascript:alert(1)" });
+    expect(next.landing_path).toBeUndefined();
+    expect(next.referrer).toBeUndefined();
+  });
+
+  it("takes a referrer with no utm at all (organic landing)", () => {
+    const next = firstTouchPatch({}, { landing_path: "/docs", referrer: "https://news.ycombinator.com/" });
+    expect(next).toMatchObject({ landing_path: "/docs", referrer: "https://news.ycombinator.com/", channel: "organic" });
+  });
+});
+
 /** Minimal agent_accounts stand-in: one row, select-chain + update-chain. */
 function fakeAdmin(row: { id: string; created_at: string; signup_attribution: Record<string, unknown> }) {
   const state = { row, updated: null as Record<string, unknown> | null };

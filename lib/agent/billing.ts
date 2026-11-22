@@ -343,7 +343,17 @@ export async function addBalance(
  * This only applies when the user has no agent account yet. We intentionally
  * avoid re-crediting existing accounts here.
  */
-export async function ensureStarterCredits(userId: string): Promise<void> {
+export async function ensureStarterCredits(
+  userId: string,
+  opts?: {
+    /**
+     * First-touch attribution to write in the same insert that creates the
+     * account, so the row never exists without it. Ignored when the account
+     * already exists.
+     */
+    signupAttribution?: Record<string, unknown>;
+  },
+): Promise<"created" | "topped_up" | "unchanged"> {
   const client = getSupabase();
 
   const { data: account } = await client
@@ -355,7 +365,7 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
   // Existing account: only top up once for first-time users who ended up with 0 balance.
   if (account) {
     const currentBalance = parseFloat(account.balance_usd ?? 0);
-    if (currentBalance > 0) return;
+    if (currentBalance > 0) return "unchanged";
 
     const { data: priorStarterEvent } = await client
       .from("billing_events")
@@ -366,7 +376,7 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
       .maybeSingle();
 
     // Already granted starter credit once; avoid repeated grants.
-    if (priorStarterEvent) return;
+    if (priorStarterEvent) return "unchanged";
 
     const toppedUpBalance = STARTER_CREDIT_USD;
     const { error: updateError } = await client
@@ -402,7 +412,7 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
     console.log(
       `[Billing] Granted one-time starter top-up ($${STARTER_CREDIT_USD}) to existing user ${userId}`,
     );
-    return;
+    return "topped_up";
   }
 
   const { data: profile } = await client
@@ -422,6 +432,9 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
     contact_email: contactEmail,
     balance_usd: STARTER_CREDIT_USD,
     status: "active",
+    ...(opts?.signupAttribution && Object.keys(opts.signupAttribution).length > 0
+      ? { signup_attribution: opts.signupAttribution }
+      : {}),
   });
 
   if (createError) {
@@ -449,6 +462,7 @@ export async function ensureStarterCredits(userId: string): Promise<void> {
   console.log(
     `[Billing] Provisioned starter credit ($${STARTER_CREDIT_USD}) for first-time user ${userId}`,
   );
+  return "created";
 }
 
 /**
