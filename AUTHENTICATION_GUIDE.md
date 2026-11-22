@@ -28,15 +28,21 @@ Authorization: Bearer rm_agent_live_<random>_<checksum>
 **Option B — API provisioning endpoint (for AI agents):**
 ```bash
 curl -X POST https://riskmodels.app/api/auth/provision \
-  -H "Authorization: Bearer <session-jwt>" \
-  -H "Content-Type: application/json"
+  -H "Content-Type: application/json" \
+  -d '{"agent_name": "my-research-bot", "agent_id": "my-research-bot-1", "contact_email": "you@example.com"}'
 ```
-Response:
+No session or browser is needed. The `201` response carries `credentials.api_key` once.
+`contact_email` is unverified until its owner confirms from the emailed link. Until then the
+key runs at the free-tier limits (100 requests/day, 10/minute); after, 60 requests/minute with
+no daily cap and the one-time $20 starter credit. The call never returns a key for an existing
+account and does not create a web login. Limit: 3 accounts per IP per 24 hours, shared with
+`POST /api/auth/provision-free` (no email, same free-tier limits).
+Response (abridged):
 ```json
 {
-  "api_key": "rm_agent_live_a1b2c3d4_xyz789",
-  "environment": "live",
-  "created_at": "2026-02-21T10:30:00Z"
+  "account": { "status": "active", "tier": "free", "contact_email_status": "unverified" },
+  "credentials": { "api_key": "rm_agent_live_a1b2c3d4_xyz789", "prefix": "rm_agent_live_a1" },
+  "claim": { "email": "sent", "expires_at": "2026-12-01T10:30:00Z" }
 }
 ```
 
@@ -350,7 +356,7 @@ Recommended pattern for LLM agents integrating with the RiskModels API:
    ```
    POST /api/auth/provision
    ```
-   Exchange a session JWT for a long-lived Bearer API key.
+   Send `agent_name`, `agent_id` and `contact_email`; the response carries a Bearer API key (free-tier limits until the contact email is confirmed).
 
 3. **Check balance before starting a workflow**
    ```

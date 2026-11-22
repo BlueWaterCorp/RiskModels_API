@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-21 — Sign-in, first key and agent provisioning
+
+- `/get-key` issues the first API key on the first signed-in load and shows it once with a `curl` example; no Generate click. One call, `POST /api/get-key/bootstrap`, creates the account with the $20 starter credit, writes first-touch attribution and issues the key. A reload or a second tab does not create a second key. `GET /api/account` no longer creates the account.
+- `POST /api/auth/provision` no longer creates a pre-confirmed auth user under the caller's `contact_email`. The account is created under an internal address; `contact_email` is an unverified contact that is emailed a confirmation link (`/api/auth/provision/claim`). The key works at once at free-tier limits (100 requests/day, 10/minute); confirming moves the account to 60 requests/minute with no daily cap. Response shape changed: `account.status` is `active` (was `pending_payment`), with new `account.tier`, `account.contact_email_status`, `account.limits` and `claim`. `agent_id` must now match `[A-Za-z0-9._:-]{3,100}`.
+- `POST /api/auth/provision` and `POST /api/auth/provision-free` share one limit of 3 accounts per IP per 24 hours. With an unknown client IP or an unavailable rate limiter a smaller shared limit applies; before, such requests were not limited. New `429` and `503` responses carry `Retry-After`.
+- 401 responses without credentials now describe `POST /api/auth/provision` in `_agent` (method, body fields, limits) instead of only naming the URL. OpenAPI, the authentication guide and the Plaid guide described `/auth/provision` as a session-JWT exchange that creates an email login; they now describe what it does.
+- Sign-in failures are shown on `/get-key` with the reason and a retry. `next` parameters are accepted only as same-origin paths.
+- The card checkout no longer creates an `rm_user_*` key whose value was never shown.
+- Key checksum and hash secrets are read in one place (`lib/agent/key-secrets.ts`). Values and behaviour are unchanged; production logs one error per process while the built-in defaults are in use.
+- Optional Cloudflare Turnstile on sign-in forms, off unless `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set.
+
 ## 2026-11-08 — Hedge basket: sector and subsector `beta_to_spy` from the cohort store (RMAPI-30)
 
 - `GET /hedge-basket/{ticker}` reported the sector ETF leg's `beta_to_spy` as 0 and left it out of `net_market_beta_after_hedge`. The route read a retired link-beta store that is no longer published. It now reads the sector and subsector link betas from the cohort store (`ds_erm3_cohorts`).

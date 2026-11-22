@@ -44,10 +44,29 @@ export async function middleware(request: NextRequest) {
 
   // Supabase magic link falls back to site root when /auth/callback isn't in the allowlist.
   // Redirect /?code= to /get-key so the client component can exchange it (PKCE verifier is browser-side).
+  // Every other query parameter is kept (gclid, utm_*, ref, lp): dropping them
+  // here lost the attribution of exactly the sign-ups that took this path.
   const code = request.nextUrl.searchParams.get('code');
   if (code && request.nextUrl.pathname === '/') {
     const dest = new URL('/get-key', request.url);
-    dest.searchParams.set('code', code);
+    request.nextUrl.searchParams.forEach((value, key) => {
+      if (key !== 'next') dest.searchParams.append(key, value);
+    });
+    return NextResponse.redirect(dest);
+  }
+  // Same fallback for a failed link: Supabase reports it as ?error=…&error_code=…
+  // on the site root, which would otherwise render the home page with no message.
+  if (
+    request.nextUrl.pathname === '/' &&
+    request.nextUrl.searchParams.has('error_code') &&
+    request.nextUrl.searchParams.has('error')
+  ) {
+    const dest = new URL('/get-key', request.url);
+    dest.searchParams.set('error', 'auth');
+    dest.searchParams.set(
+      'reason',
+      request.nextUrl.searchParams.get('error_code') === 'otp_expired' ? 'expired' : 'failed',
+    );
     return NextResponse.redirect(dest);
   }
 

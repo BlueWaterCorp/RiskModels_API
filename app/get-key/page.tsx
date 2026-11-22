@@ -7,16 +7,35 @@ import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Plus, Pencil, Bot } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
-import { captureUTMFromURL, clearUTMData, getUTMData } from '@/lib/utm';
+import { LANDING_PATH_PARAM, captureFirstTouch, captureUTMFromURL, clearUTMData, getFirstTouch, getUTMData } from '@/lib/utm';
 import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
 import { gtmAnalytics } from '@/lib/posthog-client';
 import { WORKFLOWS, AGENT_CLIENTS, WORKFLOW_LABELS, parseWorkflow, parseAgentClient, type SetupWorkflow, type AgentClient } from '@/emails/engagement-content';
 import { FIRST_LIVE_PROMPT_MCP } from '@/lib/mcp/activation';
 import { isAuthorizeReturn } from '@/lib/oauth/authorize-return';
+import { sanitizeRedirectPath } from '@/lib/auth/safe-redirect';
+import { captchaEnabled, captchaOption } from '@/lib/auth/captcha';
+import { SIGNUP_SITE } from '@/lib/auth/signup-site';
+import { TurnstileWidget, type TurnstileHandle } from '@/components/TurnstileWidget';
 import { OrgKeyPanel } from './OrgKeyPanel';
 
 const MCP_CONNECTOR_URL = 'https://riskmodels.app/api/mcp/sse';
 const MCP_INSTALL_CMD = 'npx -y riskmodels@latest install';
+
+/** Same first call the setup email uses (emails/engagement-content.ts): a real endpoint, Bearer auth. */
+const firstCallCurl = (plainKey: string) =>
+  `curl --fail-with-body "https://riskmodels.app/api/metrics/NVDA" \\\n  -H "Authorization: Bearer ${plainKey}"`;
+
+/** Why the last sign-in attempt did not complete (set by /auth/callback and middleware). */
+type AuthFailure = 'expired' | 'other_device' | 'failed';
+const AUTH_FAILURE_COPY: Record<AuthFailure, string> = {
+  other_device:
+    'That sign-in link was opened in a different browser or device from the one that asked for it, so it could not sign you in. A link only works in the browser where you requested it. Request a new link below and open it in this same browser, or use Google or GitHub.',
+  expired:
+    'That sign-in link has expired or was already used. Each link works once. Request a new one below.',
+  failed:
+    'Sign-in did not complete. Try again below. If you opened an email link in a different browser or device from the one that asked for it, request a new link here and open it in this same browser.',
+};
 
 interface ApiKey {
   id: string;
@@ -131,6 +150,11 @@ function GetKeyPage() {
   const [email, setEmail] = useState('');
   const [emailSent, setEmailSent] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authFailure, setAuthFailure] = useState<AuthFailure | null>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  // Supabase Auth captcha. Stays null (and unused) unless NEXT_PUBLIC_TURNSTILE_SITE_KEY is set.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [password, setPassword] = useState('');
   const [usePassword, setUsePassword] = useState(false);
@@ -145,7 +169,9 @@ function GetKeyPage() {
   const [setupWorkflow, setSetupWorkflow] = useState<SetupWorkflow>('exploring');
   const [setupClient, setSetupClient] = useState<AgentClient>('other');
   const [generating, setGenerating] = useState(false);
-  const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string } | null>(null);
+  const [revealedKey, setRevealedKey] = useState<{ plainKey: string; name: string; auto?: boolean } | null>(null);
+  /** User id the one-per-load bootstrap call has been made for. */
+  const bootstrappedFor = useRef<string | null>(null);
   const revealedKeyRef = useRef<HTMLDivElement>(null);
   const [genError, setGenError] = useState('');
   const [setupSaved, setSetupSaved] = useState(false);
@@ -199,6 +225,9 @@ function GetKeyPage() {
      *  survives the OAuth / magic-link round-trip even if `next=` doesn't preserve it. */
     readPersistedReferralCode(searchParams);
 
+    /** First landing path + external referrer, once per browser (or the `lp` carried through sign-in). */
+    captureFirstTouch(window.location.search);
+
     /** Persist the Google click id (gclid/wbraid/gbraid) for phase-2 offline activation import. */
     captureGclid(window.location.search);
 
@@ -209,6 +238,16 @@ function GetKeyPage() {
 
     const code = searchParams.get('code');
     const stripe = searchParams.get('stripe');
+
+    // A failed sign-in lands here as ?error=auth&reason=…. Show why, keep any
+    // `next` so a retry continues the same flow, and drop the error from the
+    // URL so a reload does not show it again.
+    if (searchParams.get('error') === 'auth') {
+      const reason = searchParams.get('reason');
+      setAuthFailure(reason === 'expired' || reason === 'other_device' ? reason : 'failed');
+      const keepNext = sanitizeRedirectPath(searchParams.get('next'));
+      router.replace(keepNext ? `/get-key?next=${encodeURIComponent(keepNext)}` : '/get-key');
+    }
 
     if (stripe) {
       setFreeCreditIncluded(searchParams.get('free') === '1');
@@ -229,7 +268,8 @@ function GetKeyPage() {
       supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
         router.replace('/get-key');
         if (error) {
-          setAuthError('Sign-in link expired or already used. Please request a new one.');
+          // No PKCE verifier in this browser (link opened elsewhere) or a spent code.
+          setAuthFailure('failed');
           supabase.auth.getUser().then(({ data: { user } }) => {
             setUser(user);
             setLoading(false);
@@ -277,8 +317,57 @@ function GetKeyPage() {
     setDataLoading(false);
   }, []);
 
+  /**
+   * First signed-in load: ONE server call creates the account with the starter
+   * credit, writes first-touch attribution, and issues the first API key if the
+   * user has never had one. The server makes it idempotent (a reload or a
+   * second tab gets `key: null`); the ref only avoids a pointless repeat when
+   * the auth listener re-emits the same user. Account data is read after it
+   * returns, so nothing races it.
+   */
   useEffect(() => {
-    if (user) fetchAccountData();
+    if (!user) {
+      bootstrappedFor.current = null;
+      return;
+    }
+    if (bootstrappedFor.current === user.id) {
+      void fetchAccountData();
+      return;
+    }
+    bootstrappedFor.current = user.id;
+    void (async () => {
+      setDataLoading(true);
+      try {
+        const utm = getUTMData();
+        const firstTouch = getFirstTouch();
+        const res = await fetch('/api/get-key/bootstrap', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gclid: getStoredGclid(),
+            utm,
+            landing_path: firstTouch?.landing_path ?? utm?.landing_path ?? null,
+            referrer: firstTouch?.referrer ?? null,
+            referral_code: readPersistedReferralCode(searchParams),
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { key?: { plainKey?: string; name?: string } | null };
+          if (data.key?.plainKey) {
+            setRevealedKey({ plainKey: data.key.plainKey, name: data.key.name ?? 'API Key 1', auto: true });
+            gtmAnalytics.apiKeyCreated();
+            reportSignupConversion(user);
+            clearPersistedReferralCode();
+            clearUTMData();
+          }
+        }
+      } catch {
+        /* offline / blocked: the Generate button below still works */
+      }
+      await fetchAccountData();
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, fetchAccountData]);
 
   useEffect(() => {
@@ -286,25 +375,6 @@ function GetKeyPage() {
       revealedKeyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [revealedKey]);
-
-  useEffect(() => {
-    if (!user) return;
-    const signupUtm = getUTMData();
-    const gclid = getStoredGclid();
-    void fetch('/api/agent-accounts/attribution', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        gclid,
-        utm: signupUtm,
-        landing_path: window.location.pathname,
-        create_if_missing: true,
-      }),
-    }).catch(() => {
-      /* ignore */
-    });
-  }, [user]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -318,20 +388,14 @@ function GetKeyPage() {
     }
   }, [user, stripeStatus, fetchAccountData]);
 
-  /** Append `?ref=CODE` onto the post-auth `next=` so the param survives the round-trip even if
-   *  sessionStorage is unavailable (e.g. cross-domain OAuth in some browsers). Belt + suspenders. */
-  const buildNextPath = () => {
-    // OAuth / connector flow: an upstream page (e.g. /oauth/authorize) sends the
-    // user here with ?next=<internal path> to return to after sign-in. Only honor
-    // internal, same-origin paths (must start with "/") to avoid open redirects.
-    const nextParam = searchParams.get('next');
-    if (nextParam && nextParam.startsWith('/')) return nextParam;
-    const ref = readPersistedReferralCode(searchParams);
-    // Carry the click id and UTM through the auth round-trip: a magic link opened
-    // from a mail app lands in a browser context with empty localStorage, and the
-    // return to /get-key re-captures them from the URL (2026-09-29 test signup lost
-    // its gclid this way).
+  /** Click id, UTM and first landing path, as query params for the sign-in round trip:
+   *  a magic link opened from a mail app lands in a browser context with empty
+   *  localStorage, and the return re-captures them from the URL (2026-09-29 test
+   *  signup lost its gclid this way). `lp` keeps the real landing path, which is
+   *  otherwise recorded as /get-key. */
+  const attributionParams = (withRef: boolean) => {
     const params = new URLSearchParams();
+    const ref = withRef ? readPersistedReferralCode(searchParams) : null;
     if (ref) params.set('ref', ref);
     const gclid = getStoredGclid();
     if (gclid) params.set('gclid', gclid);
@@ -340,22 +404,57 @@ function GetKeyPage() {
       const v = utm?.[k];
       if (typeof v === 'string' && v) params.set(k, v);
     }
-    const qs = params.toString();
+    const landing = getFirstTouch()?.landing_path ?? utm?.landing_path;
+    if (landing) params.set(LANDING_PATH_PARAM, landing);
+    return params;
+  };
+
+  /** OAuth / connector flow: an upstream page (e.g. /oauth/authorize) sends the
+   *  user here with ?next=<internal path>. One shared sanitizer decides what is
+   *  an internal path (lib/auth/safe-redirect.ts); anything else is ignored. */
+  const explicitNext = () => sanitizeRedirectPath(searchParams.get('next'));
+
+  const buildNextPath = () => {
+    const nextParam = explicitNext();
+    if (nextParam) return nextParam;
+    const qs = attributionParams(true).toString();
     return qs ? `/get-key?${qs}` : '/get-key';
+  };
+
+  /** Build at click time only — `window` is undefined during SSR. With an explicit
+   *  `next` the attribution cannot ride inside it, so it goes on the callback URL
+   *  and /auth/callback records it server-side. */
+  const authCallbackUrl = () => {
+    const url = new URL('/auth/callback', window.location.origin);
+    url.searchParams.set('next', buildNextPath());
+    if (explicitNext()) {
+      attributionParams(false).forEach((v, k) => url.searchParams.set(k, v));
+    }
+    return url.toString();
   };
 
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
+    setAuthFailure(null);
+    if (captchaEnabled() && !captchaToken) {
+      setAuthError('Wait for the verification check above the button to finish, then try again.');
+      setAuthLoading(false);
+      return;
+    }
     gtmAnalytics.signupFormSubmitted(email);
-    const next = buildNextPath();
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        emailRedirectTo: authCallbackUrl(),
+        // Lands in user_metadata when this call creates the user.
+        data: { signup_site: SIGNUP_SITE },
+        ...captchaOption(captchaToken),
       },
     });
+    // A captcha token is single-use, whatever the outcome.
+    turnstileRef.current?.reset();
     if (error) {
       setAuthError(error.message);
       gtmAnalytics.signupError(error.message);
@@ -376,27 +475,34 @@ function GetKeyPage() {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setAuthFailure(null);
+    if (captchaEnabled() && !captchaToken) {
+      setAuthError('Wait for the verification check above the button to finish, then try again.');
+      setAuthLoading(false);
+      return;
+    }
+    const captcha = captchaOption(captchaToken);
+    const { error } = await supabase.auth.signInWithPassword(
+      captcha.captchaToken ? { email, password, options: captcha } : { email, password },
+    );
+    turnstileRef.current?.reset();
     setAuthLoading(false);
     if (error) {
       setAuthError(error.message);
       return;
     }
     setPassword('');
-    const nextParam = searchParams.get('next');
-    if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
+    const nextParam = explicitNext();
+    if (nextParam) {
       window.location.href = nextParam;
     }
   };
 
-  /** Build at click time only — `window` is undefined during SSR. */
-  const oauthRedirectTo = () => {
-    const next = buildNextPath();
-    return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-  };
+  const oauthRedirectTo = () => authCallbackUrl();
 
   const signInWithGitHub = async () => {
     setAuthError('');
+    setAuthFailure(null);
     await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: { redirectTo: oauthRedirectTo() },
@@ -406,6 +512,7 @@ function GetKeyPage() {
   /** Google — same Supabase provider as Risk_Models (`riskmodels_net` auth-context). Enable in Supabase → Authentication → Providers. */
   const signInWithGoogle = async () => {
     setAuthError('');
+    setAuthFailure(null);
     // In the OAuth connector flow, always show Google's account chooser so a
     // user switching accounts is not signed straight back into the last one.
     const chooseAccount = isAuthorizeReturn(searchParams.get('next'));
@@ -655,6 +762,33 @@ function GetKeyPage() {
             </div>
           ) : (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-8 space-y-5">
+              {authFailure && (
+                <div
+                  role="alert"
+                  data-testid="auth-failure"
+                  className="text-amber-100 text-sm bg-amber-950/30 border border-amber-700/40 rounded-lg px-4 py-3"
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={15} className="flex-shrink-0 mt-0.5 text-amber-400" />
+                    <div>
+                      <p className="font-semibold text-amber-200">You are not signed in</p>
+                      <p className="mt-1 text-amber-100/90 leading-relaxed">{AUTH_FAILURE_COPY[authFailure]}</p>
+                      <button
+                        type="button"
+                        data-testid="auth-failure-retry"
+                        onClick={() => {
+                          setAuthFailure(null);
+                          setAuthError('');
+                          emailInputRef.current?.focus();
+                        }}
+                        className="mt-2 text-xs font-semibold text-amber-200 underline hover:text-white"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {authError && (
                 <div className="flex items-start gap-2 text-red-400 text-xs bg-red-950/30 border border-red-800/40 rounded-lg px-3 py-2">
                   <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
@@ -695,6 +829,7 @@ function GetKeyPage() {
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Email address</label>
                   <input
+                    ref={emailInputRef}
                     type="email" required value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="you@example.com"
@@ -711,6 +846,8 @@ function GetKeyPage() {
                     />
                   </div>
                 )}
+                {/* Renders nothing unless NEXT_PUBLIC_TURNSTILE_SITE_KEY is set. */}
+                <TurnstileWidget ref={turnstileRef} onToken={setCaptchaToken} />
                 <button type="submit" disabled={authLoading}
                   className="w-full py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 disabled:opacity-50 text-zinc-100 font-semibold text-sm transition-colors">
                   {usePassword
@@ -731,7 +868,7 @@ function GetKeyPage() {
             </div>
           )}
           <p className="text-xs text-zinc-500 mt-3">
-            After sign-in, create or copy your API key from{' '}
+            After sign-in your first API key is created and shown once on this page; usage is under{' '}
             <Link href="/account/usage" className="text-primary hover:underline">
               Account → Usage
             </Link>
@@ -776,6 +913,50 @@ function GetKeyPage() {
             </button>
           </div>
         </div>
+
+        {/* The full key: issued on first load, or by Generate below. Shown once. */}
+        {revealedKey && (
+          <div
+            ref={revealedKeyRef}
+            data-testid="revealed-key"
+            className="mb-6 rounded-xl border border-green-700/40 bg-green-950/20 p-5"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <Check size={15} className="text-green-400 flex-shrink-0" />
+              <span className="text-green-300 font-semibold text-sm">
+                {revealedKey.auto
+                  ? 'Your API key is ready — copy it now'
+                  : `${revealedKey.name} — copy this full key now`}
+              </span>
+            </div>
+            <p className="text-zinc-400 text-xs mb-3">
+              {revealedKey.auto
+                ? 'We created your first key for you. This is the only time the full key is shown; the list below stores a prefix and cannot recover it. If you lose it, generate another below.'
+                : 'This is the only time the full key is shown. The list below stores a prefix and cannot recover it.'}
+            </p>
+            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
+              <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all" data-testid="revealed-key-value">
+                {revealedKey.plainKey}
+              </code>
+              <CopyButton
+                text={revealedKey.plainKey}
+                onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
+              />
+            </div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500 mt-4 mb-1.5">
+              First request — paste into a terminal
+            </p>
+            <div className="flex items-start gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
+              <pre className="flex-1 text-xs font-mono text-zinc-200 whitespace-pre-wrap break-all" data-testid="revealed-key-curl">
+                {firstCallCurl(revealedKey.plainKey)}
+              </pre>
+              <CopyButton text={firstCallCurl(revealedKey.plainKey)} />
+            </div>
+            <p className="text-zinc-500 text-xs mt-2">
+              Returns JSON with NVDA risk metrics. Replace NVDA with a ticker you follow. Costs a fraction of a cent from your $20 credit.
+            </p>
+          </div>
+        )}
 
         {/* MCP first — OAuth connector, no card. Matches how most external accounts already arrive. */}
         <div className="mb-6 rounded-xl border border-zinc-800 bg-zinc-900 p-5">
@@ -824,9 +1005,14 @@ function GetKeyPage() {
                 Card verified — credits added{account ? ` (balance ${formatBalance(account.balance_usd)})` : ''}
               </p>
               <p className="text-zinc-400 text-xs mt-0.5">
+                {revealedKey
+                  ? 'Your API key is shown above; copy it now. '
+                  : keys.some((k) => k.status === 'active')
+                  ? 'Your API keys are listed below. '
+                  : 'Generate an API key below to start. '}
                 {freeCreditIncluded
-                  ? 'Your API key is active below. Includes your $20 free credit; auto-refill stays off until you enable it.'
-                  : 'Your API key is active below. Auto-refill stays off until you enable it.'}
+                  ? 'Includes your $20 free credit; auto-refill stays off until you enable it.'
+                  : 'Auto-refill stays off until you enable it.'}
               </p>
             </div>
           </div>
@@ -879,7 +1065,7 @@ function GetKeyPage() {
           <div className="mb-6 rounded-xl border border-amber-800/40 bg-amber-950/20 p-4 flex items-start gap-3">
             <AlertCircle size={16} className="text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-amber-200/90 text-sm">
-              Card verified and credits should be on your account, but automatic key creation failed. If you see &quot;Generate&quot; below, create a key there; otherwise refresh the page or contact support.
+Card verified and credits should be on your account. Use &quot;Generate&quot; below to create a key; if that fails, refresh the page or contact support.
             </p>
           </div>
         )}
@@ -887,7 +1073,7 @@ function GetKeyPage() {
         {/* Generate — signed-in; $20 starter is granted on account load, no card required. */}
         <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 mb-6">
             <h2 className="text-sm font-semibold text-zinc-200 mb-3 flex items-center gap-2">
-              <Plus size={14} /> Generate new key
+              <Plus size={14} /> {keys.length > 0 || revealedKey ? 'Generate another key' : 'Generate new key'}
             </h2>
             <form onSubmit={generateKey} className="space-y-2">
               <label htmlFor="setup-workflow" className="block text-sm text-zinc-300">How will you use RiskModels? <span className="text-zinc-500">(optional)</span></label>
@@ -916,7 +1102,7 @@ function GetKeyPage() {
                   {generating ? 'Generating…' : 'Generate'}
                 </button>
               </div>
-              <p className="text-xs text-zinc-500">Leave blank to auto-name (API Key 1, 2, …). The full key is shown once, in the green box below — the list is a prefix only.</p>
+              <p className="text-xs text-zinc-500">Leave blank to auto-name (API Key 1, 2, …). The full key is shown once, in the green box at the top of this page — the list is a prefix only.</p>
             </form>
             {genError && (
               <p className="text-red-400 text-xs mt-2 bg-red-950/30 border border-red-800/40 rounded px-3 py-1.5">
@@ -934,32 +1120,6 @@ function GetKeyPage() {
             await fetchAccountData();
           }}
         />
-
-        {revealedKey && (
-          <div
-            ref={revealedKeyRef}
-            className="mb-6 rounded-xl border border-green-700/40 bg-green-950/20 p-5"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <Check size={15} className="text-green-400 flex-shrink-0" />
-              <span className="text-green-300 font-semibold text-sm">
-                {revealedKey.name} — copy this full key now
-              </span>
-            </div>
-            <p className="text-zinc-400 text-xs mb-3">
-              This is the only time the full key is shown. The list below stores a prefix and cannot recover it.
-            </p>
-            <div className="flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2.5">
-              <code className="flex-1 text-sm font-mono text-zinc-100 break-all select-all">
-                {revealedKey.plainKey}
-              </code>
-              <CopyButton
-                text={revealedKey.plainKey}
-                onCopied={() => gtmAnalytics.apiKeyCopied(revealedKey.plainKey)}
-              />
-            </div>
-          </div>
-        )}
 
         {/* Optional card — refill only. Generate and MCP work without it. */}
         {!dataLoading && !hasPaymentMethod && !hasStripeCustomer && (

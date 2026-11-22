@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { ensureStarterCredits } from '@/lib/agent/billing';
 
 export async function GET() {
   // Verify session with the user-scoped client
@@ -10,13 +9,9 @@ export async function GET() {
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // $20 starter on first signed-in account load so /get-key Generate works
-  // without a card (J.22 C / J.21 MAG7 no-card). Idempotent; never 500 the GET.
-  try {
-    await ensureStarterCredits(user.id);
-  } catch (err) {
-    console.error('[account] ensureStarterCredits failed:', err);
-  }
+  // Read-only. The account and its $20 starter credit are created by
+  // POST /api/get-key/bootstrap (one call, with first-touch attribution), not
+  // here: creating it in this GET raced the attribution write on first load.
 
   // Use admin client to bypass RLS on agent_accounts
   const admin = createAdminClient();

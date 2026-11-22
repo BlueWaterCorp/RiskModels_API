@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { authorizeReturnPath } from "@/lib/oauth/authorize-return";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
+import { TURNSTILE_FORM_FIELD, captchaOption } from "@/lib/auth/captcha";
 
 export const dynamic = "force-dynamic";
 
@@ -72,10 +73,16 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  // Supabase Auth captcha: when the authorize page rendered a Turnstile widget
+  // (NEXT_PUBLIC_TURNSTILE_SITE_KEY set), its token arrives as a form field and
+  // is passed through. With no token the call is unchanged.
+  const captcha = captchaOption(fields[TURNSTILE_FORM_FIELD]);
+  const { error } = await supabase.auth.signInWithPassword(
+    captcha.captchaToken ? { email, password, options: captcha } : { email, password },
+  );
   if (error) {
     // Generic: do not echo the provider message or the address.
-    return fail("1");
+    return fail(/captcha/i.test(error.message ?? "") ? "captcha" : "1");
   }
   return response;
 }

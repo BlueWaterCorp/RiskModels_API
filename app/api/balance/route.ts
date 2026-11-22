@@ -8,6 +8,7 @@
  * PATCH /api/balance - Update auto-refill settings
  */
 
+import { PROVISION_AUTH_HINT } from "@/lib/agent/provision-hints";
 import { NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/supabase/auth-helper";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
         requestId,
         hadBearer
           ? { auth_error: authError, action: "check_key", help_url: "https://riskmodels.app/get-key" }
-          : { auth_error: authError, action: "authenticate", authenticate_url: "/api/auth/provision" },
+          : { auth_error: authError, ...PROVISION_AUTH_HINT },
       );
     }
 
@@ -247,7 +248,7 @@ export async function PATCH(request: Request) {
         requestId,
         hadBearer
           ? { auth_error: authError, action: "check_key", help_url: "https://riskmodels.app/get-key" }
-          : { auth_error: authError, action: "authenticate", authenticate_url: "/api/auth/provision" },
+          : { auth_error: authError, ...PROVISION_AUTH_HINT },
       );
     }
 

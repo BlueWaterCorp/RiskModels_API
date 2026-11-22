@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-31`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-33`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -177,3 +177,11 @@ Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 o
 ## RMAPI-30 · Fund look-through for individual accounts (from RMWEB-25)
 
 **Impact:** IMPROVEMENT · Individual accounts are mostly mutual funds, which the workspace cannot model today. Design notes are held privately; ask Conrad. **Needs:** engineering.
+
+## RMAPI-31 · Free-tier keys still receive the $20 starter balance on their first billed call (2026-11-21)
+
+**Impact:** IMPROVEMENT · `withBilling` calls `ensureStarterCredits` for every caller (`lib/agent/billing-middleware.ts`, step 3.5), so an anonymous `provision-free` account, and an unverified `provision` account, gets a $20 balance on its first billed request. The free tier's 100 requests/day cap is the only bound; the balance is not held until the contact email is confirmed. Holding it back today would return 402 to every free-tier key, because the deduct step needs a balance on the free tier too. **Needs:** DECISION: either free-tier requests stop deducting (the daily cap is the limit) and the starter credit is granted only on verification, or the current behaviour is accepted. Related: RMAPI-11 (free-tier posture).
+
+## RMAPI-32 · API key checksum secret and hash salt are the public defaults in production (2026-11-21)
+
+**Impact:** MATERIAL · `API_KEY_SECRET` and `API_KEY_SALT` are unset in Vercel production and preview and absent from Doppler (checked 2026-11-21), so `lib/agent/key-secrets.ts` returns the hard-coded `default-secret` / `default-salt` that are in this public repo. The key checksum can be forged by anyone (a forged key still fails the hash lookup, so it does not authenticate, but the format check is no filter), and the salt adds nothing to the stored SHA-256 hashes. Every hash in `agent_api_keys` and `user_generated_api_keys` was made with the default salt, so setting the variables alone invalidates every customer key. **Needs:** engineering: a rotation that accepts both old and new secret and salt for a period, re-hashes a key with the new salt when it is next used, reports how many keys remain on the old salt, then removes the defaults. Until then production logs one `[key-secrets]` error per process.

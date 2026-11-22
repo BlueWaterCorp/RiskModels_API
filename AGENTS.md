@@ -17,7 +17,7 @@ The RiskModels API returns factor decompositions and hedge ratios for ~3,000 US 
 - **Web / Next.js primitives:** [`packages/riskmodels-web`](./packages/riskmodels-web/) — npm workspace `@riskmodels/web` (React + Recharts + types for landing charts and the metrics playground). See [packages/riskmodels-web/README.md](./packages/riskmodels-web/README.md).
 - **Skill Guide:** [SKILL.md](./SKILL.md)
 - **Authentication:** OAuth2 client credentials flow
-- **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key) — OAuth/magic-link; key copy UX is post-login under Account → Usage.
+- **Get API Key:** [riskmodels.app/get-key](https://riskmodels.app/get-key) — OAuth/magic-link; the first key is issued on the first signed-in load and shown once on that page. Agents without a browser: `POST /api/auth/provision` (free-tier limits until the contact email is confirmed).
 
 ## Next.js portal + `cli/` (Vercel builds)
 

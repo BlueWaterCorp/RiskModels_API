@@ -16,10 +16,12 @@
  *     is what the next account sees.
  */
 import Link from "next/link";
+import Script from "next/script";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { appOrigin, getClient, redirectUriRegistered, OAUTH_SCOPE } from "@/lib/oauth/server";
 import { AUTHORIZE_PARAMS, signInPathFor } from "@/lib/oauth/authorize-return";
+import { TURNSTILE_SCRIPT_URL, turnstileSiteKey } from "@/lib/auth/captcha";
 
 export const dynamic = "force-dynamic";
 
@@ -90,6 +92,8 @@ export default async function AuthorizePage({
   } = await supabase.auth.getUser();
   if (!user) {
     const loginError = str(sp.login_error);
+    // Unset: no widget, no script, form unchanged (and it works without JS).
+    const turnstileKey = turnstileSiteKey();
     return (
       <main className="min-h-[70vh] flex items-center justify-center px-4 py-10">
         <div className="max-w-md w-full rounded-xl border border-zinc-800 bg-zinc-950 p-6">
@@ -101,6 +105,10 @@ export default async function AuthorizePage({
           {loginError === "rate" ? (
             <p className="mt-4 text-sm text-amber-200/90" data-testid="oauth-login-error">
               Too many sign-in attempts. Wait a few minutes and try again.
+            </p>
+          ) : loginError === "captcha" ? (
+            <p className="mt-4 text-sm text-amber-200/90" data-testid="oauth-login-error">
+              The verification check did not complete. Wait for it to finish, then sign in again.
             </p>
           ) : loginError ? (
             <p className="mt-4 text-sm text-red-300" data-testid="oauth-login-error">
@@ -138,6 +146,13 @@ export default async function AuthorizePage({
                 className="w-full px-3 py-2.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm"
               />
             </div>
+            {turnstileKey ? (
+              <>
+                {/* Implicit rendering: Turnstile adds a hidden cf-turnstile-response field to this form. */}
+                <div className="cf-turnstile" data-sitekey={turnstileKey} data-theme="dark" data-testid="turnstile-widget" />
+                <Script src={TURNSTILE_SCRIPT_URL} strategy="afterInteractive" />
+              </>
+            ) : null}
             <button
               type="submit"
               className="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 transition-colors"

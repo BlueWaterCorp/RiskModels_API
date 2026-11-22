@@ -86,6 +86,30 @@ describe("POST /api/oauth/authorize/password", () => {
     expect(res.cookies.get("sb-proj-auth-token")?.value).toBe("session");
   });
 
+  it("passes a Turnstile token from the form to Supabase as options.captchaToken", async () => {
+    await POST(
+      request({
+        ...AUTHORIZE,
+        email: "reviewer@riskmodels.app",
+        password: "secret-value",
+        "cf-turnstile-response": "turnstile-token-1",
+      }),
+    );
+    expect(signInWithPassword).toHaveBeenCalledWith({
+      email: "reviewer@riskmodels.app",
+      password: "secret-value",
+      options: { captchaToken: "turnstile-token-1" },
+    });
+  });
+
+  it("reports a captcha rejection separately, without the provider message", async () => {
+    signInWithPassword.mockResolvedValue({ error: { message: "captcha verification process failed" } });
+    const res = await POST(request({ ...AUTHORIZE, email: "reviewer@riskmodels.app", password: "secret-value" }));
+    const u = new URL(res.headers.get("location")!);
+    expect(u.searchParams.get("login_error")).toBe("captcha");
+    expect(res.headers.get("location")).not.toMatch(/verification process/);
+  });
+
   it("returns a generic error and sets no session cookie when the password is wrong", async () => {
     signInWithPassword.mockResolvedValue({ error: { message: "Invalid login credentials" } });
     const res = await POST(request({ ...AUTHORIZE, email: "reviewer@riskmodels.app", password: "nope" }));

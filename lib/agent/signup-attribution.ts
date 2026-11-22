@@ -14,7 +14,10 @@ export type Channel = "ads" | "organic";
 export type AttributionTouch = {
   gclid?: string | null;
   utm?: UTMData | null;
+  /** Path of the first page the visitor landed on (not the page posting this). */
   landing_path?: string | null;
+  /** External referrer of that first landing, when there was one. */
+  referrer?: string | null;
 };
 
 type Admin = {
@@ -60,15 +63,24 @@ function sanitizeLandingPath(raw: string | null | undefined): string | null {
   return path;
 }
 
+const MAX_REFERRER_LEN = 2048;
+
+function sanitizeReferrer(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const ref = raw.trim();
+  if (!ref.toLowerCase().startsWith("http://") && !ref.toLowerCase().startsWith("https://")) return null;
+  return ref.length > MAX_REFERRER_LEN ? ref.slice(0, MAX_REFERRER_LEN) : ref;
+}
+
 function firstTouchPatch(
   current: Record<string, unknown>,
   touch: AttributionTouch,
 ): Record<string, unknown> {
   const gclid = sanitizeGclid(touch.gclid ?? null);
   const utm = touch.utm ?? null;
-  const landing = sanitizeLandingPath(
-    touch.landing_path ?? utm?.landing_path ?? null,
-  );
+  const landing =
+    sanitizeLandingPath(touch.landing_path) ?? sanitizeLandingPath(utm?.landing_path);
+  const referrer = sanitizeReferrer(touch.referrer) ?? sanitizeReferrer(utm?.referrer);
   const next = { ...current };
   const now = new Date().toISOString();
 
@@ -76,14 +88,20 @@ function firstTouchPatch(
     next.gclid = gclid;
     next.gclid_at = now;
   }
-  if (utm) {
-    if (!next.utm_source && utm.utm_source) next.utm_source = utm.utm_source;
-    if (!next.utm_medium && utm.utm_medium) next.utm_medium = utm.utm_medium;
-    if (!next.utm_campaign && utm.utm_campaign) next.utm_campaign = utm.utm_campaign;
-    if (!next.utm_content && utm.utm_content) next.utm_content = utm.utm_content;
-    if (!next.referrer && utm.referrer) next.referrer = utm.referrer;
+  // UTM fields are one touch: write them together or not at all. Filling a
+  // vacant utm_campaign from a later visit would splice two campaigns into one
+  // row and present the mix as the first touch.
+  const hasUtm = Boolean(
+    next.utm_source || next.utm_medium || next.utm_campaign || next.utm_content,
+  );
+  if (utm && !hasUtm) {
+    if (utm.utm_source) next.utm_source = utm.utm_source;
+    if (utm.utm_medium) next.utm_medium = utm.utm_medium;
+    if (utm.utm_campaign) next.utm_campaign = utm.utm_campaign;
+    if (utm.utm_content) next.utm_content = utm.utm_content;
     if (!next.timestamp && utm.timestamp) next.timestamp = utm.timestamp;
   }
+  if (referrer && !next.referrer) next.referrer = referrer;
   if (landing && !next.landing_path) next.landing_path = landing;
   if (!next.channel) {
     next.channel = classifyChannel({

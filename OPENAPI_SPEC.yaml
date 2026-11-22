@@ -105,7 +105,9 @@ components:
       bearerFormat: rm_agent_{environment}_{random}_{checksum}
       description: >
         API key in format `rm_agent_{live|test}_{random}_{checksum}` or `rm_user_{random}_{checksum}`.
-        Obtain via `POST /api/auth/provision` or from riskmodels.app/settings → API Keys.
+        Obtain from riskmodels.app/get-key (a key is issued on first sign-in), or
+        programmatically via `POST /api/auth/provision` (free-tier limits until the
+        contact email is confirmed).
         Include as: `Authorization: Bearer rm_agent_live_...`
 
     OAuth2AuthorizationCode:
@@ -11533,32 +11535,118 @@ paths:
 
   /auth/provision:
     post:
-      summary: Provision an API key
+      summary: Provision an API key (agent self-signup)
       description: >
-        Exchange a valid session JWT for a long-lived Bearer API key in format
-        `rm_agent_{live|test}_{random}_{checksum}`. Intended for AI agents that need
-        a stable key for repeated calls.
+        Unauthenticated. One POST returns a working Bearer API key in format
+        `rm_agent_{live|test}_{random}_{checksum}`; no browser, payment or captcha.
+        The account is created under an internal address. `contact_email` is stored
+        as an **unverified** contact and its owner is emailed a confirmation link.
+        Until the owner confirms, the key runs at the free-tier limits (100
+        requests/day, 10/minute). After confirmation the account moves to 60
+        requests/minute with no daily cap and carries the one-time $20 starter
+        credit. The call never returns a key for an existing account, whatever
+        `contact_email` is supplied, and does not create a web login.
+        Rate limited to 3 accounts per IP per 24 hours, shared with
+        `/auth/provision-free`; a stricter shared limit applies when the client IP
+        is unknown or the rate limiter is unavailable.
       operationId: provisionToken
       tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_name, agent_id, contact_email]
+              properties:
+                agent_name:
+                  type: string
+                  maxLength: 100
+                  example: my-research-bot
+                agent_id:
+                  type: string
+                  description: Caller-chosen unique id, 3-100 characters from `[A-Za-z0-9._:-]`.
+                  example: my-research-bot-1
+                contact_email:
+                  type: string
+                  format: email
+                  description: Unverified until its owner confirms from the emailed link.
+                agent_version:
+                  type: string
+                  default: 1.0.0
+                initial_deposit_usd:
+                  type: number
+                  description: Optional deposit amount for the returned Stripe PaymentIntent (10 to 10000).
+                  default: 50
       responses:
-        "200":
-          description: New API key provisioned.
+        "201":
+          description: Account created and API key issued.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  api_key:
-                    type: string
-                    example: rm_agent_live_a1b2c3d4_xyz789
-                  environment:
-                    type: string
-                    enum: [live, test]
-                  created_at:
-                    type: string
-                    format: date-time
-        "401":
-          description: Missing or invalid session JWT.
+                  account:
+                    type: object
+                    properties:
+                      user_id: { type: string }
+                      agent_id: { type: string }
+                      agent_name: { type: string }
+                      status: { type: string, enum: [active] }
+                      tier: { type: string, enum: [free] }
+                      contact_email_status: { type: string, enum: [unverified] }
+                      limits:
+                        type: object
+                        properties:
+                          queries_per_day: { type: integer, example: 100 }
+                          queries_per_minute: { type: integer, example: 10 }
+                  credentials:
+                    type: object
+                    properties:
+                      api_key:
+                        type: string
+                        description: Shown only once. Store securely.
+                        example: rm_agent_live_abc123_xyz
+                      prefix: { type: string }
+                  claim:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                        enum: [sent, not_sent_rate_limited, not_sent_error]
+                        description: Whether the confirmation email went out (at most one per address per day).
+                      expires_at: { type: string, format: date-time }
+                      effect: { type: string }
+                  payment:
+                    type: object
+                    description: Optional deposit. The key works without it.
+                    properties:
+                      optional: { type: boolean }
+                      amount_usd: { type: number }
+                      status: { type: string }
+                      client_secret: { type: string }
+                      payment_intent_id: { type: string }
+        "400":
+          description: Missing or invalid `agent_name`, `agent_id` or `contact_email`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "`agent_id` is already registered."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Provisioning rate limit exceeded. `Retry-After` gives the wait in seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The provisioning limit could not be checked; retry shortly.
           content:
             application/json:
               schema:
@@ -11570,6 +11658,9 @@ paths:
       description: >
         Generate a free API key with limited daily usage (100 req/day, 10 req/min).
         No payment or email required. Returns the key once — store it immediately.
+        Rate limited to 3 accounts per IP per 24 hours, shared with `/auth/provision`;
+        a stricter shared limit applies when the client IP is unknown or the rate
+        limiter is unavailable.
       operationId: provisionFreeToken
       tags: [Authentication]
       requestBody:
@@ -11618,6 +11709,18 @@ paths:
                       prefix: { type: string }
         "400":
           description: Invalid agent_name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Provisioning rate limit exceeded. `Retry-After` gives the wait in seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: The provisioning limit could not be checked; retry shortly.
           content:
             application/json:
               schema:
