@@ -7,11 +7,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import crypto from "crypto";
-import {
-  apiKeyChecksumSecret,
-  apiKeyHashSalt,
-  KeySecretConfigError,
-} from "./key-secrets";
+import { apiKeyChecksumSecret, apiKeyHashSalt } from "./key-secrets";
 
 // Lazy initialization to avoid build-time errors
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -228,23 +224,6 @@ export function isValidApiKeyFormat(key: string): boolean {
  * and user-generated keys (rm_user_* → user_generated_api_keys).
  */
 export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
-  try {
-    return await validateApiKeyUnchecked(plainKey);
-  } catch (e) {
-    // Missing key secrets in production: a server fault, not a bad key.
-    if (e instanceof KeySecretConfigError) {
-      console.error("[API Keys]", e.message);
-      return {
-        valid: false,
-        serverError: true,
-        error: "SERVER_CONFIG_ERROR: API key secrets are not configured.",
-      };
-    }
-    throw e;
-  }
-}
-
-async function validateApiKeyUnchecked(plainKey: string): Promise<ValidatedKey> {
   const isUserKey = plainKey.startsWith("rm_user_");
 
   if (isUserKey) {

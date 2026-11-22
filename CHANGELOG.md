@@ -8,7 +8,7 @@
 - 401 responses without credentials now describe `POST /api/auth/provision` in `_agent` (method, body fields, limits) instead of only naming the URL. OpenAPI, the authentication guide and the Plaid guide described `/auth/provision` as a session-JWT exchange that creates an email login; they now describe what it does.
 - Sign-in failures are shown on `/get-key` with the reason and a retry. `next` parameters are accepted only as same-origin paths.
 - The card checkout no longer creates an `rm_user_*` key whose value was never shown.
-- In production, key issuance and validation now fail with a server error when `API_KEY_SECRET` (and `API_KEY_SALT` if used) is unset, instead of using built-in defaults.
+- Key checksum and hash secrets are read in one place (`lib/agent/key-secrets.ts`). Values and behaviour are unchanged; production logs one error per process while the built-in defaults are in use.
 - Optional Cloudflare Turnstile on sign-in forms, off unless `NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set.
 
 ## 2026-11-08 — Hedge basket: sector and subsector `beta_to_spy` from the cohort store (RMAPI-30)
