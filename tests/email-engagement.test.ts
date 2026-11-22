@@ -2,7 +2,7 @@ import { describe,it,expect,vi } from 'vitest';
 import { render } from '@react-email/render';
 import { createElement } from 'react';
 import { KeyIssuedEmail } from '../emails/setup-key-issued';
-import { nextEngagement,setupExample,engagementCopy,parseWorkflow,parseAgentClient,type EngagementAccount } from '../emails/engagement-content';
+import { nextEngagement,setupExample,engagementCopy,failureReview,parseWorkflow,parseAgentClient,type EngagementAccount } from '../emails/engagement-content';
 import { authorized } from '../lib/engagement-auth';
 import { NextRequest } from 'next/server';
 const now=Date.parse('2026-10-07T16:00:00Z');
@@ -43,6 +43,20 @@ describe('account-level activation decisions',()=>{
   expect(setupExample('agent','claude').instruction).toContain('https://riskmodels.app/api/mcp/sse');
  });
  it('does not invent a name from an email address',()=>expect(engagementCopy({...base,full_name:null},'setup-help').text).toMatch(/^Hi there,/));
+ it('quotes a stored 404 and does not call it an outage',()=>{
+  const account={...base,last_error_at:ago(0.1),last_error_status:'404',last_error_capability:'decompose-position',last_error_path:'/api/decompose',last_error_tickers:'XYZ',last_error_message:'Symbol not found'};
+  expect(failureReview(account)?.guidance).toMatch(/not an outage/);
+  expect(engagementCopy(account,'error-help').text).toContain('decompose-position for XYZ');
+  expect(engagementCopy(account,'error-help').text).toContain('Symbol not found');
+  expect(engagementCopy(account,'error-help').text).not.toContain('on our side');
+ });
+ it('says a 5xx is ours and refuses to invent a ticker for an unstored 404',()=>{
+  expect(engagementCopy({...base,last_error_status:'502',last_error_capability:'decompose-position',last_error_message:'upstream timeout'},'error-help').text).toContain('on our side');
+  const bare=failureReview({...base,last_error_status:'404',last_error_capability:'decompose-position'});
+  expect(bare?.guidance).toMatch(/Do not guess the ticker/);
+  expect(bare?.customer).toContain('I do not have the ticker');
+  expect(engagementCopy({...base,last_error_status:'404',last_error_capability:'decompose-position'},'error-help').text).not.toMatch(/[A-Z]{2,5} returned/);
+ });
 });
 describe('key email',()=>{
  const props={firstName:'Alex',keyName:'Research',keyPrefix:'rm_agent_',createdDateFormatted:'October 7',expiresAtFormatted:'October 7, 2027',termsUrl:'https://riskmodels.net/terms/api'};

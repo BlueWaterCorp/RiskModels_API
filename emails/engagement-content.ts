@@ -59,6 +59,9 @@ export interface EngagementAccount {
   first_success_at: string | null; last_success_at: string | null;
   success_count: number; successful_days: number;
   last_error_at: string | null; last_error_status: string | null;
+  last_error_capability?: string | null; last_error_path?: string | null;
+  last_error_message?: string | null; last_error_tickers?: string | null;
+  last_error_as_of?: string | null;
   paid_credits_usd: number; sent_kinds: EngagementKind[];
   has_pending_send: boolean;
 }
@@ -89,6 +92,71 @@ export function nextEngagement(account: EngagementAccount, now = Date.now()): En
   return null;
 }
 
+function cleanTickers(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const tokens = value.split(',').map(s => s.trim()).filter(s => /^[A-Za-z][A-Za-z0-9.-]{0,15}$/.test(s)).slice(0, 8);
+  return tokens.length ? tokens.join(', ') : null;
+}
+
+function cleanMessage(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const message = value.replace(/\s+/g, ' ').trim().slice(0, 180);
+  if (!message || /api[_-]?key|bearer |sk_live|rm_agent_/i.test(message)) return null;
+  return message;
+}
+
+/** What the operator reviews, and the one sentence the customer email may quote. */
+export function failureReview(account: EngagementAccount): { summary: string; guidance: string; customer: string } | null {
+  const status = account.last_error_status?.trim() || null;
+  const capability = account.last_error_capability && /^[a-z0-9-]{1,64}$/.test(account.last_error_capability)
+    ? account.last_error_capability : null;
+  const path = account.last_error_path && /^\/[A-Za-z0-9._~/-]{0,119}$/.test(account.last_error_path)
+    ? account.last_error_path : null;
+  const tickers = cleanTickers(account.last_error_tickers);
+  const message = cleanMessage(account.last_error_message);
+  const asOf = account.last_error_as_of && /^\d{4}-\d{2}-\d{2}$/.test(account.last_error_as_of)
+    ? account.last_error_as_of : null;
+  if (!status && !capability && !message) return null;
+  const subject = [capability || 'The last analysis', tickers ? `for ${tickers}` : '', path ? `at ${path}` : '', asOf ? `as of ${asOf}` : '']
+    .filter(Boolean).join(' ');
+  const outcome = status ? `returned HTTP ${status}` : 'did not complete';
+  const summary = message ? `${subject} ${outcome}: ${message}.` : `${subject} ${outcome}.`;
+  const code = Number(status);
+  const stored = Boolean(path || message || tickers);
+  if (!stored) {
+    return {
+      summary: `${[capability, status ? `HTTP ${status}` : null].filter(Boolean).join(' · ') || 'The last analysis'}. The ticker was not stored.`,
+      guidance: 'This call was logged before the request was stored. Do not guess the ticker.',
+      customer: status
+        ? `A recent request returned HTTP ${status}. I do not have the ticker from that call. Reply with the name you sent and the tool you used, and I will check it.`
+        : 'A recent request did not complete. Reply with the name you sent and the tool you used, and I will check it.',
+    };
+  }
+  if (code >= 500) {
+    return {
+      summary,
+      guidance: 'This failed on our side. The follow-up should say that.',
+      customer: `${summary} That failure is on our side. Reply to this note and I will look at the request.`,
+    };
+  }
+  if (code === 404) {
+    return {
+      summary,
+      guidance: tickers
+        ? 'The name or the date was not in the served set. This is not an outage.'
+        : 'HTTP 404 with no ticker stored. Do not guess the name. This is not an outage.',
+      customer: `${summary} That means the name or the date is outside the universe we serve.${tickers ? '' : ' I do not have the ticker from that call.'} If you meant a different ticker, reply with it and I will check.`,
+    };
+  }
+  return {
+    summary,
+    guidance: code >= 400
+      ? 'The request was rejected before an analysis. Do not describe this as a service failure.'
+      : 'Use only the sentence above.',
+    customer: `${summary} Reply with what you were trying to run, leaving out API keys, and I will help you adjust it.`,
+  };
+}
+
 export function greetingName(fullName: string | null | undefined): string {
   const name = fullName?.trim();
   if (!name || /^(testing user|test user|test|user|unknown|undefined|null)$/i.test(name)) return 'there';
@@ -98,6 +166,7 @@ export function greetingName(fullName: string | null | undefined): string {
 export function engagementCopy(account: EngagementAccount, kind: EngagementKind) {
   const greeting = `Hi ${greetingName(account.full_name)},`;
   const example = setupExample(account.workflow, account.agent_client);
+  const review = failureReview(account);
   const content: Record<EngagementKind, { subject: string; paragraphs: string[] }> = {
     'setup-help': { subject: 'Getting started with RiskModels', paragraphs: [
       'Conrad here, founder of RiskModels. Were you able to get your first analysis running?',
@@ -109,7 +178,9 @@ export function engagementCopy(account: EngagementAccount, kind: EngagementKind)
       ...(example.code ? [example.code] : []), example.expected, `Setup guide: ${example.url}`,
       'If you would like help applying this to your question, reply here. I will leave the follow-ups here unless you get back in touch.',
     ] },
-    'error-help': { subject: 'Help with your RiskModels request', paragraphs: [
+    'error-help': review
+      ? { subject: 'Help with your RiskModels request', paragraphs: [review.customer] }
+      : { subject: 'Help with your RiskModels request', paragraphs: [
       'It looks like a recent RiskModels request did not complete successfully. Were you able to resolve it?',
       'Reply with what you were trying to do and the error message, leaving out API keys or other credentials. I will help you work through it.',
     ] },

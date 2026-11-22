@@ -70,6 +70,43 @@ export async function loadLicenseAccount(userId: string): Promise<LicenseAccount
   }
 }
 
+/** Pathname only. Query strings can carry tokens; they do not belong in telemetry. */
+export function requestPath(originalUrl: string): string | undefined {
+  try {
+    const path = new URL(originalUrl).pathname;
+    return path.startsWith("/") ? path.slice(0, 120) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Short error sentence from a failed response, for the activation review queue.
+ * Drops anything that looks like a credential. Never reads a success body.
+ */
+export async function responseErrorMessage(response: {
+  status: number;
+  clone: () => { text: () => Promise<string> };
+}): Promise<string | undefined> {
+  if (response.status < 400) return undefined;
+  try {
+    const text = (await response.clone().text()).slice(0, 2000);
+    let message = "";
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown; message?: unknown };
+      if (typeof parsed.error === "string") message = parsed.error;
+      else if (typeof parsed.message === "string") message = parsed.message;
+    } catch {
+      message = text;
+    }
+    message = message.replace(/\s+/g, " ").trim();
+    if (!message || /api[_-]?key|bearer |sk_live|rm_agent_/i.test(message)) return undefined;
+    return message.slice(0, 180);
+  } catch {
+    return undefined;
+  }
+}
+
 export function licensedTelemetryMetadata(opts: {
   billingMode: BillingMode;
   licenseTier: string | null;
@@ -81,6 +118,10 @@ export function licensedTelemetryMetadata(opts: {
   extra?: Record<string, unknown>;
 }): Record<string, unknown> {
   const meta: Record<string, unknown> = { ...(opts.extra ?? {}) };
+  const path = requestPath(opts.originalUrl);
+  if (path) meta.path = path;
+  if (opts.facets.tickers.length) meta.tickers = opts.facets.tickers.slice(0, 8);
+  if (opts.facets.as_of) meta.as_of = opts.facets.as_of;
   if (opts.billingMode !== "licensed") return meta;
   meta.billing_mode = "licensed";
   meta.license_tier = opts.licenseTier;

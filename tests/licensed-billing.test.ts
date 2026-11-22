@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { extractRequestFacets } from "@/lib/agent/request-facets";
 import {
   licensedTelemetryMetadata,
+  responseErrorMessage,
   shouldSkipCharge,
 } from "@/lib/agent/licensed-billing";
 
@@ -98,5 +99,19 @@ describe("licensedTelemetryMetadata", () => {
     expect(meta.billing_mode).toBeUndefined();
     expect(meta.list_price_usd).toBeUndefined();
     expect(meta.fetch_latency_ms).toBe(12);
+    expect(meta.path).toBe("/api/metrics/AAPL");
+    expect(meta.tickers).toEqual(["AAPL"]);
+    expect(meta.original_url).toBeUndefined();
+  });
+});
+
+describe("responseErrorMessage", () => {
+  it("keeps a short JSON error and drops credentials", async () => {
+    const ok = new Response(JSON.stringify({ error: "Symbol not found" }), { status: 404 });
+    expect(await responseErrorMessage(ok)).toBe("Symbol not found");
+    const secret = new Response(JSON.stringify({ error: "bad rm_agent_live_secret" }), { status: 401 });
+    expect(await responseErrorMessage(secret)).toBeUndefined();
+    const success = new Response(JSON.stringify({ error: "ignored" }), { status: 200 });
+    expect(await responseErrorMessage(success)).toBeUndefined();
   });
 });

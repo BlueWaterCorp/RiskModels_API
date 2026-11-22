@@ -25,6 +25,7 @@ import { extractApiKey, validateApiKey } from "./api-keys";
 import {
   loadLicenseAccount,
   licensedTelemetryMetadata,
+  responseErrorMessage,
   shouldSkipCharge,
   type BillingMode,
   type LicenseAccount,
@@ -1038,6 +1039,7 @@ export function withBilling(
       const fetchLatencyMs = Number(response.headers.get("X-Data-Fetch-Latency-Ms")) || (Date.now() - handlerStart);
       const agentDecisionLatencyMs = latencyMs - fetchLatencyMs;
       const success = response.status < 400;
+      const errorMessage = await responseErrorMessage(response);
 
       // 6. Atomically deduct balance on success (only if cost > 0).
       //    The deduct_balance RPC uses FOR UPDATE — immune to race conditions.
@@ -1143,6 +1145,9 @@ export function withBilling(
             extra: {
               fetch_latency_ms: fetchLatencyMs,
               agent_decision_latency_ms: agentDecisionLatencyMs,
+              ...(!success
+                ? { method: req.method, ...(errorMessage ? { error: errorMessage } : {}) }
+                : {}),
             },
           }),
         }).catch(console.error);
@@ -1443,6 +1448,7 @@ export async function finalizeBilling(
   const latencyMs = Date.now() - context.startTime;
   const costUsd = actualCostUsd ?? context.costUsd;
   const success = res.status < 400;
+  const errorMessage = await responseErrorMessage(res);
 
   // Deduct balance on success (skip for first-party unlimited and licensed accounts)
   if (
@@ -1500,6 +1506,9 @@ export async function finalizeBilling(
       keyPrefix: context.keyPrefix,
       originalUrl: req.url,
       facets: await extractRequestFacetsFromRequest(req),
+      ...(!success
+        ? { extra: { method: req.method, ...(errorMessage ? { error: errorMessage } : {}) } }
+        : {}),
     }),
   }).catch(console.error);
 
