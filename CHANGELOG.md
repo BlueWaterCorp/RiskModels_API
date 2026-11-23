@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 — Python SDK 0.5.1
+
+- `riskmodels-py` 0.5.1 ships the SDK changes merged since 0.5.0 (2026-10-08). Fund zarr stores open from consolidated metadata first, falling back to per-array metadata (#525), so the SDK keeps working when Funds_DAG publishes stores as chunks plus `.zmetadata` only (FDAG-115). Also: `get_alpha` (#531); point-in-time `fund_holdings(as_of=..., time_basis=...)` (#515); held-date ticker identity (#516, ERM3-73); portfolio-exposure additions (#419, #475); industry 160 taxonomy row (#501). New parameters are optional; existing calls are unchanged.
+
 ## 2026-11-21 — Sign-in, first key and agent provisioning
 
 - `/get-key` issues the first API key on the first signed-in load and shows it once with a `curl` example; no Generate click. One call, `POST /api/get-key/bootstrap`, creates the account with the $20 starter credit, writes first-touch attribution and issues the key. A reload or a second tab does not create a second key. `GET /api/account` no longer creates the account.
