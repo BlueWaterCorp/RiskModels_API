@@ -13,7 +13,7 @@
   RETIRED once the ERM3 Dagster job erm3_event_ledger_daily (erm3/sec_overnight)
   is live: that job sends the list edition each weekday after the SEC daily
   fetch and the ledger publish succeed
-  (event-ledger-digest.ts --list --send --scheduled --advance-cursor).
+  (event-ledger-digest.ts in scheduled list-send mode).
   Then: launchctl bootout gui/$(id -u)/com.bwmacro.event-ledger-digest
   and remove the installed copy. Kept here until that cutover.
 -->
