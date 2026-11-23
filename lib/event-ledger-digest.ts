@@ -77,6 +77,8 @@ export const FEED_TERMS_URL = `${CANONICAL_SITE_URL}/legal/feed-terms`;
 export { FEED_TERMS_VERSION } from "@/lib/feed-waitlist";
 /** Signup page; the "Forward to a colleague" link carries ?ref=<referral_code>. */
 export const FEED_SIGNUP_URL = `${CANONICAL_SITE_URL}/security-master-feed`;
+export const EVENT_LEDGER_RSS_URL = "https://www.riskmodels.org/events/feed.xml";
+export const EVENT_LEDGER_RSS_TEXT = "Follow the public Event Ledger in your RSS reader";
 
 /** Credit the GDELT Project's terms ask for wherever GDELT-derived data is shown. */
 export const GDELT_CREDIT =
@@ -1396,6 +1398,9 @@ export function renderDigestText(ed: DigestEdition, footer: EditionFooter = edit
   if (ed.sampleNote) out.push(ed.sampleNote, "");
   out.push(headline(ed));
   out.push(`Window: ${windowText(ed.window)}.`);
+  out.push("");
+  out.push(`${EVENT_LEDGER_RSS_TEXT}: ${EVENT_LEDGER_RSS_URL}`);
+  out.push("The RSS feed carries the latest verified public events and flags corrections and withdrawals.");
   out.push("");
   for (const f of ed.families) {
     const title = `${f.label}: ${f.items.length}`;

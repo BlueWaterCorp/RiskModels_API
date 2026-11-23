@@ -13,7 +13,7 @@
   RETIRED once the ERM3 Dagster job erm3_event_ledger_daily (erm3/sec_overnight)
   is live: that job sends the list edition each weekday after the SEC daily
   fetch and the ledger publish succeed
-  (event-ledger-digest.ts --list --send --scheduled --advance-cursor).
+  (event-ledger-digest.ts in scheduled list-send mode).
   Then: launchctl bootout gui/$(id -u)/com.bwmacro.event-ledger-digest
   and remove the installed copy. Kept here until that cutover.
 -->
@@ -26,7 +26,7 @@
   <array>
     <string>/bin/zsh</string>
     <string>-lc</string>
-    <string>cd ~/BW_Code/RiskModels_API &amp;&amp; doppler run --project erm3 --config prd -- npx tsx scripts/event-ledger-digest.ts --internal --send --advance-cursor &gt;&gt; ~/Library/Logs/event-ledger-digest.log 2&gt;&amp;1</string>
+    <string>cd ~/BW_Code/RiskModels_API_main &amp;&amp; doppler run --project erm3 --config prd -- npx tsx scripts/event-ledger-digest.ts --internal --send --advance-cursor &gt;&gt; ~/Library/Logs/event-ledger-digest.log 2&gt;&amp;1</string>
   </array>
   <key>StartCalendarInterval</key>
   <array>
