@@ -32,7 +32,7 @@ if (!['desk', 'firm', 'production'].includes(tier)) { console.error('--tier must
 
 const SECRET = process.env.API_KEY_SECRET;
 if (!SECRET) { console.error('API_KEY_SECRET is not set; run under doppler (prd config).'); process.exit(1); }
-const SALT = process.env.API_KEY_SALT ?? SECRET;
+const SALT = process.env.API_KEY_SALT || SECRET;
 
 const random = crypto.randomBytes(24).toString('base64url').replace(/^_+/, '').replace(/_+$/, '');
 const base = `rm_agent_live_${random}`;

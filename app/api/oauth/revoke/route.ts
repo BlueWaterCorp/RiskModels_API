@@ -7,7 +7,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { hashApiKey } from "@/lib/user-api-keys";
+import { apiKeyHashCandidates } from "@/lib/agent/key-secrets";
 import { sha256 } from "@/lib/oauth/server";
 import { clientIp, rateLimit } from "@/lib/oauth/rate-limit";
 
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       await admin
         .from("user_generated_api_keys")
         .update({ revoked_at: now })
-        .eq("key_hash", hashApiKey(token))
+        .in("key_hash", apiKeyHashCandidates(token))
         .is("revoked_at", null);
     } else {
       // Opaque refresh token.

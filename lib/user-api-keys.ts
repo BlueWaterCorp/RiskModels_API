@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { apiKeyChecksumSecret, apiKeyHashSalt } from '@/lib/agent/key-secrets';
+import { apiKeyChecksumSecret, apiKeyHashSalt, hashKeyWithSalt } from '@/lib/agent/key-secrets';
 
 export interface UserApiKeyResult {
   plainKey: string;
@@ -36,7 +36,7 @@ export function generateUserApiKey(environment: 'live' | 'test' = 'live'): UserA
   };
 }
 
+/** Stored hash under the current salt. Lookups go through `apiKeyHashCandidates` (RMAPI-32). */
 export function hashApiKey(plainKey: string): string {
-  const salt = apiKeyHashSalt();
-  return crypto.createHash('sha256').update(plainKey + salt).digest('hex');
+  return hashKeyWithSalt(plainKey, apiKeyHashSalt());
 }
