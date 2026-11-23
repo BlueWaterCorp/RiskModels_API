@@ -4,6 +4,8 @@ import { FeedHeader, FEED_LOGO_URL, styles as feedStyles } from "./feed-shared";
 import {
   DIGEST_CONTACT_EMAIL,
   DIGEST_FOOTER_LEGAL,
+  EVENT_LEDGER_RSS_URL,
+  EVENT_LEDGER_RSS_TEXT,
   FOOTER_FORWARD_TEXT,
   FOOTER_TEAM_INBOX_TEXT,
   FOOTER_TERMS_TEXT,
@@ -209,6 +211,11 @@ export const EventLedgerDigestEmail = ({
 
         <Text style={s.headline}>{headline(edition)}</Text>
         <Text style={s.window}>Window: {windowText(edition.window)}.</Text>
+
+        <Text style={{ ...s.paragraph, fontSize: "13px" }}>
+          <Link href={EVENT_LEDGER_RSS_URL} style={s.link}>{EVENT_LEDGER_RSS_TEXT}</Link>.
+          {" "}The RSS feed carries the latest verified public events and flags corrections and withdrawals.
+        </Text>
 
         {edition.mainCount === 0 ? (
           <Text style={s.empty}>Nothing to report in this window. The attached file is empty.</Text>

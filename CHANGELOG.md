@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-23 — Event Ledger RSS
+
+- Public Event Ledger presentation export at `/security-master-feed/latest.json`, using the daily edition's existing publication gate, corrections and withdrawal handling, and output scans. RM_ORG reads it for `/events` and `/events/feed.xml`.
+- Daily Event Ledger emails include the RSS subscription link in HTML and plain text. Attached event data, recipient selection and delivery controls are unchanged.
+
 ## 2026-11-22 — Python SDK 0.5.1
 
 - `riskmodels-py` 0.5.1 ships the SDK changes merged since 0.5.0 (2026-10-08). Fund zarr stores open from consolidated metadata first, falling back to per-array metadata (#525), so the SDK keeps working when Funds_DAG publishes stores as chunks plus `.zmetadata` only (FDAG-115). Also: `get_alpha` (#531); point-in-time `fund_holdings(as_of=..., time_basis=...)` (#515); held-date ticker identity (#516, ERM3-73); portfolio-exposure additions (#419, #475); industry 160 taxonomy row (#501). New parameters are optional; existing calls are unchanged.
