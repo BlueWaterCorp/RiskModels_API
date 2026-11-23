@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getCapability, calculateEstimatedCost } from "./capabilities";
+import { keyAllowsCapability } from "./key-scopes";
 import { billableCostUsd } from "./billable-cost";
 import {
   checkBalance,
@@ -642,6 +643,16 @@ export function withBilling(
 
       if (!userId && extractedKey && !isTrustedServiceGateway) {
         const validation = await validateApiKey(extractedKey);
+        if (validation.valid && validation.userId && !keyAllowsCapability(validation.scopes, options.capabilityId)) {
+          return NextResponse.json(
+            {
+              error: "INSUFFICIENT_SCOPE",
+              message: `This API key is not scoped for '${options.capabilityId}'. Its scopes: ${(validation.scopes ?? []).join(", ")}.`,
+              _agent: { action: "use_another_key", help_url: "https://riskmodels.app/get-key" },
+            },
+            { status: 403 },
+          );
+        }
         if (validation.valid && validation.userId) {
           userId = validation.userId;
           apiKey = extractedKey;

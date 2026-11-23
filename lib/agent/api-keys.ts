@@ -7,7 +7,13 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import crypto from "crypto";
-import { apiKeyChecksumSecret, apiKeyHashSalt } from "./key-secrets";
+import {
+  apiKeyChecksumSecret,
+  apiKeyChecksumSecrets,
+  apiKeyHashCandidates,
+  apiKeyHashSalt,
+  hashKeyWithSalt,
+} from "./key-secrets";
 
 // Lazy initialization to avoid build-time errors
 let supabase: ReturnType<typeof createAdminClient> | null = null;
@@ -150,12 +156,31 @@ export function generateApiKey(
  * For production, consider using bcrypt or Argon2.
  */
 export function hashApiKey(plainKey: string): string {
-  const salt = apiKeyHashSalt();
+  return hashKeyWithSalt(plainKey, apiKeyHashSalt());
+}
 
-  return crypto
-    .createHash("sha256")
-    .update(plainKey + salt)
-    .digest("hex");
+/**
+ * Re-hash a key found under a legacy salt to the current salt (RMAPI-32).
+ * Awaited so the write commits before a serverless function freezes; a
+ * failure is logged and never fails authentication.
+ */
+async function rehashIfLegacy(
+  table: "agent_api_keys" | "user_generated_api_keys",
+  id: string,
+  storedHash: string,
+  currentHash: string,
+): Promise<void> {
+  if (storedHash === currentHash) return;
+  try {
+    const { error } = await getSupabase()
+      .from(table)
+      .update({ key_hash: currentHash })
+      .eq("id", id)
+      .eq("key_hash", storedHash);
+    if (error) console.error(`[api-keys] re-hash ${table} ${id} failed: ${error.message}`);
+  } catch (e) {
+    console.error(`[api-keys] re-hash ${table} ${id} failed`, e);
+  }
 }
 
 /**
@@ -183,8 +208,13 @@ export function isValidApiKeyFormat(key: string): boolean {
   const keyWithoutChecksum = key.slice(0, lastUnderscore);
   const checksum = key.slice(lastUnderscore + 1);
 
-  const hashInput = keyWithoutChecksum + apiKeyChecksumSecret();
+  return apiKeyChecksumSecrets().some((secret) =>
+    checksumMatches(keyWithoutChecksum + secret, checksum),
+  );
+}
 
+/** True when `checksum` is one of the three checksum encodings ever issued for `hashInput`. */
+function checksumMatches(hashInput: string, checksum: string): boolean {
   const rawBase64url = crypto
     .createHash("sha256")
     .update(hashInput)
@@ -228,13 +258,12 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
 
   if (isUserKey) {
     // User-generated keys use a separate hash function and table
-    const { hashApiKey: hashUserKey } = await import("@/lib/user-api-keys");
-    const hashedKey = hashUserKey(plainKey);
+    const candidates = apiKeyHashCandidates(plainKey);
 
     const { data: keyRecord, error } = await getSupabase()
       .from("user_generated_api_keys")
-      .select("id, user_id, key_prefix, scopes, rate_limit_per_minute, revoked_at, expires_at, last_used_at")
-      .eq("key_hash", hashedKey)
+      .select("id, user_id, key_prefix, key_hash, scopes, rate_limit_per_minute, revoked_at, expires_at, last_used_at")
+      .in("key_hash", candidates)
       .single();
 
     if (error && (error as { code?: string }).code === "42703") {
@@ -254,12 +283,14 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
       return { valid: false, error: "API key has expired" };
     }
 
+    await rehashIfLegacy("user_generated_api_keys", keyRecord.id, keyRecord.key_hash, candidates[0]);
+
     // Update last used timestamp (non-blocking)
     void Promise.resolve(
       getSupabase()
         .from("user_generated_api_keys")
         .update({ last_used_at: new Date().toISOString() })
-        .eq("key_hash", hashedKey),
+        .eq("id", keyRecord.id),
     ).catch(console.error);
 
     // Activation tracking: first time this key is used → record account-level first
@@ -289,12 +320,12 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
     return { valid: false, error: "Invalid API key format" };
   }
 
-  const hashedKey = hashApiKey(plainKey);
+  const candidates = apiKeyHashCandidates(plainKey);
 
   const AGENT_KEY_COLUMNS =
-    "id, user_id, key_prefix, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at";
+    "id, user_id, key_prefix, key_hash, scopes, rate_limit_per_minute, revoked_at, expires_at, key_scope, daily_spend_cap_usd, last_used_at";
   const selectKey = (columns: string) =>
-    getSupabase().from("agent_api_keys").select(columns).eq("key_hash", hashedKey).single();
+    getSupabase().from("agent_api_keys").select(columns).in("key_hash", candidates).single();
 
   // org_id is read alongside the existing columns; if the column is not there
   // yet (schema behind the code), fall back to the original select so personal
@@ -340,12 +371,14 @@ export async function validateApiKey(plainKey: string): Promise<ValidatedKey> {
     }
   }
 
+  await rehashIfLegacy("agent_api_keys", keyRecord.id, keyRecord.key_hash, candidates[0]);
+
   // Update last used timestamp (non-blocking)
   void Promise.resolve(
     getSupabase()
       .from("agent_api_keys")
       .update({ last_used_at: new Date().toISOString() })
-      .eq("key_hash", hashedKey),
+      .eq("id", keyRecord.id),
   ).catch(console.error);
 
   // Activation tracking: first time this key is used → record account-level first

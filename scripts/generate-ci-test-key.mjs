@@ -19,8 +19,8 @@
 
 import crypto from 'crypto';
 
-const API_KEY_SECRET = process.env.API_KEY_SECRET ?? 'default-secret';
-const API_KEY_SALT   = process.env.API_KEY_SALT   ?? API_KEY_SECRET;
+const API_KEY_SECRET = process.env.API_KEY_SECRET || 'default-secret';
+const API_KEY_SALT   = process.env.API_KEY_SALT   || API_KEY_SECRET;
 
 if (API_KEY_SECRET === 'default-secret') {
   console.warn('\n⚠️  API_KEY_SECRET not set — key will not validate against production.\n' +
