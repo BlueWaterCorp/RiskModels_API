@@ -8,6 +8,7 @@
  *   npx tsx scripts/feed-admin.ts unsubscribe --email <a>
  *   npx tsx scripts/feed-admin.ts add-delivery --contact <a> --inbox <b>
  *   npx tsx scripts/feed-admin.ts remove-delivery --contact <a> --inbox <b>
+ *   npx tsx scripts/feed-admin.ts access --email <a> --action approve|reject|revoke|reopen --by "<who>" [--note "<text>"]
  *
  * Arguments are parsed strictly (node:util parseArgs): an unknown option is an error.
  * stdout is exactly one JSON line: {"ok":true,"outcome":"..."} (exit 0) or
@@ -26,6 +27,9 @@
  *   the contact can choose that, from the footer page.
  * - remove-delivery: removes the link. The inbox row stays (its consent history is kept) and stops
  *   receiving because no live contact links to it any more.
+ * - access: records an operator's decision on a contact's request for subscriber access, with who
+ *   decided (--by) and when (feed_access_decide). It sends no email. approve needs a confirmed,
+ *   pending contact; revoke ends email editions, the private feed and every linked delivery inbox.
  *
  * Needs NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY and, for the
  * sending actions, RESEND_API_KEY.
@@ -64,6 +68,7 @@ const OPTIONS = {
   unsubscribe: ["email"],
   "add-delivery": ["contact", "inbox"],
   "remove-delivery": ["contact", "inbox"],
+  access: ["email", "action", "by", "note"],
 } as const;
 
 function email(v: Values, name: string): string {
@@ -202,12 +207,31 @@ async function invite(v: Values): Promise<string> {
   }
 }
 
+const ACCESS_ACTIONS = ["approve", "reject", "revoke", "reopen"];
+
+async function access(v: Values): Promise<string> {
+  const action = (v.action ?? "").trim();
+  const by = (v.by ?? "").trim();
+  if (!ACCESS_ACTIONS.includes(action)) throw new AdminError("invalid_action");
+  if (!by || by.length > 200) throw new AdminError("invalid_by");
+  const note = (v.note ?? "").trim().slice(0, 500) || null;
+  const { data, error } = await createAdminClient().rpc("feed_access_decide", {
+    p_email: email(v, "email"),
+    p_action: action,
+    p_actor: by,
+    p_note: note,
+  });
+  if (error) throw new AdminError("decide_failed");
+  return typeof data === "string" && /^[a-z_]{1,60}$/.test(data) ? data : "unexpected_result";
+}
+
 const COMMANDS: Record<keyof typeof OPTIONS, (v: Values) => Promise<string>> = {
   invite,
   "resend-confirm": resendConfirm,
   unsubscribe,
   "add-delivery": addDelivery,
   "remove-delivery": removeDelivery,
+  access,
 };
 
 async function main() {

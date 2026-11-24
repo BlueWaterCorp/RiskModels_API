@@ -1,5 +1,12 @@
 /**
- * Public "latest events" file for riskmodels.org/events (RM_ORG app/events).
+ * Event Ledger export files, built from one read of the ledger:
+ *
+ * - buildPublicLatest: the subscriber export, the newest events. It is served only to an
+ *   approved subscriber's private feed credential (app/security-master-feed/private).
+ * - buildPublicSample: the public sample for riskmodels.org/events (RM_ORG app/events) and
+ *   /security-master-feed/latest.json. A few events, none newer than a stated date.
+ *
+ * Both use the same gate, corrections and event ids; the sample only selects fewer, older rows.
  *
  * public.event_ledger is service-role only, so there is no public read path to
  * it. Instead the digest script writes this small static JSON
@@ -35,6 +42,11 @@ import {
 
 export const PUBLIC_LATEST_SCHEMA = "riskmodels.event-ledger-latest/1";
 export const PUBLIC_LATEST_COUNT = 20;
+/** Events in a subscriber's private export. */
+export const SUBSCRIBER_LATEST_COUNT = PUBLIC_LATEST_COUNT;
+/** Events in the public sample, and how many days it trails the ledger. */
+export const PUBLIC_SAMPLE_COUNT = 5;
+export const PUBLIC_SAMPLE_LAG_DAYS = 7;
 
 export interface PublicLatestEvent {
   event_id: string;
@@ -75,6 +87,16 @@ export interface PublicLatestFile {
   events: PublicLatestEvent[];
 }
 
+/** The public sample: the same shape, plus the fields that say it is a dated sample. */
+export interface PublicSampleFile extends PublicLatestFile {
+  sample: true;
+  /** No event in the file became publicly known after this date (YYYY-MM-DD). */
+  sample_through: string;
+  sample_note: string;
+  /** Where to request free subscriber access to the current feed. */
+  access: string;
+}
+
 function toPublic(i: DigestItem): PublicLatestEvent {
   return {
     event_id: i.eventId,
@@ -97,14 +119,10 @@ function toPublic(i: DigestItem): PublicLatestEvent {
   };
 }
 
-/** The newest `count` client-deliverable events by knowledge time (ties: ledger seq), superseded originals dropped. */
-export function buildPublicLatest(
-  rows: readonly LedgerRow[],
-  opts: { generatedAt: string; count?: number },
-): PublicLatestFile {
-  const count = opts.count ?? PUBLIC_LATEST_COUNT;
+/** Every client-deliverable event, newest first by knowledge time (ties: ledger seq), superseded originals dropped. */
+function deliverable(rows: readonly LedgerRow[], generatedAt: string): { items: DigestItem[]; gdeltCredit: boolean } {
   const ed = buildDigest(rows, {
-    editionDate: opts.generatedAt.slice(0, 10),
+    editionDate: generatedAt.slice(0, 10),
     window: { basis: "ledger_seq", after_seq: 0, through_seq: 0 },
     audience: "client",
     includeUnderReview: false,
@@ -114,7 +132,7 @@ export function buildPublicLatest(
   const superseded = new Set(
     rows.map((r) => r.envelope.supersedes_event_id).filter((id): id is string => typeof id === "string" && id !== ""),
   );
-  const verified = ed.families
+  const items = ed.families
     .flatMap((f) => f.items)
     .filter((i) => !superseded.has(i.eventId) && i.status !== "superseded")
     .filter((i) => i.status === "verified" || (i.status === "rejected" && i.flag !== null))
@@ -122,11 +140,56 @@ export function buildPublicLatest(
       const ka = a.envelope.knowledge_at ?? "";
       const kb = b.envelope.knowledge_at ?? "";
       return ka < kb ? 1 : ka > kb ? -1 : b.seq - a.seq;
-    })
-    .slice(0, count);
+    });
+  return { items, gdeltCredit: Boolean(ed.gdeltCredit) };
+}
+
+/** The newest `count` deliverable events. */
+export function buildPublicLatest(
+  rows: readonly LedgerRow[],
+  opts: { generatedAt: string; count?: number },
+): PublicLatestFile {
+  const all = deliverable(rows, opts.generatedAt);
+  return fileOf(all.items.slice(0, opts.count ?? PUBLIC_LATEST_COUNT), all.gdeltCredit, opts.generatedAt);
+}
+
+/** YYYY-MM-DD, `days` before the UTC date of `iso`. */
+export function sampleCutoff(iso: string, days: number = PUBLIC_SAMPLE_LAG_DAYS): string {
+  const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The public sample: the newest `count` deliverable events that became publicly known on or
+ * before the cutoff. An event with no known date is left out, because it cannot be shown to
+ * be older than the cutoff. Supersession is read from every row, so an event withdrawn or
+ * corrected after the cutoff is still dropped from the sample.
+ */
+export function buildPublicSample(
+  rows: readonly LedgerRow[],
+  opts: { generatedAt: string; count?: number; lagDays?: number },
+): PublicSampleFile {
+  const all = deliverable(rows, opts.generatedAt);
+  const through = sampleCutoff(opts.generatedAt, opts.lagDays ?? PUBLIC_SAMPLE_LAG_DAYS);
+  const items = all.items
+    .filter((i) => typeof i.knowledgeDate === "string" && i.knowledgeDate !== "" && i.knowledgeDate <= through)
+    .slice(0, opts.count ?? PUBLIC_SAMPLE_COUNT);
+  return {
+    ...fileOf(items, all.gdeltCredit, opts.generatedAt),
+    description:
+      "A dated public sample of the RiskModels Event Ledger: US equity identity and listing-status events, each tied to the SEC filing behind it. The current feed is free for approved subscribers.",
+    sample: true,
+    sample_through: through,
+    sample_note: `Sample only. It holds at most ${opts.count ?? PUBLIC_SAMPLE_COUNT} events, none publicly known after ${through}. Approved subscribers receive current events by email and private RSS.`,
+    access: FEED_SIGNUP_URL,
+  };
+}
+
+function fileOf(verified: DigestItem[], gdeltCredit: boolean, generatedAt: string): PublicLatestFile {
   return {
     schema: PUBLIC_LATEST_SCHEMA,
-    generated_at: opts.generatedAt,
+    generated_at: generatedAt,
     description:
       "The latest verified events in the RiskModels Event Ledger: US equity identity and listing-status events, each tied to the SEC filing behind it.",
     selection:
@@ -135,7 +198,7 @@ export function buildPublicLatest(
     latest_known_date: verified[0]?.knowledgeDate ?? null,
     terms: FEED_TERMS_URL,
     signup: FEED_SIGNUP_URL,
-    credits: ed.gdeltCredit && verified.some((i) => /gdelt/i.test(JSON.stringify(i.envelope))) ? [GDELT_CREDIT] : [],
+    credits: gdeltCredit && verified.some((i) => /gdelt/i.test(JSON.stringify(i.envelope))) ? [GDELT_CREDIT] : [],
     events: verified.map(toPublic),
   };
 }
@@ -150,12 +213,28 @@ export const PUBLIC_LATEST_QUERIES = [
   "envelope->>supersedes_event_id=not.is.null",
 ] as const;
 
+async function readRows(getRows: (query: string) => Promise<LedgerRow[]>): Promise<LedgerRow[]> {
+  const bySeq = new Map<number, LedgerRow>();
+  for (const q of PUBLIC_LATEST_QUERIES) for (const r of await getRows(q)) bySeq.set(r.seq, r);
+  return [...bySeq.values()];
+}
+
 /** Fetches with `getRows` (one PostgREST filter per call), merges by seq, and builds the file. */
 export async function loadPublicLatest(
   getRows: (query: string) => Promise<LedgerRow[]>,
   opts: { generatedAt: string; count?: number },
 ): Promise<PublicLatestFile> {
-  const bySeq = new Map<number, LedgerRow>();
-  for (const q of PUBLIC_LATEST_QUERIES) for (const r of await getRows(q)) bySeq.set(r.seq, r);
-  return buildPublicLatest([...bySeq.values()], opts);
+  return buildPublicLatest(await readRows(getRows), opts);
+}
+
+/** One read of the ledger, both files: the subscriber export and the public sample. */
+export async function loadLedgerExports(
+  getRows: (query: string) => Promise<LedgerRow[]>,
+  opts: { generatedAt: string },
+): Promise<{ subscriber: PublicLatestFile; sample: PublicSampleFile }> {
+  const rows = await readRows(getRows);
+  return {
+    subscriber: buildPublicLatest(rows, { generatedAt: opts.generatedAt, count: SUBSCRIBER_LATEST_COUNT }),
+    sample: buildPublicSample(rows, { generatedAt: opts.generatedAt }),
+  };
 }

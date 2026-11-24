@@ -21,7 +21,10 @@ describe("public Event Ledger export and RSS promotion", () => {
     expect(response.status).toBe(200);
     const body = await response.text();
     const snapshot = JSON.parse(body);
-    expect(snapshot.count).toBe(rows.length - 1);
+    // The public route serves the dated sample: at most five events, all older than its cutoff.
+    expect(snapshot.sample).toBe(true);
+    expect(snapshot.count).toBe(5);
+    expect(snapshot.events.every((e: { known_date: string }) => e.known_date <= snapshot.sample_through)).toBe(true);
     expect(snapshot.events.map((e: { event_id: string }) => e.event_id)).not.toContain(internal.envelope.event_id);
     expect(body).not.toContain("private-test-key");
     expect(body).not.toContain('"envelope"');
@@ -45,6 +48,13 @@ describe("public Event Ledger export and RSS promotion", () => {
     const html = await render(EventLedgerDigestEmail({ edition }));
     expect(html).toContain(`href="${EVENT_LEDGER_RSS_URL}"`);
     expect(renderDigestText(edition)).toContain(EVENT_LEDGER_RSS_URL);
+    // An edition links to the page where a subscriber creates a private address, never to a feed address.
+    expect(EVENT_LEDGER_RSS_URL).toBe("https://riskmodels.app/security-master-feed/access");
+    for (const body of [html, renderDigestText(edition)]) {
+      expect(body).not.toContain("feed.xml");
+      expect(body).not.toContain("key=");
+      expect(body).not.toContain("rmf_");
+    }
     expect(edition.attachment.body).toBe(before);
   });
 });

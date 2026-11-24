@@ -6,6 +6,7 @@ import {
   DIGEST_FOOTER_LEGAL,
   EVENT_LEDGER_RSS_URL,
   EVENT_LEDGER_RSS_TEXT,
+  EVENT_LEDGER_RSS_NOTE,
   FOOTER_FORWARD_TEXT,
   FOOTER_TEAM_INBOX_TEXT,
   FOOTER_TERMS_TEXT,
@@ -214,7 +215,7 @@ export const EventLedgerDigestEmail = ({
 
         <Text style={{ ...s.paragraph, fontSize: "13px" }}>
           <Link href={EVENT_LEDGER_RSS_URL} style={s.link}>{EVENT_LEDGER_RSS_TEXT}</Link>.
-          {" "}The RSS feed carries the latest verified public events and flags corrections and withdrawals.
+          {" "}{EVENT_LEDGER_RSS_NOTE}
         </Text>
 
         {edition.mainCount === 0 ? (

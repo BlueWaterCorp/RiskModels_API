@@ -77,8 +77,14 @@ export const FEED_TERMS_URL = `${CANONICAL_SITE_URL}/legal/feed-terms`;
 export { FEED_TERMS_VERSION } from "@/lib/feed-waitlist";
 /** Signup page; the "Forward to a colleague" link carries ?ref=<referral_code>. */
 export const FEED_SIGNUP_URL = `${CANONICAL_SITE_URL}/security-master-feed`;
-export const EVENT_LEDGER_RSS_URL = "https://www.riskmodels.org/events/feed.xml";
-export const EVENT_LEDGER_RSS_TEXT = "Follow the public Event Ledger in your RSS reader";
+/**
+ * Where an approved subscriber creates a private RSS address. Editions link to this page, never
+ * to a feed address: a private address carries a credential and must not sit in a forwarded email.
+ */
+export const EVENT_LEDGER_RSS_URL = `${FEED_SIGNUP_URL}/access`;
+export const EVENT_LEDGER_RSS_TEXT = "Read the Event Ledger in your RSS reader";
+export const EVENT_LEDGER_RSS_NOTE =
+  "Approved subscribers can create a private RSS address there. It carries the latest verified events and flags corrections and withdrawals.";
 
 /** Credit the GDELT Project's terms ask for wherever GDELT-derived data is shown. */
 export const GDELT_CREDIT =
@@ -1400,7 +1406,7 @@ export function renderDigestText(ed: DigestEdition, footer: EditionFooter = edit
   out.push(`Window: ${windowText(ed.window)}.`);
   out.push("");
   out.push(`${EVENT_LEDGER_RSS_TEXT}: ${EVENT_LEDGER_RSS_URL}`);
-  out.push("The RSS feed carries the latest verified public events and flags corrections and withdrawals.");
+  out.push(EVENT_LEDGER_RSS_NOTE);
   out.push("");
   for (const f of ed.families) {
     const title = `${f.label}: ${f.items.length}`;

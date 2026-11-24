@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-23 — Event Ledger subscriber access
+
+- `/security-master-feed/latest.json` now serves a dated public sample: up to five verified events, each at least seven days old, marked `sample: true`.
+- Approved subscribers read the current ledger at `/security-master-feed/private/feed.xml` and `/security-master-feed/private/latest.json` with a personal, revocable feed address created at `/security-master-feed/access`.
+- The sign-up form asks for name, firm or affiliation, role and intended use. A person reviews each request after the address is confirmed. Editions go to approved subscribers.
+- Daily Event Ledger emails link to the feed-address page. Event IDs, revision handling, filing citations and publication filters are unchanged.
+
 ## 2026-11-23 — Event Ledger RSS
 
 - Public Event Ledger presentation export at `/security-master-feed/latest.json`, using the daily edition's existing publication gate, corrections and withdrawal handling, and output scans. RM_ORG reads it for `/events` and `/events/feed.xml`.

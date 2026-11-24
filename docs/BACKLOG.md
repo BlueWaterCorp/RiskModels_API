@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-33`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-34`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -185,3 +185,10 @@ Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 o
 ## RMAPI-32 · API key checksum secret and hash salt are the public defaults in production (2026-11-21)
 
 **Impact:** HYGIENE · Downgraded from MATERIAL on 2026-11-23. `API_KEY_SECRET` and `API_KEY_SALT` are unset in production, so keys are checksummed and hashed with the defaults in this repo. Keys carry 32 random characters (about 190 bits), so their SHA-256 hash cannot be reversed with or without a salt, and a hash alone does not authenticate. A public checksum secret only lets a junk key pass the format check before it fails the database lookup with 401. The cost is in an outside security review, not in access. **Needs:** DECISION (rotate when a customer review asks). The rotation code is in place (#550): set the new values on riskmodels.app, riskmodels.net and the BWMACRO admin together; old keys validate and are re-hashed on use; `scripts/key-rotation-status.mjs` counts what remains on the old salt; `API_KEY_ACCEPT_LEGACY=off` ends the window. Re-hashing makes the switch one-way.
+
+## RMAPI-33 · Event Ledger edition table is cramped at phone width (2026-11-23)
+
+**Impact:** IMPROVEMENT · At 390 px the six-column event table in `emails/event-ledger-digest.tsx` wraps accession numbers over five lines and the Status and Source role columns touch. The content is complete and readable at desktop width. **Needs:** engineering
+
+Seen in a rendered preview of the 2026-11-23 edition (12 events). Stack the Status, Source role and Source cells under the event cell below about 480 px, or drop Source role at that width. Check the result in a real mail client, since several ignore media queries.
+

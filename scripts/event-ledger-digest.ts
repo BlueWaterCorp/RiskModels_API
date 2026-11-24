@@ -21,7 +21,7 @@
  *               --internal builds the internal edition (adds internal_only rows under
  *               "Internal only, not for clients"); refused unless --to is in INTERNAL_RECIPIENTS.
  *   --list      the CLIENT edition to every address feed_waitlist_edition_recipients() returns
- *               (consented, not unsubscribed, confirmed delivery inboxes; one copy per address),
+ *               (approved contacts: consented, not unsubscribed; their confirmed delivery inboxes; one copy per address),
  *               each with its own footer (referral link, team-inbox link for contacts,
  *               unsubscribe, terms) and List-Unsubscribe headers. Refused with --internal.
  *               Without --send it is a dry run: it reads the recipient list, renders and checks
@@ -33,7 +33,7 @@
  *               any rows read (all of them withheld), so they are not read again. The single-address
  *               mode still sends its "No new events" note.
  *   --scheduled With --list --send (and --advance-cursor): the Dagster run. Sends to every confirmed
- *               list recipient (accepted terms, confirmed address, not unsubscribed) without
+ *               list recipient (approved, accepted terms, confirmed address, not unsubscribed) without
  *               --confirm-list-send; reads the list cursor only (no --since-seq, knowledge window or
  *               --sample). One edition per edition date: when sent.json for the date is marked
  *               complete, a later scheduled run sends nothing ("skipped_already_sent", exit 0) and
@@ -66,9 +66,10 @@
  *               create) from reading its state to writing it; a second run refuses (exit 5). A lock
  *               older than two hours is reported and refused, never broken: remove it by hand.
  *   --public-json <path>
- *               also write the public "latest events" file for riskmodels.org/events
- *               (lib/event-ledger-public.ts): the newest 20 verified, client-deliverable events,
- *               read independently of the cursor. Checked with the same output scans.
+ *               also write the dated public sample for riskmodels.org/events
+ *               (lib/event-ledger-public.ts, buildPublicSample): a few verified, client-deliverable
+ *               events known at least a week ago, read independently of the cursor. Checked with
+ *               the same output scans. The current events go to approved subscribers only.
  *
  * Every edition passes the PR #533 checks before anything is written or sent:
  *   - buildDigest's licensing gate (redistributable public_record or derived only;
@@ -136,7 +137,7 @@ import {
   type FooterRecipient,
   type LedgerRow,
 } from "../lib/event-ledger-digest";
-import { loadPublicLatest } from "../lib/event-ledger-public";
+import { loadLedgerExports } from "../lib/event-ledger-public";
 import { buildMimeMessage } from "../lib/event-ledger-digest-mime";
 import {
   SEND_WINDOW_CAP,
@@ -358,7 +359,7 @@ function readSentLog(path: string, edition: DigestEdition): SentLog["sent"] {
 
 async function writePublicJson(path: string) {
   // Verified events plus every withdrawal or correction, so superseded originals are dropped.
-  const file = await loadPublicLatest(getRows, { generatedAt: new Date().toISOString() });
+  const file = (await loadLedgerExports(getRows, { generatedAt: new Date().toISOString() })).sample;
   const body = JSON.stringify(file, null, 2) + "\n";
   if (restrictedWordHits(body).length || priceOrCapHits(body).length) throw new Error("refused_public_json_output_check");
   writeFileSync(resolve(path), body);

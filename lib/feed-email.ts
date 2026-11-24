@@ -36,8 +36,45 @@ import {
 } from "@/emails/feed-launch-notice";
 import { FeedInviteEmail, feedInviteSubject } from "@/emails/feed-invite";
 import { FeedDeliveryChangeEmail, FEED_DELIVERY_CHANGE_SUBJECT } from "@/emails/feed-delivery-change";
+import { FeedAccessEmail, FEED_ACCESS_SUBJECT } from "@/emails/feed-access";
 
 export { FEED_PAGE_URL, feedInviteUrl };
+
+/** Where an approved subscriber asks for a private feed address. */
+export const FEED_ACCESS_PAGE_URL = `${FEED_PAGE_URL}/access`;
+
+/** Page with the create button; the single-use token rides in the query and is stripped before analytics load. */
+export function feedAccessIssuePageUrl(token: string): string {
+  return `${FEED_ACCESS_PAGE_URL}/issue?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * The single-use link that creates a private feed address. The caller has already claimed the link
+ * (feed_access_claim_link), which matches only an approved, confirmed, not-unsubscribed contact.
+ */
+export async function sendFeedAccessLink(
+  row: { email: string; name: string | null; unsubscribe_token: string },
+  token: string,
+): Promise<{ id: string }> {
+  const { html, text } = await renderBoth(
+    FeedAccessEmail({
+      name: row.name,
+      accessUrl: feedAccessIssuePageUrl(token),
+      unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
+    }),
+  );
+  const sent = await sendResendEmail(resendClient(), {
+    from: fromAddress(),
+    to: row.email,
+    replyTo: SUPPORT_EMAIL,
+    subject: FEED_ACCESS_SUBJECT,
+    html,
+    text,
+    headers: feedUnsubscribeHeaders(row.unsubscribe_token),
+    tags: [{ name: "category", value: "feed_access_link" }],
+  });
+  return { id: sent.id };
+}
 
 /** Token only: the inbox is named in the email text, and the server acts on the inbox stored with the request. */
 export function feedDeliveryChangeConfirmPageUrl(token: string): string {
@@ -103,6 +140,8 @@ export interface FeedWaitlistRow {
   purpose?: "contact" | "feed";
   /** This recipient's forward-to-a-colleague link, when the caller has their referral code. */
   inviteUrl?: string | null;
+  /** Welcome email only: true when the contact is already an approved subscriber. */
+  approved?: boolean;
 }
 
 /**
@@ -209,6 +248,7 @@ export async function sendFeedEarlyAccessEmail(row: FeedWaitlistRow): Promise<{ 
       feedPageUrl: FEED_PAGE_URL,
       unsubscribeUrl: feedUnsubscribePageUrl(row.unsubscribe_token),
       inviteUrl: row.inviteUrl ?? null,
+      approved: row.approved === true,
     }),
   );
   const sent = await sendResendEmail(resendClient(), {

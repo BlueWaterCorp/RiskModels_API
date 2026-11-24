@@ -24,6 +24,7 @@ export function FeedConfirm() {
   const token = useFeedSecret("token");
   const [state, setState] = useState<State>("ready");
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [approved, setApproved] = useState(false);
 
   async function confirm() {
     setState("saving");
@@ -41,7 +42,9 @@ export function FeedConfirm() {
         purpose?: string;
         delivery?: boolean;
         inviteUrl?: string | null;
+        approved?: boolean;
       };
+      setApproved(json.approved === true);
       setInviteUrl(colleagueInviteUrl(json.inviteUrl));
       setState(json.purpose === "feed" ? "doneFeed" : json.delivery ? "doneDelivery" : "done");
     } catch {
@@ -59,11 +62,26 @@ export function FeedConfirm() {
         </p>
       ) : state === "doneDelivery" || state === "done" ? (
         <>
-          <p>
-            {state === "doneDelivery"
-              ? "This address is confirmed for the security master change feed. Editions go to the other address you named. That address does not need its own confirmation."
-              : "This address is confirmed for the security master change feed. Editions will come to this address."}
-          </p>
+          {approved ? (
+            <p>
+              {state === "doneDelivery"
+                ? "This address is confirmed and approved for the security master change feed. Editions go to the other address you named. That address does not need its own confirmation."
+                : "This address is confirmed and approved for the security master change feed. Editions will come to this address."}{" "}
+              <Link href="/security-master-feed/access" className="underline">
+                Create a private RSS address
+              </Link>
+              .
+            </p>
+          ) : (
+            <p>
+              This address is confirmed. Your request is now under review: the feed is free and goes to approved
+              investment, research, risk and data professionals, and a person reads each request. We will email you
+              when it is approved.
+              {state === "doneDelivery"
+                ? " Once approved, editions go to the other address you named, which does not need its own confirmation."
+                : ""}
+            </p>
+          )}
           {inviteUrl ? (
             <p className="mt-6">
               Invite a colleague with your link. When they confirm, the list records that the invitation came from
@@ -85,7 +103,8 @@ export function FeedConfirm() {
       ) : (
         <>
           <p className="mb-6">
-            Confirm that this is your address for the security master change feed. You are not subscribed until you do.
+            Confirm that this is your address for the security master change feed. Your request is not reviewed
+            until you do.
           </p>
           <button
             type="button"

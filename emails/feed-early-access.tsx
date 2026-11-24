@@ -13,9 +13,10 @@ import {
 } from "./feed-shared";
 
 /**
- * Sent once, on a new early-access signup with consent_feed_emails = true
- * (POST /api/feed-waitlist). The feed is not live: this email promises the spec
- * and an illustrative sample before the first edition, and makes no coverage or
+ * Sent once, when the owner of an address confirms it (POST /api/feed-waitlist/confirm).
+ * Confirming an address is not approval: the feed goes to approved subscribers, and a
+ * person reviews each request. `approved` is the contact's state at that moment, so the
+ * email never promises editions to someone still under review. It makes no coverage or
  * latency claims.
  */
 export interface FeedEarlyAccessEmailProps {
@@ -24,33 +25,48 @@ export interface FeedEarlyAccessEmailProps {
   unsubscribeUrl: string;
   /** This address's own colleague link. Omitted when the code is not available. */
   inviteUrl?: string | null;
+  /** True only when the contact is already an approved subscriber. */
+  approved?: boolean;
   /** Override for previews and test sends (e.g. a cid: image). */
   logoSrc?: string;
 }
 
-export const FEED_EARLY_ACCESS_SUBJECT = "You are confirmed for the RiskModels security master feed";
+export const FEED_EARLY_ACCESS_SUBJECT = "Your address is confirmed: RiskModels security master feed";
 
 export const FeedEarlyAccessEmail = ({
   name = null,
   feedPageUrl = `${BASE_URL}/security-master-feed`,
   unsubscribeUrl = `${BASE_URL}/security-master-feed/unsubscribe`,
   inviteUrl = null,
+  approved = false,
   logoSrc = FEED_LOGO_URL,
 }: FeedEarlyAccessEmailProps) => (
   <Html>
     <Head />
-    <Preview>This address is confirmed for the RiskModels security master change feed.</Preview>
+    <Preview>
+      {approved
+        ? "This address is confirmed and approved for the RiskModels security master change feed."
+        : "This address is confirmed. Your request for the RiskModels security master change feed is under review."}
+    </Preview>
     <Body style={styles.main}>
       <Container style={styles.container}>
         <FeedHeader logoSrc={logoSrc} />
-        <Heading style={styles.heading}>You are confirmed</Heading>
+        <Heading style={styles.heading}>{approved ? "You are confirmed" : "Address confirmed, request under review"}</Heading>
 
         <Text style={styles.paragraph}>{name ? `Hi ${name},` : "Hello,"}</Text>
 
-        <Text style={styles.paragraph}>
-          This address is confirmed for the RiskModels security master change feed. Editions are sent as they
-          are published.
-        </Text>
+        {approved ? (
+          <Text style={styles.paragraph}>
+            This address is confirmed and approved for the RiskModels security master change feed. Editions are
+            sent as they are published.
+          </Text>
+        ) : (
+          <Text style={styles.paragraph}>
+            This address is confirmed. The feed is free and goes to approved investment, research, risk and data
+            professionals, so a person reviews each request. We will email you when yours is approved. Nothing more
+            is needed from you now; if your details were incomplete, reply to this email with your firm and role.
+          </Text>
+        )}
 
         <Section style={styles.box}>
           <Text style={styles.boxHeading}>What each edition will contain</Text>
@@ -70,9 +86,19 @@ export const FeedEarlyAccessEmail = ({
         <FeedFit />
 
         <Text style={styles.paragraph}>
-          <strong>What happens next.</strong> Editions are sent as they are published. Early clients receive the
-          feed free for about the first year.
+          <strong>What happens next.</strong>{" "}
+          {approved
+            ? "Editions are sent as they are published."
+            : "Once approved, you receive editions by email as they are published and can create a private RSS address."}{" "}
+          Early clients receive the feed free for about the first year.
         </Text>
+
+        {approved ? (
+          <Text style={styles.paragraph}>
+            To read the Event Ledger in an RSS reader, create a private feed address at{" "}
+            <Link href={`${feedPageUrl}/access`} style={styles.link}>{`${feedPageUrl}/access`}</Link>.
+          </Text>
+        ) : null}
 
         <FeedFeedbackAsk
           heading="Tell us what you need"

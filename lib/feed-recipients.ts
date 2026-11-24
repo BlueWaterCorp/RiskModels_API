@@ -2,7 +2,9 @@
  * Who receives an edition of the feed (Event Ledger editions included).
  *
  * feed_waitlist_edition_recipients() (migrations 20261102200000, replaced by
- * 20261113120000) is the single source of truth, so the rule lives in one place:
+ * 20261113120000 and 20261124020000) is the single source of truth, so the rule lives in one place:
+ *   - every recipient hangs off a contact that is confirmed, subscribed and approved
+ *     (feed_access_eligible(), the rule the private feed also uses);
  *   - a confirmed, subscribed contact receives editions at its own address, unless
  *     deliver_to_contact is false AND a linked delivery address has confirmed;
  *   - confirmed, subscribed delivery addresses linked to a live contact receive

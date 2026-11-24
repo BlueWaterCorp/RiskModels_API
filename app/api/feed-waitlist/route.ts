@@ -1,17 +1,32 @@
 /**
- * Security master feed early-access list
+ * Security master feed: request subscriber access
  *
  * POST /api/feed-waitlist
- *   { email, terms_accepted, feed_email?, name?, company?, role?, intended_use?,
- *     firm_type?, firm_size?, uses?, audience?, heard_about?, marketing_opt_in?,
- *     ref?, website? }
+ *   { email, terms_accepted, name, company, role, uses, profile_url?, feed_email?,
+ *     intended_use?, firm_type?, firm_size?, audience?, heard_about?,
+ *     marketing_opt_in?, ref?, website? }
  *
- * Everything except email and terms_accepted is optional; terms_accepted must be
- * true (the form's required box). Accepting the terms is the request for feed email: every
- * accepted signup asks for a confirmation email (consent_feed_emails, if sent by an old
- * client, is ignored). Profile answers are written on a NEW row only
- * and activate nothing. Values outside the allowed lists get a 400
- * (lib/feed-waitlist.ts mirrors the CHECK constraints of migration 20261113120000).
+ * The feed is free, for investment, research, risk and data professionals, and a
+ * person approves each request. So a request must say who is asking: name, firm
+ * or affiliation (company), role and at least one intended use (uses) are
+ * required, with the email and terms_accepted. profile_url is an optional firm
+ * website or professional profile link. This route approves nobody: a new row is
+ * pending until an operator decides, after the owner confirms the address.
+ *
+ * Screening (lib/feed-screen.ts) looks only at the address's domain. A throwaway
+ * mailbox domain, or a domain that does not exist in DNS, gets a 400. A free
+ * consumer mailbox is accepted and marked "personal" for manual review. Nothing
+ * is inferred from a name or from the part of the address before the @. These
+ * answers depend only on what was typed, never on the list.
+ *
+ * Accepting the terms is the request for feed email: every accepted request asks
+ * for a confirmation email (consent_feed_emails, if sent by an old client, is
+ * ignored). Profile answers are written on a NEW row. For an address already
+ * listed, feed_waitlist_fill_profile fills only fields that are still empty, and
+ * only while the row is unconfirmed, not unsubscribed and pending, so a repeat
+ * request can complete a profile but never change one. Values outside the
+ * allowed lists get a 400 (lib/feed-waitlist.ts mirrors the CHECK constraints of
+ * migration 20261113120000).
  *
  * Terms, the marketing opt-in (a separate, unticked box) and the referral code
  * (`ref`, from a "Forward to a colleague" link) are consent-like: a value a third
@@ -70,6 +85,7 @@ import {
   type FeedIntendedUse,
 } from "@/lib/feed-waitlist";
 import { sendFeedConfirmation, type FeedConfirmRow } from "@/lib/feed-email";
+import { domainExists, emailDomain, profileUrl, screenAddress } from "@/lib/feed-screen";
 import { lookupFeedInviteUrl } from "@/lib/feed-referral";
 import {
   CONFIRM_MAX_SENDS,
@@ -91,9 +107,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const NO_STORE = { "Cache-Control": "no-store" };
 const CONFIRM_MESSAGE =
-  "Check your email. We sent a link to confirm your address. You receive the feed when you click it.";
+  "Check your email. We sent a link to confirm your address. After you click it we review your request and email you the decision.";
 const CONFIRM_MESSAGE_WITH_FEED =
-  "Check your email. We sent a link to confirm your address. The feed will go to the other address after you confirm. That address does not need its own confirmation.";
+  "Check your email. We sent a link to confirm your address. After you click it we review your request and email you the decision. Once approved, the feed goes to the other address, which does not need its own confirmation.";
+const PROFILE_MESSAGE =
+  "Please give your name, firm or affiliation, role and at least one intended use. The feed is free, and each request is reviewed.";
+const ADDRESS_MESSAGE =
+  "We could not accept that email address. Please use a work, academic or regular personal address.";
 
 const TERMS_MESSAGE = "Please accept the free edition terms to join.";
 
@@ -205,6 +225,39 @@ export async function POST(req: NextRequest) {
       { status: 400, headers: NO_STORE },
     );
   }
+  // Who is asking. Required for every request; an operator reads these before approving.
+  const name = optionalText(body.name);
+  const company = optionalText(body.company);
+  const role = optionalText(body.role);
+  if (!name || !company || !role || uses.length === 0) {
+    return NextResponse.json(
+      { error: "Incomplete profile", message: PROFILE_MESSAGE },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+  const profile = profileUrl(body.profile_url);
+  if (profile === undefined) {
+    return NextResponse.json(
+      {
+        error: "Invalid profile_url",
+        message: "Enter the firm website or profile link as a web address, or leave it blank.",
+      },
+      { status: 400, headers: NO_STORE },
+    );
+  }
+
+  // Domain screen. The delivery address is screened the same way; it is never the reason for manual review.
+  const screen = screenAddress(email);
+  const feedScreen = feedEmail ? screenAddress(feedEmail) : null;
+  const domains = [...new Set([emailDomain(email), ...(feedEmail ? [emailDomain(feedEmail)] : [])])];
+  if (
+    screen === "disposable" ||
+    feedScreen === "disposable" ||
+    (await Promise.all(domains.map((d) => domainExists(d)))).includes(false)
+  ) {
+    return NextResponse.json({ error: "Address not accepted", message: ADDRESS_MESSAGE }, { status: 400, headers: NO_STORE });
+  }
+
   const refCode = typeof body.ref === "string" && REFERRAL_CODE_RE.test(body.ref.trim().toLowerCase())
     ? body.ref.trim().toLowerCase()
     : null;
@@ -233,13 +286,16 @@ export async function POST(req: NextRequest) {
       referredBy = (refRow as { id?: string } | null)?.id ?? null;
     }
 
-    // A new row never carries consent. An existing row is left exactly as it was.
+    // A new row never carries consent or approval (access_status defaults to pending).
+    // An existing row is left as it was here; only its empty profile fields may be filled below.
     const { error } = await admin.from("feed_waitlist").upsert(
       {
         email,
-        name: optionalText(body.name),
-        company: optionalText(body.company),
-        role: optionalText(body.role),
+        name,
+        company,
+        role,
+        profile_url: profile,
+        access_screen: screen,
         intended_use: intendedUse,
         firm_type: firmType,
         firm_size: firmSize,
@@ -263,6 +319,19 @@ export async function POST(req: NextRequest) {
       console.error("[feed-waitlist] insert_failed", safeErrorCode(error));
       return unavailable();
     }
+
+    // Same call on every path. It matches nothing for a new row (already complete), a confirmed
+    // row, an unsubscribed row or a decided one. A failure loses only the fill, never the request.
+    const { error: fillError } = await admin.rpc("feed_waitlist_fill_profile", {
+      p_email: email,
+      p_name: name,
+      p_company: company,
+      p_role: role,
+      p_uses: uses,
+      p_profile_url: profile,
+      p_access_screen: screen,
+    });
+    if (fillError) console.error("[feed-waitlist] profile_fill_failed", safeErrorCode(fillError));
 
     {
       // Every accepted signup asks for a confirmation (the terms are the request for feed email).

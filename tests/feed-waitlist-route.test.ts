@@ -9,6 +9,10 @@ const rpc = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({
   data: [] as unknown,
   error: null as unknown,
 }));
+const fillProfile = vi.fn(async (_fn: string, _args: Record<string, unknown>) => ({
+  data: null as unknown,
+  error: null as unknown,
+}));
 // Referral lookup: from("feed_waitlist").select("id").eq("referral_code", code).maybeSingle()
 const referralLookup = vi.fn(async (_code: string) => ({ data: null as unknown, error: null as unknown }));
 const select = vi.fn((_cols: string) => ({
@@ -31,13 +35,24 @@ vi.mock("next/server", async (importOriginal) => {
   };
 });
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ from, rpc }),
+  // The profile fill is its own call; `rpc` stays the confirmation claim, as the tests below read it.
+  createAdminClient: () => ({
+    from,
+    rpc: (fn: string, args: Record<string, unknown>) =>
+      fn === "feed_waitlist_fill_profile" ? fillProfile(fn, args) : rpc(fn, args),
+  }),
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({ auth: { getUser } }),
 }));
 vi.mock("@/lib/feed-email", () => ({
   sendFeedConfirmation: (...args: unknown[]) => sendFeedConfirmation(...args),
+}));
+// The domain check is a DNS lookup; the tests answer it. Everything else in the screen is real.
+const domainExists = vi.fn(async (_domain: string) => true);
+vi.mock("@/lib/feed-screen", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/feed-screen")>()),
+  domainExists: (domain: string) => domainExists(domain),
 }));
 vi.mock("@/lib/oauth/rate-limit", () => ({
   clientIp: () => "203.0.113.7",
@@ -49,11 +64,14 @@ import { POST } from "@/app/api/feed-waitlist/route";
 const URL = "http://localhost/api/feed-waitlist";
 const TOKEN_HASH_RE = /^[0-9a-f]{64}$/;
 
-/** The form's required terms box is ticked unless a test says otherwise. */
+/** A complete request profile; a test overrides or blanks a field to say otherwise. */
+const PROFILE = { name: "A. Analyst", company: "Example Capital", role: "PM", uses: ["reconciliation"] };
+
+/** The form's required terms box is ticked, and the profile is complete, unless a test says otherwise. */
 function request(body: unknown): NextRequest {
   const withTerms =
-    body && typeof body === "object" && !Array.isArray(body) && !("terms_accepted" in body)
-      ? { ...(body as Record<string, unknown>), terms_accepted: true }
+    body && typeof body === "object" && !Array.isArray(body)
+      ? { ...PROFILE, terms_accepted: true, ...(body as Record<string, unknown>) }
       : body;
   return new NextRequest(URL, {
     method: "POST",
@@ -85,6 +103,8 @@ describe("POST /api/feed-waitlist", () => {
     afterTasks.length = 0;
     getUser.mockReset().mockResolvedValue({ data: { user: null } });
     rateLimit.mockReset().mockResolvedValue({ ok: true, remaining: 9, retryAfter: 3600 });
+    domainExists.mockReset().mockResolvedValue(true);
+    fillProfile.mockReset().mockResolvedValue({ data: null, error: null });
   });
 
   describe("double opt-in: the signup never records consent", () => {
@@ -333,10 +353,10 @@ describe("POST /api/feed-waitlist", () => {
       });
     });
 
-    it("leaves every profile answer empty when none is given", async () => {
+    it("leaves the optional profile answers empty when none is given", async () => {
       await POST(request({ email: "a@example.com" }));
       const [row] = upsert.mock.calls[0]!;
-      expect(row).toMatchObject({ firm_type: null, firm_size: null, uses: [], audience: null, heard_about: null });
+      expect(row).toMatchObject({ firm_type: null, firm_size: null, audience: null, heard_about: null, profile_url: null });
     });
 
     it("rejects profile values that are not on the lists", async () => {
@@ -426,6 +446,97 @@ describe("POST /api/feed-waitlist", () => {
       expect(res.status).toBe(503);
       expect(afterTasks).toHaveLength(0);
       errSpy.mockRestore();
+    });
+  });
+
+  describe("qualification: who is asking, and what the address is", () => {
+    it("refuses a request without a name, firm, role or intended use, and writes nothing", async () => {
+      for (const missing of [{ name: "" }, { company: "  " }, { role: null }, { uses: [] }]) {
+        const res = await POST(request({ email: "a@example.com", ...missing }));
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toBe("Incomplete profile");
+      }
+      expect(upsert).not.toHaveBeenCalled();
+      expect(rpc).not.toHaveBeenCalled();
+      expect(sendFeedConfirmation).not.toHaveBeenCalled();
+    });
+
+    it("never approves: a new row carries no access decision, only how the address screened", async () => {
+      await POST(request({ email: "pm@examplecapital.com" }));
+      const [row] = upsert.mock.calls[0]!;
+      expect(row).toMatchObject({ access_screen: "work", consent_feed_emails: false });
+      for (const k of ["access_status", "access_basis", "access_decided_at", "access_decided_by"]) {
+        expect(row).not.toHaveProperty(k);
+      }
+    });
+
+    it("accepts a personal mailbox and marks it for manual review, with the supporting link", async () => {
+      const res = await POST(
+        request({ email: "independent@gmail.com", profile_url: "linkedin.com/in/an-independent" }),
+      );
+      expect(res.status).toBe(200);
+      const [row] = upsert.mock.calls[0]!;
+      expect(row).toMatchObject({
+        access_screen: "personal",
+        profile_url: "https://linkedin.com/in/an-independent",
+      });
+      expect(rpc).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not judge the name or the part before the @", async () => {
+      const res = await POST(request({ email: "xq7_zz.9@examplecapital.com", name: "Xq Zz" }));
+      expect(res.status).toBe(200);
+      expect(upsert.mock.calls[0]![0]).toMatchObject({ access_screen: "work" });
+    });
+
+    it("refuses a throwaway mailbox domain, for the contact or the delivery address", async () => {
+      for (const body of [
+        { email: "a@mailinator.com" },
+        { email: "a@examplecapital.com", feed_email: "ops@mailinator.com" },
+      ]) {
+        const res = await POST(request(body));
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toBe("Address not accepted");
+      }
+      expect(upsert).not.toHaveBeenCalled();
+    });
+
+    it("refuses a domain that does not exist", async () => {
+      domainExists.mockResolvedValue(false);
+      const res = await POST(request({ email: "a@no-such-domain.example" }));
+      expect(res.status).toBe(400);
+      expect(domainExists).toHaveBeenCalledWith("no-such-domain.example");
+      expect(upsert).not.toHaveBeenCalled();
+    });
+
+    it("refuses a profile link that is not a web address", async () => {
+      const res = await POST(request({ email: "a@example.com", profile_url: "javascript:alert(1)" }));
+      expect(res.status).toBe(400);
+      expect(upsert).not.toHaveBeenCalled();
+    });
+
+    it("offers the profile to an existing row through the fill-only call, never through the upsert", async () => {
+      await POST(request({ email: "a@example.com", profile_url: "https://example.com" }));
+      expect(upsert.mock.calls[0]![1]).toMatchObject({ ignoreDuplicates: true });
+      expect(fillProfile).toHaveBeenCalledTimes(1);
+      expect(fillProfile.mock.calls[0]![1]).toEqual({
+        p_email: "a@example.com",
+        p_name: "A. Analyst",
+        p_company: "Example Capital",
+        p_role: "PM",
+        p_uses: ["reconciliation"],
+        p_profile_url: "https://example.com/",
+        p_access_screen: "work",
+      });
+    });
+
+    it("still takes the request when the profile fill fails, and logs no address", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      fillProfile.mockResolvedValue({ data: null, error: { code: "42883", message: "missing for a@example.com" } });
+      const res = await POST(request({ email: "a@example.com" }));
+      expect(res.status).toBe(200);
+      expect(spy.mock.calls.flat().join(" ")).not.toContain("a@example.com");
+      spy.mockRestore();
     });
   });
 
