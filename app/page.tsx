@@ -6,7 +6,7 @@ import { CodeExhibit } from '@/components/site/CodeExhibit';
 import { ConnectorSteps } from '@/components/site/ConnectorSteps';
 import { FeedTable } from '@/components/site/FeedTable';
 import { getCapabilityById } from '@/lib/agent/capabilities';
-import { CLI_FIRST_CALL, CURL_FIRST_CALL, PYTHON_FIRST_CALL, SDK_PIP_SPEC } from '@/lib/site/examples';
+import { CLI_FIRST_CALL, CURL_FIRST_CALL, EXECUTED_ON, PYTHON_FIRST_CALL, SDK_PIP_SPEC } from '@/lib/site/examples';
 import { getFeedSample, getHealth, getMetricsExhibit, type MetricsExhibit } from '@/lib/site/live';
 
 export const metadata: Metadata = {
@@ -22,6 +22,8 @@ export const revalidate = 60;
 const ORG_UTM = 'utm_source=riskmodels-app&utm_medium=site&utm_campaign=cross-site';
 
 const CURL = CURL_FIRST_CALL;
+const UNIVERSE_CALL = `curl "https://riskmodels.app/api/universe/uni_mc_3000/members?teo=2016-06-15" \\
+  -H "Authorization: Bearer $RISKMODELS_API_KEY"`;
 const PYTHON = `# pip install "${SDK_PIP_SPEC}"\n${PYTHON_FIRST_CALL}`;
 const CLI = `npm install -g riskmodels@latest\n${CLI_FIRST_CALL}`;
 
@@ -36,6 +38,7 @@ const PRODUCTS: { what: string; capability: string }[] = [
   { what: 'Exposure of a long or long/short book', capability: 'portfolio-exposure' },
   { what: 'Mutual fund holdings and risk metrics', capability: 'fund-metrics' },
   { what: '13F filer holdings and risk metrics', capability: 'filer-metrics' },
+  { what: 'Universe membership on a given date', capability: 'universe-members' },
   { what: 'Security identity at a past date', capability: 'identity-resolve' },
 ];
 
@@ -117,7 +120,7 @@ export default async function HomePage() {
         <div className="lg:col-span-7">
           <p className="rm-label">Equity risk data · API</p>
           <h1 className="rm-h1 mt-4">
-            Daily risk decomposition and ETF hedge ratios for about 3,000 US stocks, by API.
+            Daily risk decomposition and ETF hedge ratios for about 3,000 US stocks, by API
           </h1>
           <p className="rm-lede mt-4 sm:mt-5">
             Each stock is split into market, sector, subsector and residual risk, with the ETF trade that offsets
@@ -132,7 +135,8 @@ export default async function HomePage() {
             </TrackedLink>
           </div>
           <p className="rm-small mt-4 hidden sm:block">
-            A key comes with $20 of credit and needs no card. End-of-day historical data; not investment advice.
+            The 3,000 are a dated membership list, so a backtest and a live program can use the same eligible
+            stocks on each date. A key comes with $20 of credit and needs no card. End-of-day historical data; not investment advice.
           </p>
         </div>
 
@@ -294,6 +298,39 @@ export default async function HomePage() {
           </Link>
           .
         </p>
+
+        <div className="mt-12 grid gap-x-10 gap-y-6 lg:grid-cols-12">
+          <div className="lg:col-span-6">
+            <h3 className="rm-h3">The universe is a dated list, not a count</h3>
+            <p className="rm-body mt-3">
+              Membership is a market-capitalisation rank, set at each month-end and applied to the following
+              month, with a daily check that the stock had a usable price. The list for any past trading day
+              can be requested, and it includes companies that have since delisted. A program that takes its
+              stocks from this list on each date researches and trades the same eligible set, and a backtest
+              does not hold stocks that were not members at the time.
+            </p>
+            <p className="rm-small mt-3">
+              Described in the{' '}
+              <Link href="/docs/universe-members" className="rm-link">
+                universe members guide
+              </Link>
+              .
+            </p>
+          </div>
+          <div className="min-w-0 lg:col-span-6">
+            <CodeExhibit
+              caption="Members on a past date"
+              tabs={[
+                {
+                  id: 'curl',
+                  label: 'curl',
+                  code: UNIVERSE_CALL,
+                  note: `Run on ${EXECUTED_ON}: returned 2,858 members with the list dated 2016-05-31; 1,188 of them are not in the list for 2026-11-23.`,
+                },
+              ]}
+            />
+          </div>
+        </div>
       </section>
 
       {/* 5 · Connect an assistant */}
