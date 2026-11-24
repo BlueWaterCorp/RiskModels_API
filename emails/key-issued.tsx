@@ -16,6 +16,7 @@ import {
 } from "@react-email/components";
 import * as React from "react";
 import { API_TERMS_URL, BASE_URL, LOGO_URL, SUPPORT_EMAIL } from "./constants";
+import { SDK_MIN_VERSION, SDK_PIP_SPEC } from "@/lib/site/examples";
 
 export { API_TERMS_URL };
 
@@ -56,7 +57,7 @@ const CLAUDE_CODE_STDIO = `claude mcp add --scope user --transport stdio riskmod
 const CLAUDE_CODE_REMOTE_JQ = `API=$(jq -r '.apiKey' ~/.config/riskmodels/config.json)
 claude mcp add --scope user --env "AUTHORIZATION=Bearer $API" riskmodels -- npx -y mcp-remote https://riskmodels.app/api/mcp/sse`;
 
-const PYTHON_PIP = `python3 -m pip install "riskmodels-py>=0.3.4"
+const PYTHON_PIP = `python3 -m pip install "${SDK_PIP_SPEC}"
 # Optional — notebooks / Kaleido PNG: python3 -m pip install "riskmodels-py[viz]"`;
 
 const PYTHON_SNIPPET = `from riskmodels import RiskModelsClient
@@ -76,7 +77,7 @@ const COLAB_SNIPPET = `from google.colab import userdata
 import os
 os.environ["RISKMODELS_API_KEY"] = userdata.get("RISKMODELS_API_KEY")
 
-!pip install -q "riskmodels-py>=0.3.4"
+!pip install -q "${SDK_PIP_SPEC}"
 # For Kaleido static PNG helpers: !pip install -q "riskmodels-py[viz]"
 
 from riskmodels import RiskModelsClient
@@ -232,7 +233,7 @@ export const KeyIssuedEmail = ({
                   </td>
                   <td style={td}>
                     A <strong>Python library</strong>.{" "}
-                    <code style={inlineCode}>python3 -m pip install &quot;riskmodels-py&gt;=0.3.4&quot;</code>, then{" "}
+                    <code style={inlineCode}>python3 -m pip install &quot;{SDK_PIP_SPEC}&quot;</code>, then{" "}
                     <code style={inlineCode}>client.get_metrics(&quot;NVDA&quot;)</code> in a notebook.
                     Best for Jupyter, Colab, research scripts, anywhere you want a DataFrame back.
                   </td>
@@ -410,7 +411,7 @@ export const KeyIssuedEmail = ({
           <Text style={h3}>B1. Python — 3 lines in a notebook</Text>
           <CodeBlock theme={emailCodeTheme} language="bash" code={PYTHON_PIP} />
           <Text style={paragraph}>
-            <code style={inlineCode}>riskmodels-py</code> 0.3.4+ bundles matplotlib and plotly, so a plain{" "}
+            <code style={inlineCode}>riskmodels-py</code> {SDK_MIN_VERSION}+ bundles matplotlib and plotly, so a plain{" "}
             <code style={inlineCode}>import riskmodels</code> works. Add <code style={inlineCode}>[viz]</code> for
             Kaleido static PNG + Seaborn; <code style={inlineCode}>[xarray]</code> for dataset helpers.
           </Text>

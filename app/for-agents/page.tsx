@@ -1,215 +1,164 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  Boxes,
-  FileJson,
-  GitBranch,
-  KeyRound,
-  Plug,
-  ScrollText,
-  ShieldCheck,
-  Zap,
-} from 'lucide-react';
-import CodeBlock from '@/components/CodeBlock';
+import { CodeExhibit } from '@/components/site/CodeExhibit';
+import { SectionHead } from '@/components/site/SectionHead';
+import { EXECUTED_ON } from '@/lib/site/examples';
 
 export const metadata: Metadata = {
-  title: 'For AI Agents — RiskModels',
+  alternates: { canonical: '/for-agents' },
+  title: 'For AI agents',
   description:
-    'Everything an agent (or the risk/compliance team approving it) needs to discover, trust, and call RiskModels: machine-readable manifests, pricing in-protocol, point-in-time reproducibility, and self-serve auth.',
+    'What an agent, or the team approving one, needs to find and call RiskModels: machine-readable manifests, the price of each call in the response headers, and the model version and data date on every answer.',
 };
 
-type LinkCard = {
-  title: string;
-  href: string;
-  desc: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-};
-
-const DISCOVERY: LinkCard[] = [
-  {
-    title: 'Capability manifest',
-    href: '/.well-known/agent-manifest.json',
-    desc: 'One fetch: capabilities, pricing, reproducibility, and cross-links to every other artifact.',
-    icon: FileJson,
-  },
-  {
-    title: 'OpenAPI spec',
-    href: '/openapi.json',
-    desc: 'Full REST contract with per-endpoint x-pricing extensions.',
-    icon: ScrollText,
-  },
-  {
-    title: 'MCP server',
-    href: '/.well-known/mcp.json',
-    desc: 'Streamable-HTTP MCP manifest — Claude/Cursor/Grok/ChatGPT connectors, or Gemini Enterprise admin setup.',
-    icon: Plug,
-  },
-  {
-    title: 'llms.txt',
-    href: '/llms.txt',
-    desc: 'Crawler-friendly summary, including a shared demo key when the host enables one.',
-    icon: Boxes,
-  },
+const DISCOVERY: Array<[string, string, string]> = [
+  ['Capability manifest', '/.well-known/agent-manifest.json', 'Capabilities, prices and links to the other documents.'],
+  ['OpenAPI specification', '/openapi.json', 'The REST contract, with a price on each endpoint.'],
+  ['MCP manifest', '/.well-known/mcp.json', 'Hosted connector endpoints, tools and sign-in.'],
+  ['llms.txt', '/llms.txt', 'A short index of links; the full reference is /llms-full.txt.'],
+  ['Data handling disclosure', '/.well-known/agentic-disclosure.json', 'Retention, storage and training policy.'],
 ];
 
-const TRUST: { title: string; body: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
-  {
-    title: 'Point-in-time & reproducible',
-    body: 'Decompositions are deterministic and replayable back to 2011-12-07 (hedge ratios from 2010-12-08). Every response carries model_version, data_as_of, and factor_set_id so any number can be cited and re-derived.',
-    icon: GitBranch,
-  },
-  {
-    title: 'Auditable & disclosed',
-    body: 'request_id correlates response → billing event. Data handling, retention, and training policy are published machine-readably at /.well-known/agentic-disclosure.json.',
-    icon: ShieldCheck,
-  },
-  {
-    title: 'Cost in the protocol',
-    body: 'Every call returns _agent.cost_usd in the body and X-API-Cost-USD in headers. Pay-per-call, $20 free credits, no subscription. HTTP 402 when balance runs low — never a surprise.',
-    icon: Zap,
-  },
+const RESPONSE_FACTS: Array<[string, string]> = [
+  ['Model version', 'x-risk-model-version header and _metadata.model_version'],
+  ['Data date', 'x-data-as-of header and _metadata.data_as_of'],
+  ['Factor set', 'x-factor-set-id header and _metadata.factor_set_id'],
+  ['Price of the call', 'x-api-cost-usd header'],
+  ['Request id', 'x-request-id header and _agent.request_id'],
+  ['Rate limit', 'x-ratelimit-limit and x-ratelimit-remaining headers'],
 ];
 
-const PROVISION_CODE = `# 1. Self-provision free starter credits (no human in the loop)
-curl -X POST https://riskmodels.app/api/auth/provision-free
-
-# 2. Call any endpoint with the Bearer token you receive
-curl -X POST https://riskmodels.app/api/decompose \\
-  -H "Authorization: Bearer rm_agent_..." \\
+const DECOMPOSE = `curl --fail-with-body -X POST "https://riskmodels.app/api/decompose" \\
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"ticker":"NVDA"}'
+  -d '{"ticker":"NVDA"}'`;
 
-# 3. Retry safely — same Idempotency-Key never double-charges
-#    -H "Idempotency-Key: <uuid>"`;
-
-const TOOLDEF_CODE = `# Emit ready-to-paste tool definitions for your agent framework
-npm install -g riskmodels@latest
+const TOOL_DEFS = `npm install -g riskmodels@latest
 riskmodels manifest --format anthropic   # or: openai | zed`;
 
 export default function ForAgentsPage() {
   return (
-    <div className="mx-auto min-h-screen w-full max-w-[90rem] overflow-x-hidden bg-zinc-950">
-      {/* Hero */}
-      <section className="border-b border-zinc-800 px-4 pb-14 pt-16 sm:px-6 sm:pt-20 lg:px-8">
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-            For AI agents
-          </p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">
-            Specialized risk intelligence, one call away
-          </h1>
-          <p className="mt-4 text-base leading-relaxed text-zinc-400 sm:text-lg">
-            Precise L1/L2/L3 factor decomposition and ETF hedge ratios for ~3,000 US equities — JSON-native,
-            metered, and reproducible. An agent calls it in one shot instead of reasoning from training data.
-          </p>
-          <p className="mx-auto mt-5 max-w-2xl rounded-lg border border-emerald-500/25 bg-emerald-950/35 px-4 py-3 text-left text-sm leading-relaxed text-emerald-100/90">
-            <strong className="text-emerald-200">Approving us for your agent fleet?</strong> This page is the
-            one-pager for risk &amp; compliance teams — discovery artifacts, data policy, reproducibility
-            guarantees, and pricing are all linked below and published machine-readably.
-          </p>
+    <div className="rm-page pb-24">
+      <header className="pb-14 pt-12 sm:pt-16">
+        <p className="rm-label">For AI agents</p>
+        <h1 className="rm-h1 mt-4 max-w-3xl">What an agent needs to find, call and cite RiskModels.</h1>
+        <p className="rm-lede mt-6 max-w-2xl">
+          The API returns a four-layer risk decomposition and ETF hedge ratios as JSON. Each response states
+          the model version and data date it came from and the price of the call, so an answer built on it
+          can be cited and reconciled to a bill.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link href="/get-key" className="rm-btn">
+            Get an API key
+          </Link>
+          <Link href="/docs/agent-integration" className="rm-btn-ghost">
+            Connector setup
+          </Link>
+        </div>
+      </header>
+
+      <section className="rm-section" aria-labelledby="discovery">
+        <SectionHead n="01" label="Discovery" title="Machine-readable entry points" id="discovery">
+          <p>None of these needs a key.</p>
+        </SectionHead>
+        <div className="rm-scroll-x mt-8">
+          <table className="rm-table min-w-[34rem]">
+            <thead>
+              <tr>
+                <th scope="col">Document</th>
+                <th scope="col">Path</th>
+                <th scope="col">Contents</th>
+              </tr>
+            </thead>
+            <tbody>
+              {DISCOVERY.map(([name, href, body]) => (
+                <tr key={href}>
+                  <td>{name}</td>
+                  <td>
+                    <a href={href} className="rm-link rm-mono text-[13px]">
+                      {href}
+                    </a>
+                  </td>
+                  <td>{body}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
-      {/* Why call vs. self-compute */}
-      <section className="border-b border-zinc-800 px-4 py-14 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl">
-          <h2 className="text-2xl font-semibold text-white">Why call us instead of reasoning</h2>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-            A general model approximating a factor decomposition from training data is slow, expensive, and
-            unauditable. A single RiskModels call returns model-estimated four-layer attribution and ETF
-            hedge weights — with a model version and data date you can cite. Live processing latency and service
-            health are published at{' '}
-            <Link className="font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200" href="/api/health">
-              /api/health
+      <section className="rm-section" aria-labelledby="call">
+        <SectionHead n="02" label="First call" title="One request with a key" id="call">
+          <p>
+            Keys are Bearer tokens. A person gets one at{' '}
+            <Link href="/get-key" className="rm-link">
+              /get-key
+            </Link>
+            ; an agent can register itself with <code className="rm-mono">POST /api/auth/provision</code>,
+            described in the{' '}
+            <Link href="/docs/agent-integration" className="rm-link">
+              integration guide
             </Link>
             .
           </p>
+        </SectionHead>
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <CodeExhibit
+            caption="Decompose one stock"
+            tabs={[
+              {
+                id: 'curl',
+                label: 'curl',
+                code: DECOMPOSE,
+                note: `Returned 200 with exposure, hedge and hedge_levels blocks when run on ${EXECUTED_ON}.`,
+              },
+            ]}
+          />
+          <CodeExhibit
+            caption="Tool definitions"
+            tabs={[
+              {
+                id: 'cli',
+                label: 'Command line',
+                code: TOOL_DEFS,
+                note: `Prints tool definitions for the named framework. Run on ${EXECUTED_ON}.`,
+              },
+            ]}
+          />
         </div>
       </section>
 
-      {/* Discovery */}
-      <section className="border-b border-zinc-800 px-4 py-14 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-2xl font-semibold text-white">Discover us programmatically</h2>
-          <p className="mt-2 text-sm text-zinc-400">Four machine-readable entry points. Start with the manifest — it links to the rest.</p>
-          <div className="mt-8 grid gap-5 md:grid-cols-2">
-            {DISCOVERY.map(({ title, href, desc, icon: Icon }) => (
-              <Link
-                key={href}
-                href={href}
-                className="group flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition hover:border-emerald-500/30 hover:bg-white/[0.05]"
-              >
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">
-                    <Icon size={18} />
-                  </span>
-                  <h3 className="text-lg font-semibold text-white">{title}</h3>
-                </div>
-                <p className="text-sm leading-relaxed text-zinc-400">{desc}</p>
-                <span className="mt-4 font-mono text-xs text-emerald-400/80 group-hover:text-emerald-300">{href} →</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Onboard */}
-      <section className="border-b border-zinc-800 px-4 py-14 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-5 flex items-center gap-3">
-            <span className="inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">
-              <KeyRound size={18} />
-            </span>
-            <h2 className="text-2xl font-semibold text-white">Onboard without a human</h2>
-          </div>
-          <p className="mb-6 text-sm leading-relaxed text-zinc-400">
-            An agent goes from never-heard-of-us to first paid call in three requests. Bearer auth
-            (<code className="rounded bg-black/35 px-1 font-mono">rm_agent_*</code> /{' '}
-            <code className="rounded bg-black/35 px-1 font-mono">rm_user_*</code>), idempotent retries, and metered
-            pricing. Full key management lives at{' '}
-            <Link className="text-emerald-300 underline underline-offset-2 hover:text-emerald-200" href="/get-key">
-              get a key
+      <section className="rm-section" aria-labelledby="response">
+        <SectionHead n="03" label="Provenance" title="What every response states" id="response">
+          <p>
+            Read from the headers and body of a <code className="rm-mono">POST /api/decompose</code> response
+            on {EXECUTED_ON}. History is served from 2010-12-08 for hedge ratios and from 2011-12-07 for
+            variance shares; the{' '}
+            <Link href="/docs/methodology" className="rm-link">
+              methodology
             </Link>{' '}
-            and{' '}
-            <Link className="text-emerald-300 underline underline-offset-2 hover:text-emerald-200" href="/pricing">
-              pricing
-            </Link>
-            .
+            describes the model.
           </p>
-          <CodeBlock code={PROVISION_CODE} language="bash" filename="onboard" />
-          <p className="mb-3 mt-8 text-sm text-zinc-400">Generate tool definitions for your framework:</p>
-          <CodeBlock code={TOOLDEF_CODE} language="bash" filename="tool-defs" />
-        </div>
-      </section>
-
-      {/* Trust */}
-      <section className="px-4 py-14 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-2xl font-semibold text-white">Trust &amp; compliance signals</h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Built for regulated workflows — 13F structure, fund attribution, portfolio risk.
-          </p>
-          <div className="mt-8 grid gap-5 md:grid-cols-3">
-            {TRUST.map(({ title, body, icon: Icon }) => (
-              <div key={title} className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">
-                    <Icon size={18} />
-                  </span>
-                  <h3 className="text-base font-semibold text-white">{title}</h3>
-                </div>
-                <p className="text-sm leading-relaxed text-zinc-400">{body}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mx-auto mt-12 flex max-w-2xl flex-wrap justify-center gap-x-6 gap-y-2 text-center text-xs text-zinc-500">
-            <Link className="hover:text-zinc-300" href="/.well-known/agentic-disclosure.json">Agentic disclosure</Link>
-            <Link className="hover:text-zinc-300" href="/docs/methodology">Methodology</Link>
-            <Link className="hover:text-zinc-300" href="/docs/agent-integration">Agent integration guide</Link>
-            <Link className="hover:text-zinc-300" href="/api-reference">OpenAPI reference</Link>
-          </div>
-        </div>
+        </SectionHead>
+        <dl className="mt-8 border-t border-[var(--rm-ink)]">
+          {RESPONSE_FACTS.map(([k, v]) => (
+            <div key={k} className="grid gap-1 border-b border-rule py-3 sm:grid-cols-12 sm:gap-8">
+              <dt className="text-[15px] font-medium text-ink sm:col-span-3">{k}</dt>
+              <dd className="rm-mono text-[13px] text-ink-muted sm:col-span-9">{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="rm-small mt-4">
+          A request with too little credit returns 402. Prices are on the{' '}
+          <Link href="/pricing" className="rm-link">
+            pricing page
+          </Link>{' '}
+          and service health on the{' '}
+          <Link href="/status" className="rm-link">
+            status page
+          </Link>
+          .
+        </p>
       </section>
     </div>
   );

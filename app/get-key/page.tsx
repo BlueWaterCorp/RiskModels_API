@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
-import { Copy, Check, Trash2, KeyRound, Mail, LogOut, CreditCard, AlertCircle, Plus, Pencil, Bot } from 'lucide-react';
+import { Copy, Check, Trash2, Mail, LogOut, CreditCard, AlertCircle, Plus, Pencil, Bot } from 'lucide-react';
 import { copyTextToClipboard } from '@/lib/copy-to-clipboard';
 import { LANDING_PATH_PARAM, captureFirstTouch, captureUTMFromURL, clearUTMData, getFirstTouch, getUTMData } from '@/lib/utm';
 import { captureGclid, getStoredGclid, reportSignupConversion } from '@/lib/google-ads-conversion';
@@ -730,12 +730,10 @@ function GetKeyPage() {
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
         <div className="w-full max-w-md">
           <div className="mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 mb-4">
-              <KeyRound size={22} className="text-zinc-300" />
-            </div>
-            <h1 className="text-2xl font-bold text-zinc-100">Get your API key</h1>
+            <p className="rm-label">API key</p>
+            <h1 className="rm-h1 mt-3 !text-[2.25rem]">Get an API key</h1>
             <p className="text-zinc-400 mt-2 text-sm">
-              Sign in with Google, GitHub, or email — no password needed.
+              Sign in with Google, GitHub or an email link.
             </p>
             <p className="mt-2 text-xs leading-relaxed text-zinc-500" data-testid="key-holder-signin-hint">
               Already hold a key we emailed you? Use the email link with that same address so you land on the
@@ -743,9 +741,9 @@ function GetKeyPage() {
               empty account.
             </p>
             <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-              <span className="font-semibold text-zinc-100">$20 in free API credits</span> after
-              sign-in. Card is optional (auto-refill, off by default). Or connect Claude / Cursor
-              with the MCP URL — no API key required.
+              A new account receives $20 of credit at sign-in, and the key is shown with a request you can
+              paste into a terminal. No card is needed. An AI assistant can connect without a key:{' '}
+              <Link href="/docs/agent-integration" className="rm-link">connector setup</Link>.
             </p>
           </div>
 
@@ -891,7 +889,7 @@ function GetKeyPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-zinc-100">API Keys</h1>
+            <h1 className="rm-h1 !text-[2.25rem]">API keys</h1>
             <p className="text-zinc-400 text-sm mt-1">{user.email}</p>
           </div>
           <div className="flex items-center gap-4">

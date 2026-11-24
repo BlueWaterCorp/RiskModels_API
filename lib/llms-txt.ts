@@ -1,5 +1,6 @@
 /**
- * Source body for https://riskmodels.app/llms.txt (served by app/llms.txt/route.ts).
+ * Source bodies for https://riskmodels.app/llms.txt (a short index of Markdown links) and
+ * https://riskmodels.app/llms-full.txt (the full reference). Routes: app/llms.txt, app/llms-full.txt.
  * Optional `LLMS_TXT_PUBLIC_AGENT_KEY` appends a shared sample Bearer token for LLM crawlers.
  */
 
@@ -9,13 +10,13 @@ function mag7BulletList(): string {
   return WALKTHROUGH_MAG7_TICKERS.map((t) => `- ${t}`).join("\n");
 }
 
-function buildLlmsTxtBase(): string {
+function buildLlmsFullBase(): string {
   const mag7Csv = WALKTHROUGH_MAG7_TICKERS.join(", ");
   return `# RiskModels (riskmodels.app)
 
 RiskModels is a US equity risk API from Blue Water Macro Corp. Its ERM3 model splits each stock's risk into market, sector, subsector and stock-specific (residual) layers and gives an ETF hedge ratio for each market layer. It covers about 3,000 US stocks plus ETFs, end of day, with history from 2010–2011. The same data is available over REST, a Python SDK (riskmodels-py) and a hosted MCP server.
 
-This file is reference documentation: endpoints, access, pricing, terms and field notes.
+This file is the full reference: endpoints, access, pricing, terms and field notes. The short index is https://riskmodels.app/llms.txt.
 
 ## Access options
 
@@ -87,7 +88,7 @@ The decomposition routes that work across the universe (or many tickers) in a si
 - **\`GET /api/industry-panel?level=subsector&min_peers=20\`** — Vasicek peer-β cross-section by industry × cascade level: \`beta_mean\`, \`beta_variance\`, \`n_companies\`, \`total_log_mcap_weight\`. Default \`by=level\` is one row per (industry, level). \`by=fact\` is one row per (industry, fact). Multi-fact cells are historical (last L3 day 2021-06-22); latest teo is \`n_facts=1\`. One teo per call (latest by default). **$0.04/call.**
 - **\`POST /api/rankings/screen\`** with \`{metric, cohort, window, min_percentile|decile|sector_filter, limit}\` — server-side rank filter over the full ds_rankings cross-section at one teo. Returns up to 500 rows sorted by \`rank_ordinal\` (1 = best). The stat-arb cross-section in one call — replaces N per-ticker \`/rankings\` calls. **$0.25/call.**
 - **\`POST /api/batch/lstar\`** with \`{tickers: [...], years}\` — per-ticker daily Lstar history for up to 100 tickers in one call. Companion to \`lstar_rr\` in MetricsV3 (single-name latest); use this when you need history across a panel. **$0.015/ticker, min $0.03/call** (25% cheaper than repeated \`GET /lstar\`).
-- **\`POST /api/signals/residual-reversion/basket\`** with \`{tickers: [...], weights?, signal_quality_min_quintile?}\` — aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket of up to 500 tickers. Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Equal-weight default; optional quality gate (Phase B: gross Sharpe lifts from ~0.79 to ~1.28 at quintile 5). Tickers not in \`ds_erm3_residual_signal\` are silently dropped and surfaced via \`coverage.missing_tickers\`. **$0.02/call.**
+- **\`POST /api/signals/residual-reversion/basket\`** with \`{tickers: [...], weights?, signal_quality_min_quintile?}\` — aggregate the Phase D L3 residual mean-reversion signal across a user-supplied basket of up to 500 tickers. Returns weighted aggregate + decile / quality-quintile histograms + per-member rows. Equal-weight default; optional quality gate. Tickers not in \`ds_erm3_residual_signal\` are silently dropped and surfaced via \`coverage.missing_tickers\`. **$0.02/call.**
 - **\`GET /api/universe/{name}/members\`** — active membership of a named universe (\`uni_mc_3000\` etc.) at one teo (latest by default). Active = monthly universe_mask AND daily validity gate. It aligns a screen, panel or book with the canonical universe without a local SDK cache. Response carries members + counts breakdown + a \`mask_as_of\` month-end stamp. **$0.02/call.**
 - **\`GET /api/etf/factor-returns\`** — one-teo snapshot of close + trailing 1d / 21d / 63d / 252d total returns for **SPY + the 11 GICS sector SPDR ETFs** (XLE/XLB/XLI/XLY/XLP/XLV/XLF/XLK/XLC/XLU/XLRE). Public-scope only; tickers outside that set return 400. Pairs with \`industry-panel\` for the daily market + sector index read alongside aggregate stock-level industry βs. **$0.02/call.**
 - **\`GET /api/data/etf/universe\`** — every ETF the API knows, with three capabilities, any combination per fund: \`cascade\` (SPY, the 11 sector and the subsector ETFs the ERM3 cascade hedges with), \`priced\` (daily returns, covariance and beta to SPY, from \`priced_from\`) and \`holdings\` (look-through holdings and benchmark fit), plus \`factor_role\` and FIGI / CIK / BW identifiers. Filter with \`?cascade=\`, \`?priced=\`, \`?holdings=\` (true/false) and \`?factor_role=\`. On the 2026-10-14 build: 220 funds, 56 cascade, 128 priced, 148 with holdings; 10 style and 31 macro roles. \`GET /api/data/etf/{ticker}\` returns the same block for one fund (200 for every known fund) and \`/api/data/etf/search\` carries it on each hit. Reason codes: \`etf_outside_priced_universe\` (known fund, no daily returns), \`etf_no_return_history_in_window\` (priced, but no rows in the window), \`symbol_not_found\` (on no list). \`/api/ticker-returns\` does not bill a response with no rows and names the reason in \`_metadata.data_warning_code\`. **Free** (data-gateway per-IP rate limit). Guide: https://github.com/BlueWaterCorp/RiskModels_API/blob/main/docs/ETF_COVERAGE.md
@@ -134,14 +135,81 @@ Canonical site: https://riskmodels.app  |  Terms: https://riskmodels.net/terms/a
 `;
 }
 
-function appendPublicSampleKey(baseUrl: string, plainKey: string): string {
+function buildLlmsIndexBase(): string {
+  return `# RiskModels
+
+> US equity risk API from Blue Water Macro Corp. Each stock's risk is split into market, sector, subsector and stock-specific (residual) layers, with an ETF hedge ratio for each market layer. About 3,000 US stocks plus ETFs, end of day, history from 2010–2011. Delivered by REST, a Python SDK (riskmodels-py), a command line and a hosted MCP server.
+
+Data is end-of-day and historical. Discovery documents need no key. The full reference, with every endpoint note and price, is [llms-full.txt](https://riskmodels.app/llms-full.txt).
+
+## Start
+
+- [Get an API key](https://riskmodels.app/get-key): browser sign-in, $20 of credit, no card
+- [Quickstart](https://riskmodels.app/installation): curl, Python SDK, command line and assistant setup
+- [API reference](https://riskmodels.app/api-reference): endpoints, parameters, response fields
+- [OpenAPI specification](https://riskmodels.app/openapi.json): machine-readable contract
+- [Pricing](https://riskmodels.app/pricing): price per request; free discovery and identity routes
+- [Status](https://riskmodels.app/status): service health and data date
+
+## Access options
+
+| Use | How | Key |
+|---|---|---|
+| Try it without an account | Public sample key below (Magnificent 7 only, derived analytics only), or \`POST /api/auth/provision-free\` (100 requests/day; 3 accounts per IP per 24h) | Sample or free key |
+| An agent that signs itself up | \`POST /api/auth/provision\` with JSON \`agent_name\`, \`agent_id\`, \`contact_email\`. Key in the response. Free-tier limits until the owner of \`contact_email\` confirms from an emailed link | Free key, upgradable |
+| Full universe, personal | Free key at https://riskmodels.app/get-key (browser, no terminal) | Personal key |
+| An AI assistant used by one person | Hosted MCP with OAuth sign-in (table below) | Sign-in per person |
+| A platform serving its own users | REST from the platform's servers with one organization key, cached per security per trading day: https://riskmodels.app/docs/platform-integration | Organization key |
+
+Discovery documents (this file, \`/openapi.json\`, \`/.well-known/mcp.json\`) need no key.
+
+## Hosted MCP
+
+Three Streamable HTTP routes serve the same 26 tools, prompts and billing. \`/api/mcp\` is the conventional client-neutral route; the named \`/api/mcp/openai\` and \`/api/mcp/sse\` routes remain supported. Sign-in is OAuth 2.0 + PKCE at riskmodels.app, or a Bearer key.
+
+| Client | Endpoint | Setup |
+|---|---|---|
+| Claude Desktop, Claude web, Cursor (connector) | \`https://riskmodels.app/api/mcp/sse\` | Settings → Connectors → Add custom connector; OAuth client fields left blank |
+| Grok (web, iOS, Android) | \`https://riskmodels.app/api/mcp/sse\` | grok.com/connectors → New Connector → Custom |
+| ChatGPT (Plus and above, web, Developer Mode) | \`https://riskmodels.app/api/mcp/openai\` | Settings → Apps & Connectors → Advanced settings → Developer mode, then Create; OAuth |
+| Gemini Spark custom apps | \`https://riskmodels.app/api/mcp\` | Connected Apps → Custom apps for Spark → Add a custom app; OAuth |
+| Gemini CLI | \`https://riskmodels.app/api/mcp/openai\` | \`gemini extensions install https://github.com/BlueWaterCorp/riskmodels-gemini --consent\`, then \`/mcp auth riskmodels\` |
+| Cursor Agent Plugin | \`https://riskmodels.app/api/mcp/openai\` | Cursor plugin marketplace |
+| Claude Code / Cowork plugin (skills, slash commands, analyst agent) | \`https://riskmodels.app/api/mcp/sse\` | \`claude plugin marketplace add BlueWaterCorp/riskmodels-plugin\` then \`claude plugin install riskmodels@riskmodels\` |
+| Gemini Enterprise | \`https://riskmodels.app/api/mcp\` | Admin registers a Custom MCP data store (Streamable HTTP + OAuth) |
+
+Gemini consumer web outside Spark custom apps has no generic custom MCP setting; it can use this file and the REST API directly. The ChatGPT MCP app is separate from ChatGPT's built-in Finances (Schwab) connector; holdings from Finances can be sent to \`POST /api/portfolio/risk-snapshot\` as weights.
+
+A typical first check after connecting is \`riskmodels_compare\` on AAPL and NVDA followed by \`riskmodels_decompose\` on each; over REST, \`GET /api/metrics/AAPL\`. The answers carry residual explained risk and the L3 hedge ratios with their data date. Setup guide for every client: https://riskmodels.app/docs/agent-integration
+
+## Guides
+
+- [Assistant and agent setup](https://riskmodels.app/docs/agent-integration): every supported MCP client
+- [MCP discovery manifest](https://riskmodels.app/.well-known/mcp.json): tools, endpoints, authentication
+- [Methodology](https://riskmodels.app/docs/methodology): the ERM3 model and its fields
+- [Long/short exposure](https://riskmodels.app/docs/long-short-exposure): signed books, hedge trades, history
+- [Fundamentals](https://riskmodels.app/docs/fundamentals): point-in-time quarterly fundamentals
+- [Platform integration](https://riskmodels.app/docs/platform-integration): server-side use, caching, redistribution licence
+- [Security identity](https://riskmodels.app/llms-full.txt): \`GET /api/identity/resolve\` is free and says which security a ticker meant on a date
+- [Security master feed](https://riskmodels.app/security-master-feed): dated identifier and corporate-action events with SEC filings
+
+## Terms
+
+- [API terms](https://riskmodels.net/terms/api): attribution "Powered by RiskModels"; no resale or redistribution as a feed without a written agreement
+- [Privacy](https://riskmodels.app/privacy)
+
+Private API keys belong in environment variables or local config, not in chat messages. A **Public sample API key** section, when present below, is a key published on purpose for documentation and agent smoke tests.
+`;
+}
+
+function appendPublicSampleKey(body: string, baseUrl: string, plainKey: string): string {
   const trimmed = plainKey.trim();
   const mag7Csv = WALKTHROUGH_MAG7_TICKERS.join(", ");
   const mag7Shell = WALKTHROUGH_MAG7_TICKERS.join(" ");
   const pyMag7 = WALKTHROUGH_MAG7_TICKERS.map((t) => `"${t}"`).join(", ");
 
   return (
-    `${buildLlmsTxtBase()}\n` +
+    `${body}\n` +
     `## Public sample API key (LLM agents)\n\n` +
     `When this block appears, the host has enabled a **shared** demo credential (Doppler / Vercel: \`LLMS_TXT_PUBLIC_AGENT_KEY\`). ` +
     `It is intended for documentation and agent smoke tests on the **Magnificent 7** listed above (**${mag7Csv}**). ` +
@@ -164,14 +232,21 @@ function appendPublicSampleKey(baseUrl: string, plainKey: string): string {
   );
 }
 
+function withSampleKey(body: string, appUrl: string): string {
+  const base = appUrl.replace(/\/$/, "");
+  const sampleKey = process.env.LLMS_TXT_PUBLIC_AGENT_KEY;
+  return sampleKey && sampleKey.length > 10 ? appendPublicSampleKey(body, base, sampleKey) : body;
+}
+
 /**
+ * Short index served at /llms.txt.
  * @param appUrl - e.g. https://riskmodels.app (no trailing slash)
  */
 export function buildLlmsTxt(appUrl: string): string {
-  const base = appUrl.replace(/\/$/, "");
-  const sampleKey = process.env.LLMS_TXT_PUBLIC_AGENT_KEY;
-  if (sampleKey && sampleKey.length > 10) {
-    return appendPublicSampleKey(base, sampleKey);
-  }
-  return buildLlmsTxtBase();
+  return withSampleKey(buildLlmsIndexBase(), appUrl);
+}
+
+/** Full reference served at /llms-full.txt. */
+export function buildLlmsFullTxt(appUrl: string): string {
+  return withSampleKey(buildLlmsFullBase(), appUrl);
 }

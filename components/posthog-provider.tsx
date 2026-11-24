@@ -5,7 +5,8 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { trackGaPageView } from '@/lib/google-ads-conversion';
 import { initPostHog, trackPageView, resetUser } from '@/lib/posthog-client';
 
-function PostHogProviderInner({ children }: { children: React.ReactNode }) {
+/** Records a page view on each navigation. Renders nothing. */
+function PageViewTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -20,14 +21,22 @@ function PostHogProviderInner({ children }: { children: React.ReactNode }) {
     }
   }, [pathname, searchParams]);
 
-  return <>{children}</>;
+  return null;
 }
 
+/**
+ * The tracker reads the query string, which needs a Suspense boundary. The
+ * boundary wraps the tracker alone: a boundary above the page lets the response
+ * start (status 200) before the page can answer notFound().
+ */
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense fallback={<>{children}</>}>
-      <PostHogProviderInner>{children}</PostHogProviderInner>
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <PageViewTracker />
+      </Suspense>
+      {children}
+    </>
   );
 }
 

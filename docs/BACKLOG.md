@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-35`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-40`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -198,3 +198,31 @@ Seen in a rendered preview of the 2026-11-23 edition (12 events). Stack the Stat
 **Impact:** HYGIENE · In production an unknown docs slug renders the styled "Not Found" page with `noindex` but the response status is 200, although `app/docs/[slug]/page.tsx` sets `dynamicParams = false` and calls `notFound()`. Local dev returns 404. **Needs:** engineering
 
 Measured on 2026-11-24 after #554: `x-matched-path: /docs/[slug]`, status 200. The likely cause is that the route renders dynamically in production, so the status is sent before `notFound()` runs. Find what makes the route dynamic (root layout or middleware) and confirm the fix against the deployed site, since dev does not reproduce it.
+
+## RMAPI-35 · Metrics response does not state the estimation window (2026-11-24)
+
+**Impact:** IMPROVEMENT · `GET /api/metrics/{ticker}` returns `_metadata.model_version`, `data_as_of`, `factor_set_id` and `universe_size`, and the matching `x-risk-model-version` / `x-data-as-of` headers, but no field or header states the estimation window behind the hedge ratios. A reader cannot cite the window from the response; the home page says so and links the methodology. **Needs:** engineering
+
+Add the window (or a pointer to it) to `_metadata` in the shared metadata builder so every endpoint carries it, then print it in the home-page exhibit caption (`app/page.tsx`).
+
+## RMAPI-36 · Marketing pages are served `Cache-Control: private, no-cache, no-store` (2026-11-24)
+
+**Impact:** IMPROVEMENT · Every page renders dynamically and is uncacheable at the edge because `app/layout.tsx` calls `await headers()` to read `x-pathname` (set in middleware) and switch to the print layout for `/render-snapshot`. The same dynamic rendering is the likely cause of RMAPI-34. **Needs:** engineering
+
+Move the print layout into its own route group with a separate root layout so the main layout reads no request data. Middleware also refreshes the session on these paths; leave that behaviour unchanged and verify sign-in after the move.
+
+## RMAPI-37 · No Content-Security-Policy on HTML responses (2026-11-24)
+
+**Impact:** IMPROVEMENT · `next.config.mjs` now sends `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`; there is still no CSP. **Needs:** engineering
+
+Ship as `Content-Security-Policy-Report-Only` first, covering the bot check, auth, payments, analytics and the OAuth pages; enforce only after a clean reporting period.
+
+## RMAPI-38 · Published CLI installer rejects API keys that contain "-" (2026-11-24)
+
+**Impact:** MATERIAL · `npx -y riskmodels@latest install` validates the key with a pattern that excludes "-", so some valid keys are refused. Fixed in `cli/src/lib/mcp-install-plan.ts`; the fix reaches users only with the next npm release of the CLI. **Needs:** engineering
+
+## RMAPI-39 · Low-contrast small text remains on pages outside the redesign (2026-11-24)
+
+**Impact:** HYGIENE · Pages not restyled in the site redesign (account, docs MDX bodies, API reference panels, chat panel) still use the `zinc-600` text step for small copy, which computes to about 3.5:1 on the light surface, under the 4.5:1 threshold. **Needs:** engineering
+
+Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessibility audit; none was run for the redesign (contrast was computed by hand).

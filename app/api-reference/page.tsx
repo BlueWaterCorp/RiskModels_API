@@ -282,7 +282,7 @@ export default function ApiReferencePage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="grid grid-cols-12 min-h-screen">
         {/* Sidebar */}
-        <aside className="col-span-12 lg:col-span-3 border-r border-zinc-800 bg-zinc-950/95 backdrop-blur-sm sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
+        <aside className="col-span-12 lg:col-span-3 border-r border-zinc-800 bg-zinc-950/95 backdrop-blur-sm sticky top-[4.5rem] h-[calc(100vh-4.5rem)] overflow-y-auto">
           <div className="p-4 lg:p-6 space-y-6">
             <div>
               <label htmlFor="api-search" className="sr-only">
@@ -357,11 +357,18 @@ export default function ApiReferencePage() {
         <main className="col-span-12 lg:col-span-9 grid grid-cols-1 xl:grid-cols-12">
           {/* Main content */}
           <div className="col-span-1 xl:col-span-8 min-w-0 p-6 lg:p-8 space-y-8">
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-              <p className="text-sm font-medium text-emerald-300">
-                Returns variance + hedge ratios.
+            <header className="border-b border-rule pb-6">
+              <p className="rm-label">Reference</p>
+              <h1 className="rm-h1 mt-3 !text-[2.25rem]">API reference</h1>
+              <p className="rm-body mt-3 max-w-2xl">
+                Endpoints, parameters, response fields and the price of each request. The machine-readable
+                contract is{' '}
+                <a href="/openapi.json" className="rm-link">
+                  openapi.json
+                </a>
+                .
               </p>
-            </div>
+            </header>
 
             {selectedId === 'coreConcepts' ? (
               <div className="space-y-6">
@@ -573,7 +580,7 @@ ${example}`)}
           </div>
 
           {/* Right sticky panel */}
-          <div className="col-span-1 xl:col-span-4 border-l border-zinc-800 bg-zinc-950/80 p-6 sticky top-16 h-fit xl:max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="col-span-1 xl:col-span-4 border-l border-zinc-800 bg-zinc-950/80 p-6 sticky top-[4.5rem] h-fit xl:max-h-[calc(100vh-4.5rem)] overflow-y-auto">
             {(selectedId === 'coreConcepts' || selectedId === 'agentOnboarding') ? (
               <div className="space-y-6 pt-2">
                 <div>

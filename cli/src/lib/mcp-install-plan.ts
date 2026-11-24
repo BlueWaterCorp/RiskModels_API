@@ -73,7 +73,7 @@ export function mcpServerConfigFor(
 
 /** RiskModels keys are `rm_agent_live_…` / `rm_…`. Cheap client-side sanity check. */
 export function looksLikeRiskmodelsKey(key: string): boolean {
-  return /^rm_[A-Za-z0-9_]+$/.test(key.trim());
+  return /^rm_[A-Za-z0-9_-]+$/.test(key.trim());
 }
 
 /**

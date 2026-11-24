@@ -2,50 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Tokens follow the family design system: paper field, white plates, slate ink,
+   navy chrome, hairline rules. Light is the default; dark is a navy field. */
 @layer base {
-  :root {
-    --background: 0 0% 98%;
-    --foreground: 0 0% 3.9%;
-    --card: 0 0% 98%;
-    --card-foreground: 0 0% 3.9%;
-    --popover: 0 0% 98%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 217 91% 60%;
+  :root,
+  html.light {
+    --background: 220 43% 97%;
+    --foreground: 240 28% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 28% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 28% 14%;
+    --primary: 213 100% 18%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 95%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 95%;
-    --muted-foreground: 0 0% 45%;
-    --accent: 217 91% 60%;
+    --secondary: 220 26% 93%;
+    --secondary-foreground: 240 28% 14%;
+    --muted: 220 26% 93%;
+    --muted-foreground: 215 19% 35%;
+    --accent: 213 100% 18%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 85%;
-    --input: 0 0% 85%;
-    --ring: 217 91% 60%;
-    --radius: 0.5rem;
+    --border: 213 27% 84%;
+    --input: 213 27% 84%;
+    --ring: 213 100% 18%;
+    --radius: 0.25rem;
+
+    --rm-ink: #1a1a2e;
+    --rm-muted: #475569;
+    --rm-faint: #586579;
+    --rm-rule: #cbd5e1;
+    --rm-grid: #e2e8f0;
+    --rm-plate: #ffffff;
+    --rm-field: #f5f7fb;
+    --rm-navy: #002a5e;
+    --rm-on-navy: #ffffff;
+    --rm-ok: #047857;
+    --rm-warn: #a16207;
+    --rm-bad: #b91c1c;
+    --rm-factor-market: #64748b;
+    --rm-factor-sector: #0369a1;
+    --rm-factor-subsector: #6d28d9;
+    --rm-factor-residual: #00aa00;
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 210 20% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 20% 98%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 217 19% 15%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 217 19% 15%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 91% 60%;
-    --accent-foreground: 0 0% 100%;
+  html.dark {
+    --background: 221 48% 9%;
+    --foreground: 214 30% 91%;
+    --card: 221 41% 12%;
+    --card-foreground: 214 30% 91%;
+    --popover: 220 40% 13%;
+    --popover-foreground: 214 30% 91%;
+    --primary: 215 35% 93%;
+    --primary-foreground: 221 48% 9%;
+    --secondary: 219 35% 16%;
+    --secondary-foreground: 214 30% 91%;
+    --muted: 219 37% 14%;
+    --muted-foreground: 217 19% 62%;
+    --accent: 219 35% 16%;
+    --accent-foreground: 214 30% 91%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 217 28% 22%;
-    --input: 217 28% 22%;
-    --ring: 217 91% 60%;
+    --border: 218 32% 20%;
+    --input: 218 32% 22%;
+    --ring: 215 35% 93%;
+
+    --rm-ink: #e1e7ef;
+    --rm-muted: #8d9bb1;
+    --rm-faint: #7a889f;
+    --rm-rule: #26324a;
+    --rm-grid: #1f2a3d;
+    --rm-plate: #121a2b;
+    --rm-field: #0c1322;
+    --rm-navy: #e8edf4;
+    --rm-on-navy: #0c1322;
+    --rm-ok: #34d399;
+    --rm-warn: #fbbf24;
+    --rm-bad: #f87171;
   }
 }
 
@@ -61,10 +94,14 @@
   html.dark {
     color-scheme: dark;
   }
+
+  html.light {
+    color-scheme: light;
+  }
   
   body {
     @apply bg-background text-foreground;
-    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: var(--font-inter), Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 15px;
     font-weight: 400;
     line-height: 1.6;
@@ -79,11 +116,11 @@
 
 @layer components {
   .gradient-text {
-    @apply bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent;
+    color: var(--rm-navy);
   }
-  
+
   .glass-card {
-    @apply bg-card/50 backdrop-blur-sm border border-border/50;
+    @apply border border-border bg-card;
   }
   
   .code-block {
@@ -99,7 +136,7 @@
 
 /* KaTeX math rendering — dark mode readability */
 .katex {
-  color: #e4e4e7; /* zinc-200 */
+  color: inherit;
   font-size: 1.1em;
 }
 
@@ -116,4 +153,292 @@
   margin: 1.5em 0;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* ── Family type and layout primitives ─────────────────────────────────────
+   Newsreader carries display, Inter body, IBM Plex Mono labels, figures and
+   code. Sections are separated by rules and whitespace. */
+.rm-label,
+.rm-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.rm-label {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rm-muted);
+}
+
+.rm-h1,
+.rm-h2,
+.rm-h3,
+.rm-lede,
+.rm-num {
+  font-family: var(--font-newsreader), Georgia, 'Times New Roman', serif;
+}
+
+.rm-h1 {
+  font-weight: 500;
+  font-size: clamp(2.125rem, 4.6vw, 3.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.022em;
+  color: var(--rm-navy);
+  text-wrap: balance;
+}
+
+.rm-h2 {
+  font-weight: 500;
+  font-size: clamp(1.625rem, 3vw, 2.125rem);
+  line-height: 1.15;
+  letter-spacing: -0.012em;
+  color: var(--rm-ink);
+  text-wrap: balance;
+}
+
+.rm-h3 {
+  font-weight: 500;
+  font-size: 1.3125rem;
+  line-height: 1.25;
+  letter-spacing: -0.006em;
+  color: var(--rm-ink);
+}
+
+.rm-lede {
+  font-size: clamp(1.125rem, 1.7vw, 1.3125rem);
+  line-height: 1.5;
+  color: var(--rm-ink);
+  max-width: 36rem;
+}
+
+.rm-body {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: var(--rm-ink);
+  max-width: 40rem;
+}
+
+.rm-small {
+  font-size: 0.8125rem;
+  line-height: 1.3rem;
+  color: var(--rm-muted);
+}
+
+.rm-num {
+  font-weight: 500;
+  font-size: clamp(2rem, 3.6vw, 2.75rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: lining-nums tabular-nums;
+  color: var(--rm-navy);
+}
+
+.rm-page {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 76rem;
+  padding: 0 1rem 5rem;
+  color: var(--rm-ink);
+}
+
+@media (min-width: 640px) {
+  .rm-page {
+    padding: 0 1.5rem 6rem;
+  }
+}
+
+.rm-section {
+  border-top: 1px solid var(--rm-navy);
+  padding-top: 1rem;
+  margin-top: 4rem;
+}
+
+@media (min-width: 1024px) {
+  .rm-section {
+    margin-top: 5.5rem;
+  }
+}
+
+.rm-link {
+  color: var(--rm-navy);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  transition: text-decoration-color 120ms;
+}
+
+.rm-link:hover {
+  text-decoration-color: var(--rm-navy);
+}
+
+.rm-btn,
+.rm-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 1px solid var(--rm-navy);
+  border-radius: 2px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  transition: background-color 120ms, color 120ms;
+}
+
+.rm-btn {
+  background: var(--rm-navy);
+  color: var(--rm-on-navy);
+}
+
+.rm-btn:hover {
+  background: transparent;
+  color: var(--rm-navy);
+}
+
+.rm-btn-ghost {
+  color: var(--rm-navy);
+}
+
+.rm-btn-ghost:hover {
+  background: var(--rm-navy);
+  color: var(--rm-on-navy);
+}
+
+.rm-plate {
+  background: var(--rm-plate);
+  border: 1px solid var(--rm-rule);
+  border-radius: 2px;
+}
+
+/* Ruled table: hairline rows, mono figures, no fills. */
+.rm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.35rem;
+}
+
+.rm-table th {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: left;
+  color: var(--rm-muted);
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--rm-ink);
+  vertical-align: bottom;
+}
+
+.rm-table td {
+  padding: 0.625rem 0.75rem 0.625rem 0;
+  border-bottom: 1px solid var(--rm-rule);
+  vertical-align: top;
+  color: var(--rm-ink);
+}
+
+.rm-table :is(th, td):last-child {
+  padding-right: 0;
+}
+
+.rm-table .num {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rm-code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5rem;
+  color: var(--rm-ink);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.rm-scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Light-theme corrections for utilities written against a dark field ──── */
+html.light :is(.bg-blue-500, .bg-blue-600, .bg-blue-700, .bg-primary) {
+  background-color: var(--rm-navy);
+  background-image: none;
+  color: #ffffff;
+}
+
+html.light :is(.bg-emerald-500, .bg-emerald-600, .bg-emerald-700, .bg-green-600, .bg-red-600, .bg-red-500) {
+  color: #ffffff;
+}
+
+/* Inverted buttons: bg-white resolves to ink on paper, so its label is paper. */
+html.light .bg-white {
+  color: #ffffff;
+}
+
+html.light .prose {
+  --tw-prose-invert-body: #1e293b;
+  --tw-prose-invert-headings: #1a1a2e;
+  --tw-prose-invert-lead: #334155;
+  --tw-prose-invert-links: #002a5e;
+  --tw-prose-invert-bold: #1a1a2e;
+  --tw-prose-invert-counters: #64748b;
+  --tw-prose-invert-bullets: #94a3b8;
+  --tw-prose-invert-hr: #cbd5e1;
+  --tw-prose-invert-quotes: #1a1a2e;
+  --tw-prose-invert-quote-borders: #cbd5e1;
+  --tw-prose-invert-captions: #64748b;
+  --tw-prose-invert-kbd: #1a1a2e;
+  --tw-prose-invert-code: #1a1a2e;
+  --tw-prose-invert-pre-code: #1e293b;
+  --tw-prose-invert-pre-bg: #ffffff;
+  --tw-prose-invert-th-borders: #94a3b8;
+  --tw-prose-invert-td-borders: #cbd5e1;
+}
+
+.prose :is(h1, h2, h3) {
+  font-family: var(--font-newsreader), Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+}
+
+:is(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--rm-navy);
+  outline-offset: 2px;
+}
+
+/* No decorative gradients or clipped gradient text (family anti-patterns). */
+[class*='bg-gradient-to-'] {
+  background-image: none;
+}
+
+.bg-clip-text.text-transparent {
+  color: var(--rm-navy);
+}
+
+/* Anchors clear the fixed bar. */
+:where(h1, h2, h3, section, div)[id] {
+  scroll-margin-top: 6rem;
+}
+
+/* Links are not told apart by colour alone: hover-only underlines are shown at rest. */
+a.hover\:underline,
+a.text-primary {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+/* Highlighted code was themed for a dark field; on paper it prints in ink. */
+html.light .shiki,
+html.light .shiki span {
+  color: var(--rm-ink) !important;
+  background-color: transparent !important;
 }
