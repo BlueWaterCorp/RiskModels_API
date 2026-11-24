@@ -223,9 +223,3 @@ Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessi
 - Add a history call per universe: each stock's entry and exit dates over a date range, priced per request from the price list.
 - List the eight universes on /pricing and in the home universe paragraph.
 - Add the SDK method and an MCP tool for the same call.
-
-## RMAPI-41 · Ads tag sets a third-party cookie on every page view (2026-11-24)
-
-**Impact:** IMPROVEMENT · `components/GoogleAdsTag.tsx` configures the Ads destination on load; outside the consent regions it sends remarketing and view-through requests to `doubleclick.net`, which sets `test_cookie`. Lighthouse best practices scores this (77). **Needs:** DECISION
-
-Options: (1) configure the Ads destination only when a conversion fires; (2) default `ad_storage` to denied everywhere and grant on banner consent; (3) record conversions server-side from the click id and drop the browser Ads tag. Each trades remarketing audiences or view-through and modeled conversions for a cookie-free page view.
