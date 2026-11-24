@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     { metric: "L3 explained risk — Subsector (%)", value: pct(vd.subsector) },
     { metric: "L3 explained risk — Residual (%)", value: pct(vd.residual) },
     { metric: "Systematic — mkt+sec+sub (%)", value: pct(vd.systematic) },
-    { metric: "Portfolio volatility — 23d annualised (%)", value: pct(pri.portfolio_volatility_23d) },
+    { metric: "Portfolio volatility — 23d annualized (%)", value: pct(pri.portfolio_volatility_23d) },
     // Hedge layering ladder — each layer adds a leg and shrinks the residual.
     { metric: "L1 hedge (SPY) — Market HR", value: num(L("L1").market_hr) },
     { metric: "L1 — residual left (%)", value: pct(L("L1").residual_er) },

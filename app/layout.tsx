@@ -1,18 +1,12 @@
 import type { Metadata } from 'next';
 import { Inter, IBM_Plex_Mono, Newsreader } from 'next/font/google';
-import { headers } from 'next/headers';
 import 'katex/dist/katex.min.css';
 import '@/styles/globals.css';
-import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { ChatBubble } from '@/components/chat/ChatBubble';
+import { SiteChrome } from '@/components/SiteChrome';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
 import { GoogleTagManager, GoogleTagManagerNoScript } from '@/components/GoogleTagManager';
-import { PostHogProvider } from '@/components/posthog-provider';
 import { FEED_SECRET_STASH_SCRIPT } from '@/lib/feed-url-secrets';
-import { ConsentBanner } from '@/components/ConsentBanner';
-import { UTMTracker } from '@/components/UTMTracker';
-import { ThemeProvider } from '@/components/ThemeProvider';
 import { CANONICAL_SITE_URL } from '@/lib/constants';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
@@ -73,35 +67,21 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
+// Print templates under /render-snapshot were written against a bare document:
+// drop the site theme class before first paint there. The layout reads no request
+// headers, so public pages stay cacheable; SiteChrome picks the frame from the path.
+const PRINT_DOCUMENT_SCRIPT =
+  "if(location.pathname.indexOf('/render-snapshot')===0){document.documentElement.className='';document.documentElement.style.background='white';}";
+
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const hdrs = await headers();
-  const pathname = hdrs.get('x-pathname') ?? hdrs.get('x-invoke-path') ?? '';
-  const isPrint = pathname.startsWith('/render-snapshot');
-
-  if (isPrint) {
-    return (
-      <html lang="en" suppressHydrationWarning>
-        <head>
-          <style>{`
-            @page { size: A4; margin: 0; }
-            html, body { margin: 0; padding: 0; background: white; color: #111827; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          `}</style>
-        </head>
-        <body className={inter.className} style={{ background: 'white' }}>
-          {children}
-        </body>
-      </html>
-    );
-  }
-
   return (
     <html lang="en" className="light" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: PRINT_DOCUMENT_SCRIPT }} />
         {/* Before any tag: moves feed-link secrets (token, inbox) out of the URL (lib/feed-url-secrets.ts). */}
         <script dangerouslySetInnerHTML={{ __html: FEED_SECRET_STASH_SCRIPT }} />
         {/* Google Tag Manager: as high in <head> as possible per GTM install guidance */}
@@ -118,20 +98,7 @@ export default async function RootLayout({
         <GoogleTagManagerNoScript />
         {/* No Suspense boundary above the page: one here lets the response start with
             status 200 before a page can answer notFound(). */}
-        <PostHogProvider>
-            <ThemeProvider>
-              <div className="flex flex-col min-h-screen">
-                <Navbar />
-                <main className="flex-1 min-h-0 pt-16 sm:pt-[4.5rem]">
-                  {children}
-                </main>
-                <Footer />
-              </div>
-              <ChatBubble />
-              <UTMTracker />
-              <ConsentBanner />
-            </ThemeProvider>
-        </PostHogProvider>
+        <SiteChrome footer={<Footer />}>{children}</SiteChrome>
       </body>
     </html>
   );

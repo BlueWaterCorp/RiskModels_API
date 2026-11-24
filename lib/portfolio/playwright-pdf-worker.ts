@@ -9,6 +9,7 @@
 
 import type { Browser } from "playwright-core";
 import type { SnapshotReportData } from "./snapshot-report-types";
+import { refuseTagRequests } from "./print-page-requests";
 import type { CohortSnapshot, FundSnapshot } from "@/lib/funds/snapshot-composer";
 import type { FilerSnapshot } from "@/lib/13f/filer-snapshot-composer";
 
@@ -53,6 +54,7 @@ export async function renderSnapshotPdf(
 ): Promise<Uint8Array> {
   const b = await getBrowser();
   const page = await b.newPage();
+  await refuseTagRequests(page);
 
   try {
     // Navigate to the render route
@@ -107,6 +109,7 @@ export async function renderFundSnapshotPdf(
 ): Promise<Uint8Array> {
   const b = await getBrowser();
   const page = await b.newPage();
+  await refuseTagRequests(page);
 
   try {
     await page.goto(
@@ -156,6 +159,7 @@ export async function renderCohortSnapshotPdf(
 ): Promise<Uint8Array> {
   const b = await getBrowser();
   const page = await b.newPage();
+  await refuseTagRequests(page);
 
   try {
     await page.goto(
@@ -203,6 +207,7 @@ export async function renderFilerSnapshotPdf(
 ): Promise<Uint8Array> {
   const b = await getBrowser();
   const page = await b.newPage();
+  await refuseTagRequests(page);
 
   try {
     await page.goto(

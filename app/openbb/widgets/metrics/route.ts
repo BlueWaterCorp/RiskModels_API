@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
     { metric: "As of", value: d._data_health?.data_as_of ?? d.teo ?? "—" },
     { metric: "Price (close)", value: money(m.price_close) },
     { metric: "Market cap", value: money(m.market_cap) },
-    { metric: "Volatility — 252d (annualised)", value: num(m.vol_252d_ann) },
+    { metric: "Volatility — 252d (annualized)", value: num(m.vol_252d_ann) },
     { metric: "Volatility — 23d", value: num(m.vol_23d) },
     { metric: "Market beta (L1)", value: num(m.l1_mkt_beta) },
     { metric: "Sector beta (L2)", value: num(m.l2_sec_beta) },

@@ -16,7 +16,7 @@ const WIDGETS = {
   rm_single_name_metrics: {
     name: "RiskModels — Single-Name Risk Metrics",
     description:
-      "L1/L2/L3 hedge ratios and betas, annualised volatility, Lstar residual level, and recommended hedge level for one ticker.",
+      "L1/L2/L3 hedge ratios and betas, annualized volatility, Lstar residual level, and recommended hedge level for one ticker.",
     category: "Risk",
     type: "table",
     source: ["RiskModels API"],
@@ -834,7 +834,7 @@ const WIDGETS = {
         label: "Positions",
         type: "text",
         description:
-          "Comma-separated ticker:weight (e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25). Weights auto-normalise; bare tickers = equal weight. Ignored when Source is set to synced.",
+          "Comma-separated ticker:weight (e.g. AAPL:0.4, MSFT:0.35, NVDA:0.25). Weights auto-normalize; bare tickers = equal weight. Ignored when Source is set to synced.",
       },
     ],
     data: {

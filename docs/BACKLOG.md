@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-41`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-42`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -199,17 +199,11 @@ Seen in a rendered preview of the 2026-11-23 edition (12 events). Stack the Stat
 
 Add the window (or a pointer to it) to `_metadata` in the shared metadata builder so every endpoint carries it, then print it in the home-page exhibit caption (`app/page.tsx`).
 
-## RMAPI-36 · Marketing pages are served `Cache-Control: private, no-cache, no-store` (2026-11-24)
+## RMAPI-37 · Full Content-Security-Policy is report-only (2026-11-24)
 
-**Impact:** IMPROVEMENT · Every page renders dynamically and is uncacheable at the edge because `app/layout.tsx` calls `await headers()` to read `x-pathname` (set in middleware) and switch to the print layout for `/render-snapshot`. **Needs:** engineering
+**Impact:** IMPROVEMENT · `next.config.mjs` enforces `frame-ancestors 'self'` (with `X-Frame-Options: SAMEORIGIN`) and sends the full policy as `Content-Security-Policy-Report-Only`; reports post to `/api/csp-report` and appear in the function log. **Needs:** engineering
 
-Move the print layout into its own route group with a separate root layout so the main layout reads no request data. Middleware also refreshes the session on these paths; leave that behaviour unchanged and verify sign-in after the move.
-
-## RMAPI-37 · No Content-Security-Policy on HTML responses (2026-11-24)
-
-**Impact:** IMPROVEMENT · `next.config.mjs` now sends `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`; there is still no CSP. **Needs:** engineering
-
-Ship as `Content-Security-Policy-Report-Only` first, covering the bot check, auth, payments, analytics and the OAuth pages; enforce only after a clean reporting period.
+Enforce the full policy after sign-in with the bot check, the OAuth authorize page, the card-setup redirect, chat and analytics have each run with zero reports. Inline scripts are allowed by `'unsafe-inline'`; replacing that with nonces makes every page render per request, which reverses the caching change, so hash the fixed inline scripts instead.
 
 ## RMAPI-38 · Published CLI installer rejects API keys that contain "-" (2026-11-24)
 
@@ -229,3 +223,9 @@ Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessi
 - Add a history call per universe: each stock's entry and exit dates over a date range, priced per request from the price list.
 - List the eight universes on /pricing and in the home universe paragraph.
 - Add the SDK method and an MCP tool for the same call.
+
+## RMAPI-41 · Ads tag sets a third-party cookie on every page view (2026-11-24)
+
+**Impact:** IMPROVEMENT · `components/GoogleAdsTag.tsx` configures the Ads destination on load; outside the consent regions it sends remarketing and view-through requests to `doubleclick.net`, which sets `test_cookie`. Lighthouse best practices scores this (77). **Needs:** DECISION
+
+Options: (1) configure the Ads destination only when a conversion fires; (2) default `ad_storage` to denied everywhere and grant on banner consent; (3) record conversions server-side from the click id and drop the browser Ads tag. Each trades remarketing audiences or view-through and modeled conversions for a cookie-free page view.

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SectionHead } from '@/components/site/SectionHead';
+import { StackedRows } from '@/components/site/StackedRows';
 import { TrackedLink } from '@/components/site/TrackedLink';
 import { CodeExhibit } from '@/components/site/CodeExhibit';
 import { ConnectorSteps } from '@/components/site/ConnectorSteps';
@@ -50,7 +51,7 @@ const METHOD: { title: string; note: string; href: string }[] = [
   },
   {
     title: 'One position, four bets',
-    note: 'Worked decompositions of paired large-capitalisation stocks.',
+    note: 'Worked decompositions of paired large-capitalization stocks.',
     href: `https://riskmodels.org/research/part-1-hidden-concentration?${ORG_UTM}`,
   },
   {
@@ -172,27 +173,36 @@ export default async function HomePage() {
                     </td>
                     <td className="rm-mono">{l.etf ?? '—'}</td>
                     <td className="num">{l.hr == null ? '—' : ratio(l.hr)}</td>
-                    <td className="num">{share(l.er)}</td>
+                    <td className="num">
+                      {share(l.er)}
+                      {(l.er ?? 0) < 0 ? <sup className="ml-0.5">†</sup> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="rm-small mt-3">
-            Hedge ratio is dollars of the ETF per dollar of stock: negative is a short, positive a long, because
-            each layer is measured after the ones above it. Share of variance is the share that layer&rsquo;s
-            hedge removed over the estimation window; the four sum to 100%, and one can fall slightly below zero
-            when that hedge added variance. Values are from{' '}
+          {layers.some((l) => (l.er ?? 0) < 0) ? (
+            <p className="rm-small mt-3">† This hedge slightly increased modeled variance.</p>
+          ) : null}
+          <p className="rm-small mt-2">
+            Hedge ratio is dollars of the ETF per dollar of stock: negative is a short, positive a long. Source:{' '}
             <code className="rm-mono">GET /api/metrics/NVDA</code>,{' '}
-            {metrics.source === 'live'
-              ? `read from production on ${metrics.obtained}`
-              : `a response recorded on ${metrics.obtained}`}
-            . The response states the model version and data date; the estimation window is described in the{' '}
-            <Link href="/docs/methodology" className="rm-link">
-              methodology
-            </Link>
-            .
+            {metrics.source === 'live' ? `read on ${metrics.obtained}` : `recorded on ${metrics.obtained}`}.
           </p>
+          <details className="rm-small mt-2">
+            <summary className="cursor-pointer text-ink underline underline-offset-4">How to read this</summary>
+            <p className="mt-2">
+              Each layer is measured after the ones above it, which is why a hedge ratio can be positive. Share
+              of variance is the share that layer&rsquo;s hedge removed over the estimation window. The four
+              shares sum to 100%, and a share falls slightly below zero when that hedge added variance. The
+              response states the model version and data date; the estimation window is described in the{' '}
+              <Link href="/docs/methodology" className="rm-link">
+                methodology
+              </Link>
+              .
+            </p>
+          </details>
           <p className="rm-small mt-3 sm:hidden">
             A key comes with $20 of credit and needs no card. End-of-day historical data; not investment advice.
           </p>
@@ -258,7 +268,24 @@ export default async function HomePage() {
       {/* 4 · What the API returns */}
       <section className="rm-section" aria-labelledby="returns">
         <SectionHead n="02" label="Products" title="What the API returns" id="returns" />
-        <div className="rm-scroll-x mt-8">
+        <StackedRows
+          className="mt-8"
+          rows={PRODUCTS.flatMap((p) => {
+            const cap = getCapabilityById(p.capability);
+            if (!cap) return [];
+            return [
+              {
+                key: p.capability,
+                title: p.what,
+                lines: [
+                  `${cap.method} ${cap.endpoint}`,
+                  cap.pricing.cost_usd ? `${usd(cap.pricing.cost_usd)} per request` : usd(cap.pricing.cost_usd),
+                ],
+              },
+            ];
+          })}
+        />
+        <div className="rm-scroll-x mt-8 hidden sm:block">
           <table className="rm-table min-w-[36rem]">
             <thead>
               <tr>
@@ -303,7 +330,7 @@ export default async function HomePage() {
           <div className="lg:col-span-6">
             <h3 className="rm-h3">The universe is a dated membership list</h3>
             <p className="rm-body mt-3">
-              Membership is a market-capitalisation rank, set at each month-end and applied to the following
+              Membership is a market-capitalization rank, set at each month-end and applied to the following
               month, with a daily check that the stock had a usable price. The list for any past trading day
               can be requested, and it includes companies that have since delisted. A program that takes its
               stocks from this list on each date researches and trades the same eligible set, and a backtest
@@ -449,18 +476,18 @@ export default async function HomePage() {
         </ul>
       </section>
 
-      {/* 8 · Pricing and licence */}
+      {/* 8 · Pricing and license */}
       <section className="rm-section" aria-labelledby="pricing">
-        <SectionHead n="06" label="Pricing" title="Pay per request; licences for firms" id="pricing">
+        <SectionHead n="06" label="Pricing" title="Pay per request; licenses for firms" id="pricing">
           <p>
             A new account receives $20 of credit at sign-in, with no card. After that, requests draw on prepaid
             credit at the listed prices. Firms that need redistribution or internal-use terms take an annual
-            licence.
+            license.
           </p>
         </SectionHead>
         <p className="mt-6 lg:ml-[25%] lg:pl-2">
           <TrackedLink href="/pricing" location="home-pricing" className="rm-btn-ghost">
-            See prices and licences
+            See prices and licenses
           </TrackedLink>
         </p>
       </section>

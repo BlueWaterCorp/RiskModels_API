@@ -11,6 +11,7 @@
 
 import type { Browser } from "playwright-core";
 import type { SnapshotReportData } from "./snapshot-report-types";
+import { refuseTagRequests } from "./print-page-requests";
 
 let browser: Browser | null = null;
 let launching: Promise<Browser> | null = null;
@@ -55,6 +56,7 @@ export async function renderSnapshotPng(
     viewport: { width: 1200, height: 1600 },
     deviceScaleFactor: 2,
   });
+  await refuseTagRequests(page);
 
   try {
     await page.goto(`${baseUrl}/render-snapshot`, {

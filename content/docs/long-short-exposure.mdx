@@ -26,7 +26,7 @@ Two companion feeds, `POST /api/portfolio/exposure/history` (month-end) and `POS
 | Dollar positions that should not be rescaled, including a book that nets to roughly zero | `/portfolio/exposure` |
 | ETFs only (for example a hedge overlay) | `/portfolio/exposure` |
 
-`/portfolio/risk-index`, `/portfolio/risk-snapshot` and `/snapshot` take positive weights. `/portfolio/exposure` takes signed dollar values and **never normalises them**, so the output is in the dollars you hold.
+`/portfolio/risk-index`, `/portfolio/risk-snapshot` and `/snapshot` take positive weights. `/portfolio/exposure` takes signed dollar values and **never normalizes them**, so the output is in the dollars you hold.
 
 ## Request
 
@@ -66,11 +66,11 @@ Every name is read at one common `snapshot_teo`: the date most names in the book
 
 ### `book`
 
-Positions submitted, gross, net, long and short dollars, and the count of modelled stocks and ETFs held.
+Positions submitted, gross, net, long and short dollars, and the count of modeled stocks and ETFs held.
 
 ### `beta`: beta-dollars
 
-Two market betas are reported, labelled by `method`:
+Two market betas are reported, labeled by `method`:
 
 - `stock_beta_usd`: Σ value × ERM3 L1 market beta over the stocks (`method: "l1_market_beta"`), whatever `hedge_level` is.
 - `direct_etf_beta_usd`: the ETFs held, each measured against SPY over the covariance window (SPY = 1). `direct_etf_betas` lists each one.
@@ -97,7 +97,7 @@ With `hedge_level: "lstar"` each name is hedged and measured at its own L\* leve
 
 ### `risk`: systematic and residual
 
-Both parts are daily variances in dollars squared, with daily and annual volatility (annualised with √252), computed at `hedge_level`.
+Both parts are daily variances in dollars squared, with daily and annual volatility (annualized with √252), computed at `hedge_level`.
 
 - **Systematic** = `xᵀΣx`. `x` is the book's raw-ETF exposure (minus the stock hedge, plus ETFs held) and `Σ` is the sample covariance of daily ETF returns over `lookback_days` ending on `snapshot_teo`. `exposure_usd` lists `x`. `layer_contributions` (market, sector, subsector, direct_etf) are `x_Lᵀ Σ x`: they sum to the systematic variance and can be negative. They are hedge-leg contributions, not ERM3's orthogonal explained-risk shares.
 - **Residual** = Σ value² × `stock_var` × max(`lK_res_er`, 0), where K is each name's level. This is a **diagonal approximation**: it ignores residual covariance across names. It is an approximation, not a bound. `top_contributors` ranks names by their share of residual variance (15 by default; set the `top_contributors` request field up to 1000 or `"all"`); `hedge_added_variance` lists names whose residual share exceeds 1.02 (see [Residual shares](#residual-shares)).
@@ -114,7 +114,7 @@ The two use different estimators: end-of-window hedge ratios against a sample co
 Inputs for your own scenarios; no scenarios are computed for you.
 
 - `etfs`: one row per ETF in the covariance, held or used as a hedge leg: `beta_to_spy` (cov(ETF, SPY) / var(SPY) over the covariance window, SPY = 1), `annual_vol`, `held_usd`, `hedge_leg` and `in_covariance`. An ETF held without covariance has `beta_to_spy: null`.
-- `positions` (only with `include_positions: true`): one row per modelled stock with the `level` used, `l1_beta`, `hedge_ratios` (ETF → hr at that level), `residual_share`, `residual_vol_annual` = √(252 × `stock_var` × max(residual share, 0)) and `residual_vol_annual_usd`. Names excluded from L\* have `level: null` and an `excluded_reason`.
+- `positions` (only with `include_positions: true`): one row per modeled stock with the `level` used, `l1_beta`, `hedge_ratios` (ETF → hr at that level), `residual_share`, `residual_vol_annual` = √(252 × `stock_var` × max(residual share, 0)) and `residual_vol_annual_usd`. Names excluded from L\* have `level: null` and an `excluded_reason`.
 
 ### `coverage`
 
@@ -177,12 +177,12 @@ For a series of past dates, the [history feeds](#history-feeds) are usually the 
 
 Per successful call, by book size:
 
-| Names modelled | Price |
+| Names modeled | Price |
 | --- | --- |
 | up to 25 | {'$'}0.25 |
 | more than 25 | {'$'}1.00 |
 
-The tier counts names actually modelled (stocks plus ETFs held), so dropped tickers never raise the charge. The balance check before the call uses the tier for the number of distinct tickers submitted, so a book of more than 25 tickers needs {'$'}1.00 of balance even if fewer names end up modelled. Latest and `as_of` cost the same. A request in which no stock has risk metrics and no ETF held has return history returns 422 and is not charged. The charge is returned in the `X-API-Cost-USD` header, in US dollars. `X-Balance-Remaining` gives the prepaid balance left in billing units of 50,000 per US dollar (1 unit = {'$'}0.00002), or `unlimited` on a licensed key.
+The tier counts names actually modeled (stocks plus ETFs held), so dropped tickers never raise the charge. The balance check before the call uses the tier for the number of distinct tickers submitted, so a book of more than 25 tickers needs {'$'}1.00 of balance even if fewer names end up modeled. Latest and `as_of` cost the same. A request in which no stock has risk metrics and no ETF held has return history returns 422 and is not charged. The charge is returned in the `X-API-Cost-USD` header, in US dollars. `X-Balance-Remaining` gives the prepaid balance left in billing units of 50,000 per US dollar (1 unit = {'$'}0.00002), or `unlimited` on a licensed key.
 
 ## Examples
 

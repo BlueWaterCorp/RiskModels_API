@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     { metric: "L3 explained risk — Subsector (%)", value: pct1(m.l3_sub_er) },
     { metric: "L3 explained risk — Residual / stock-specific (%)", value: pct1(m.l3_res_er) },
     { metric: "Systematic — market+sector+subsector (%)", value: pct1(systematic) },
-    { metric: "Volatility — 252d annualised (%)", value: pct1(m.vol_252d_ann) },
+    { metric: "Volatility — 252d annualized (%)", value: pct1(m.vol_252d_ann) },
     { metric: "Recommended hedge level", value: String(m.recommended_hedge_level ?? "—") },
     { metric: "Lstar residual level", value: String(m.lstar_level ?? "—") },
     { metric: "L3 hedge ratio — Market", value: num(m.l3_mkt_hr) },

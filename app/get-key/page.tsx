@@ -1019,7 +1019,7 @@ function GetKeyPage() {
         {stripeStatus === 'cancelled' && (
           <div className="mb-6 rounded-xl border border-zinc-700 bg-zinc-900 p-4 flex items-start gap-3">
             <AlertCircle size={16} className="text-zinc-400 flex-shrink-0 mt-0.5" />
-            <p className="text-zinc-400 text-sm">Card setup was cancelled. You can still generate a key; add a card later for auto-refill.</p>
+            <p className="text-zinc-400 text-sm">Card setup was canceled. You can still generate a key; add a card later for auto-refill.</p>
           </div>
         )}
 

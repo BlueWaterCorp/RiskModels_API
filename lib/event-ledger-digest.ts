@@ -15,14 +15,14 @@
  *   - The contract's licensing gate is re-checked here: a row whose payload or
  *     entity carries a restricted identifier key is withheld.
  *   - Verified events, and corrections or withdrawals of earlier events, form
- *     the main tables. Redistributable candidates appear in a section labelled
+ *     the main tables. Redistributable candidates appear in a section labeled
  *     "Under review, not verified" when INCLUDE_UNDER_REVIEW_DEFAULT (or the
  *     includeUnderReview option) is on.
  *   - Age. In an edition read from the ledger cursor (ledger_seq window), an
  *     event is listed only when its knowledge_at falls within
  *     RECENT_KNOWLEDGE_DAYS of the edition date. Deliverable events published
  *     now but first knowable earlier (the Form 25 backfill, for one) are
- *     summarised as a single count line ("N older events added to the
+ *     summarized as a single count line ("N older events added to the
  *     ledger"; verified events and candidates alike, so "events"), not listed and not in the attached file. Corrections and
  *     withdrawals are always listed. A knowledge-date sample is left alone: its
  *     window already selects by knowledge date. Applies to every audience.
@@ -45,7 +45,7 @@
  * The attached file holds each delivered envelope as published, one per line,
  * re-serialized canonically (sorted keys, compact separators), the byte form of
  * contract.to_json in ERM3, with ONE added top-level key: license_label, the
- * plain-language licence of that event (licenseLabel()). Removing that key gives
+ * plain-language license of that event (licenseLabel()). Removing that key gives
  * back the contract bytes exactly.
  *
  * GDELT. Events discovered through GDELT are internal_only in ERM3
@@ -476,7 +476,7 @@ export function marketCapHits(...bodies: string[]): string[] {
 
 /**
  * Entity fields RiskModels fills from its security master, whose inputs include licensed market
- * data. Derived, so allowed in client editions, but labelled in each line's license_label.
+ * data. Derived, so allowed in client editions, but labeled in each line's license_label.
  */
 export const DERIVED_ENTITY_KEYS = ["ticker", "figi", "bw_sym_id", "entity_name"] as const;
 
@@ -494,7 +494,7 @@ export function isInternalOnly(env: EventEnvelope): boolean {
   return env.license?.classification === "internal_only";
 }
 
-/** True for an event whose source, licence basis or knowledge basis is GDELT. */
+/** True for an event whose source, license basis or knowledge basis is GDELT. */
 export function isGdeltDerived(env: EventEnvelope): boolean {
   const hay = [env.source?.source_system, env.license?.basis, env.knowledge_basis]
     .filter((v): v is string => typeof v === "string")
@@ -503,7 +503,7 @@ export function isGdeltDerived(env: EventEnvelope): boolean {
 }
 
 /**
- * Plain-language licence of one event, written into its line of the attached file. It restates the
+ * Plain-language license of one event, written into its line of the attached file. It restates the
  * envelope's license block for a reader; the block itself is unchanged.
  */
 export function licenseLabel(env: EventEnvelope): string {
@@ -550,8 +550,8 @@ const FAMILIES: ReadonlyArray<{ key: string; label: string; noun: string; types:
   { key: "split", label: "Splits", noun: "splits", types: ["split", "reverse_split", "stock_split"] },
   {
     key: "merger",
-    label: "Mergers and reorganisations",
-    noun: "mergers and reorganisations",
+    label: "Mergers and reorganizations",
+    noun: "mergers and reorganizations",
     types: ["m_and_a", "merger", "merger_or_reorganisation", "acquisition"],
   },
   { key: "listing_status", label: "Listing status", noun: "listing status changes", types: ["listing_status"] },
@@ -564,7 +564,7 @@ const FAMILY_ONE: Record<string, string> = {
   delisting_notice: "deficiency notice",
   rename: "rename",
   split: "split",
-  merger: "merger or reorganisation",
+  merger: "merger or reorganization",
   listing_status: "listing status change",
   identifier_change: "identifier change",
 };
@@ -1196,7 +1196,7 @@ export function buildDigestDescriptor(ed: DigestEdition) {
       schema_version: ENVELOPE_SCHEMA_VERSION,
       serialization:
         "one envelope per line, canonical JSON: sorted keys, compact separators, plus one added key, license_label; removing license_label gives the contract bytes",
-      license_label: "plain-language licence of the event; the license object holds classification, redistributable and basis",
+      license_label: "plain-language license of the event; the license object holds classification, redistributable and basis",
       required_fields: ENVELOPE_REQUIRED_FIELDS,
       time_axes: {
         effective_at: "valid time: when the real-world state changes (basis in effective_basis)",

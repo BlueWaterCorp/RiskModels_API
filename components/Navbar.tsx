@@ -128,11 +128,11 @@ export default function Navbar() {
             )}
             <Link
               href="/get-key"
-              className="rm-mono inline-flex h-8 items-center rounded-[2px] border border-navy px-3 max-[350px]:hidden text-xs text-navy transition-colors hover:bg-navy hover:text-[var(--rm-on-navy)]"
+              className="rm-mono inline-flex h-8 items-center whitespace-nowrap rounded-[2px] border border-navy px-3 text-xs text-navy transition-colors hover:bg-navy hover:text-[var(--rm-on-navy)]"
             >
               {user ? 'API keys' : (
                 <>
-                  <span className="sm:hidden">API key</span>
+                  <span className="sm:hidden">Get key</span>
                   <span className="hidden sm:inline">Get a free API key</span>
                 </>
               )}
@@ -184,6 +184,16 @@ export default function Navbar() {
                 );
               })}
             </div>
+            <button
+              type="button"
+              className="block w-full px-1 text-left text-sm text-ink-muted hover:text-ink sm:hidden"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                window.dispatchEvent(new Event('rm:open-chat'));
+              }}
+            >
+              Ask the AI analyst
+            </button>
             <div className="flex items-center justify-between gap-3">
               {user ? (
                 <button

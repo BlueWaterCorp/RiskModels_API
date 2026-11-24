@@ -166,7 +166,7 @@ A concept is **absent** for a period when that cell is vendor-sourced (not redis
 
 ## Equity bridge
 
-`equity_bridge_residual` is the **plug** that closes the equity roll-forward by construction (`total_equity_t − total_equity_{t-1} =` tagged components `+ residual`). It is a decomposition aid, not a measured line, and is frequently large. `equity_bridge_inputs` lists the components that backed it — a component **missing** from the list means its movement is inside the residual, not that it was zero (e.g. a filer that does not tag dividends has its dividends in the residual). For modelling, anchor on `retained_earnings`.
+`equity_bridge_residual` is the **plug** that closes the equity roll-forward by construction (`total_equity_t − total_equity_{t-1} =` tagged components `+ residual`). It is a decomposition aid, not a measured line, and is frequently large. `equity_bridge_inputs` lists the components that backed it — a component **missing** from the list means its movement is inside the residual, not that it was zero (e.g. a filer that does not tag dividends has its dividends in the residual). For modeling, anchor on `retained_earnings`.
 
 ## Licensing & precision
 
