@@ -963,7 +963,7 @@ function GetKeyPage() {
           </h2>
           <p className="text-xs text-zinc-500 mb-3 leading-relaxed">
             Add a custom connector, sign in once, done. No API key and no card.
-            After Connect, paste the first prompt so the model hits live data instead of the catalog.
+            After Connect, paste the first prompt so the first call from the model reads live data.
           </p>
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-zinc-500 mb-1.5">
             MCP connector URL
@@ -1400,9 +1400,9 @@ Card verified and credits should be on your account. Use &quot;Generate&quot; be
             <p className="text-xs text-zinc-400 mt-3 leading-relaxed">
               <strong className="text-zinc-300">Reading the prefix:</strong> keys from this page are{' '}
               <code className="text-zinc-300 font-mono">rm_agent_live_…</code>.{' '}
-              <strong className="text-zinc-300">agent</strong> means this key is in the prepaid / metered API program (scripts, SDK, CLI, and MCP all use the same shape — not “AI agents only”).{' '}
+              <strong className="text-zinc-300">agent</strong> means this key is in the prepaid / metered API program (scripts, SDK, CLI, and MCP all use the same shape).{' '}
               <strong className="text-zinc-300">live</strong> means production data at{' '}
-              <code className="text-zinc-400 font-mono">riskmodels.app</code>. It is not a second, separate “type” of key.
+              <code className="text-zinc-400 font-mono">riskmodels.app</code>. Every key has this one form.
             </p>
             <p className="text-xs text-zinc-500 mt-2">
               The list above shows a <em>prefix</em> only. Curl and OpenBB need the full key, copied when it was generated. OpenBB Workspace: backend URL <code className="text-zinc-400 font-mono">https://riskmodels.app/openbb</code>, header <code className="text-zinc-400 font-mono">X-API-KEY</code>.

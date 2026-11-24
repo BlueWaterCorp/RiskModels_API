@@ -116,7 +116,7 @@ const faqs: PricingFaqItem[] = [
   },
   {
     q: "Do my free credits expire?",
-    a: "Your $20 in free credits never expire. However, your API key requires at least one call every 90 days to stay active. After 90 days of complete inactivity the key is automatically deactivated — not deleted — for security. You can reactivate instantly from your dashboard or by making any API call.",
+    a: "Your $20 in free credits stay on the account until spent. Your API key requires at least one call every 90 days to stay active. After 90 days of complete inactivity the key is automatically deactivated for security and stays on the account. You can reactivate instantly from your dashboard or by making any API call.",
   },
   {
     q: "What happens when I run out of credits?",
@@ -260,7 +260,7 @@ export default function PricingPage() {
           </table>
         </div>
         <p className="rm-small mt-4">
-          These are illustrations at {TRADING_DAYS} trading days a month, not measured customer usage. Repeat
+          These are illustrations at {TRADING_DAYS} trading days a month. Repeat
           requests served from cache would lower each figure.
         </p>
       </section>
@@ -268,7 +268,7 @@ export default function PricingPage() {
       <section className="rm-section" aria-labelledby="credit">
         <SectionHead n="02" label="Self-serve API · credit" title="Credit, top-ups and limits" id="credit">
           <p>
-            The $20 of sign-in credit does not expire. Top-ups are $20, $50 or $100. Automatic refill is off
+            The $20 of sign-in credit stays on the account until it is spent. Top-ups are $20, $50 or $100. Automatic refill is off
             until you turn it on; when on, the card is charged for the chosen amount when the balance falls
             below a threshold (default $5). With refill off, a request made on an empty balance returns{" "}
             <code className="rm-mono">402</code>.

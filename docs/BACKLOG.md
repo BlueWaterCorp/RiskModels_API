@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-40`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-41`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -220,3 +220,12 @@ Ship as `Content-Security-Policy-Report-Only` first, covering the bot check, aut
 **Impact:** HYGIENE · Pages not restyled in the site redesign (account, docs MDX bodies, API reference panels, chat panel) still use the `zinc-600` text step for small copy, which computes to about 3.5:1 on the light surface, under the 4.5:1 threshold. **Needs:** engineering
 
 Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessibility audit; none was run for the redesign (contrast was computed by hand).
+
+## RMAPI-40 · Membership history for the published universes (2026-11-24)
+
+**Impact:** IMPROVEMENT · `GET /api/universe/{name}/members` returns one date per request, so a backtest over N months needs N calls. Eight universes are documented and the site presents one of them, the 3,000-stock list.
+**Needs:** engineering
+
+- Add a history call per universe: each stock's entry and exit dates over a date range, priced per request from the price list.
+- List the eight universes on /pricing and in the home universe paragraph.
+- Add the SDK method and an MCP tool for the same call.

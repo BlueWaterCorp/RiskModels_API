@@ -124,7 +124,7 @@ export default async function SecurityMasterFeedPage() {
             </>
           ) : (
             <p className="rm-small border-y border-rule py-4">
-              Data unavailable. The feed sample could not be read; it is served at{" "}
+              Data unavailable. The read of the feed sample failed; it is served at{" "}
               <Link href="/security-master-feed/latest.json" prefetch={false} className="rm-link rm-mono">
                 /security-master-feed/latest.json
               </Link>
@@ -144,7 +144,7 @@ export default async function SecurityMasterFeedPage() {
             </div>
           ))}
           <div className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
-            <dt className="rm-h3 lg:col-span-4">Not in scope</dt>
+            <dt className="rm-h3 lg:col-span-4">Outside scope</dt>
             <dd className="rm-body lg:col-span-8">{OUT_OF_SCOPE.join("; ")}.</dd>
           </div>
         </dl>

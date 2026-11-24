@@ -45,7 +45,7 @@ export default async function StatusPage() {
       {!health ? (
         <section className="rm-section">
           <p className="rm-body">
-            Data unavailable. The health endpoint did not answer when this page was built. Query it directly at{' '}
+            Data unavailable. The request to the health endpoint failed when this page was built. Query it directly at{' '}
             <Link href="/api/health" prefetch={false} className="rm-link rm-mono">
               /api/health
             </Link>{' '}
@@ -133,8 +133,8 @@ export default async function StatusPage() {
                 </table>
               </div>
               <p className="rm-small mt-4">
-                Data is end-of-day. A stock in the universe can lack a return on a given day, for example when it
-                did not trade.
+                Data is end-of-day. A stock in the universe can lack a return on a given day, for example on a day
+                with no trades.
               </p>
             </section>
           ) : null}

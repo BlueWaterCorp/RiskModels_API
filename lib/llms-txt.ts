@@ -110,7 +110,7 @@ The decomposition routes that work across the universe (or many tickers) in a si
 - "Is my performance stock-picking or just being long the market / the average stock?" → \`POST /api/cohorts/pnl-decomposition\`. Both components and the coverage gaps belong in the answer; it is realized attribution, not a forecast or a verdict on skill.
 - "What is the beta / hedge / risk of my long/short book?" (any short position) → \`POST /api/portfolio/exposure\` with signed dollar values; \`warnings\` and \`coverage.dropped\` qualify the numbers.
 - "Can I get returns / beta / holdings for this ETF?" or an ETF came back empty → \`GET /api/data/etf/{ticker}\` (or \`/api/data/etf/universe\`) and read \`capabilities\` before calling a priced route.
-- "Give me the Lstar history for these 30 tickers" → \`POST /api/batch/lstar\` (one call instead of 30 \`GET /api/lstar\` calls).
+- "Give me the Lstar history for these 30 tickers" → \`POST /api/batch/lstar\` (one call covers all 30 tickers).
 - "What's AAPL's ROE / WACC / economic profit / cost of capital / payout / revenue?" → \`GET /api/fundamentals/{ticker}\` (PIT quarterly; derived analytics + raw SEC-sourced line items in \`sec_facts\`; no forecasts or analyst fields).
 
 ## Fundamentals — PIT quarterly, derived analytics + SEC-sourced raw
@@ -129,7 +129,7 @@ the cleanness of the residual because it subtracts a layer the model would not h
 
 ## Keys in chats
 
-Private API keys belong in environment variables or local config, not in chat messages. The **Public sample API key** section, when present, is a key published on purpose for documentation and agent smoke tests.
+Private API keys belong in environment variables or local config. The **Public sample API key** section, when present, is a key published on purpose for documentation and agent smoke tests.
 
 Canonical site: https://riskmodels.app  |  Terms: https://riskmodels.net/terms/api
 `;
@@ -198,7 +198,7 @@ A typical first check after connecting is \`riskmodels_compare\` on AAPL and NVD
 - [API terms](https://riskmodels.net/terms/api): attribution "Powered by RiskModels"; no resale or redistribution as a feed without a written agreement
 - [Privacy](https://riskmodels.app/privacy)
 
-Private API keys belong in environment variables or local config, not in chat messages. A **Public sample API key** section, when present below, is a key published on purpose for documentation and agent smoke tests.
+Private API keys belong in environment variables or local config. A **Public sample API key** section, when present below, is a key published on purpose for documentation and agent smoke tests.
 `;
 }
 

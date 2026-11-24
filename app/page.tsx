@@ -90,7 +90,7 @@ function abridged(m: MetricsExhibit): string {
 function Unavailable({ what }: { what: string }) {
   return (
     <p className="rm-small border-y border-rule py-4">
-      Data unavailable. {what} could not be read when this page was built.
+      Data unavailable. The read of {what} failed when this page was built.
     </p>
   );
 }
@@ -187,8 +187,7 @@ export default async function HomePage() {
             {metrics.source === 'live'
               ? `read from production on ${metrics.obtained}`
               : `a response recorded on ${metrics.obtained}`}
-            . The response states the model version and data date; it does not state the estimation window,
-            which is described in the{' '}
+            . The response states the model version and data date; the estimation window is described in the{' '}
             <Link href="/docs/methodology" className="rm-link">
               methodology
             </Link>
@@ -230,7 +229,8 @@ export default async function HomePage() {
           <div>
             <dd className="rm-num">{coverage ? coverage.universe_stock_count.toLocaleString('en-US') : '—'}</dd>
             <dt className="rm-small mt-2">
-              US stocks in the model universe. <span className="rm-mono">/api/health</span>
+              US stocks with a record in the API: the 2,786 on the membership list for 2026-11-23, plus stocks
+              outside it. <span className="rm-mono">/api/health</span>
             </dt>
           </div>
           <div>
@@ -301,13 +301,13 @@ export default async function HomePage() {
 
         <div className="mt-12 grid gap-x-10 gap-y-6 lg:grid-cols-12">
           <div className="lg:col-span-6">
-            <h3 className="rm-h3">The universe is a dated list, not a count</h3>
+            <h3 className="rm-h3">The universe is a dated membership list</h3>
             <p className="rm-body mt-3">
               Membership is a market-capitalisation rank, set at each month-end and applied to the following
               month, with a daily check that the stock had a usable price. The list for any past trading day
               can be requested, and it includes companies that have since delisted. A program that takes its
               stocks from this list on each date researches and trades the same eligible set, and a backtest
-              does not hold stocks that were not members at the time.
+              holds only the stocks that were members on each date. The list for 2026-11-23 holds 2,786 stocks.
             </p>
             <p className="rm-small mt-3">
               Described in the{' '}
@@ -325,7 +325,7 @@ export default async function HomePage() {
                   id: 'curl',
                   label: 'curl',
                   code: UNIVERSE_CALL,
-                  note: `Run on ${EXECUTED_ON}: returned 2,858 members with the list dated 2016-05-31; 1,188 of them are not in the list for 2026-11-23.`,
+                  note: `Run on ${EXECUTED_ON}: returned 2,858 members with the list dated 2016-05-31; 1,188 of them had left the list by 2026-11-23.`,
                 },
               ]}
             />
@@ -425,8 +425,8 @@ export default async function HomePage() {
       <section className="rm-section" aria-labelledby="method">
         <SectionHead n="05" label="Method" title="Method and evidence" id="method">
           <p>
-            The four shares of variance sum to one by construction. That is an accounting identity and says
-            nothing about accuracy. What has been tested, and how, is in the published papers.
+            The four shares of variance sum to one by construction, which is an accounting identity. Evidence on
+            accuracy is in the published papers, which state what has been tested and how.
           </p>
         </SectionHead>
         <ul className="mt-8 divide-y divide-[var(--rm-rule)] border-y border-rule">

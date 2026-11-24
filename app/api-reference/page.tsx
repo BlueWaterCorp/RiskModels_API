@@ -407,7 +407,7 @@ export default function ApiReferencePage() {
                 <div className="rounded-xl border border-amber-900/40 bg-amber-950/10 p-5">
                   <div className="font-mono text-xs uppercase tracking-widest text-amber-400 mb-2">Best Residual — Lstar Dispatch</div>
                   <p className="text-sm text-zinc-300 mb-2">
-                    Not every stock’s subsector ETF actually explains material variance. <strong>Lstar</strong> is the recommended cascade depth ERM3 publishes per stock and date — L3 only when subsector hedging earns its place, L2 when only sector does, L1 otherwise. Pass an explicit threshold to apply the legacy 1% marginal-ER rule instead.
+                    For some stocks the subsector ETF explains little variance. <strong>Lstar</strong> is the recommended cascade depth ERM3 publishes per stock and date — L3 only when subsector hedging earns its place, L2 when only sector does, L1 otherwise. An explicit threshold applies the legacy 1% marginal-ER rule.
                   </p>
                   <p className="text-sm text-zinc-300">
                     <code className="text-zinc-400">lstar_rr</code> returns the residual <em>at the level the model actually picked</em>;{' '}
@@ -428,7 +428,7 @@ export default function ApiReferencePage() {
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
                     <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Universe rank screen</div>
                     <p className="text-sm text-zinc-300 mb-2">
-                      Server-side percentile / decile / sector filters over the full ranking cross-section. The stat-arb cross-section in one call — not N per-ticker round-trips.
+                      Server-side percentile / decile / sector filters over the full ranking cross-section. The stat-arb cross-section in one call.
                     </p>
                     <p className="text-xs text-zinc-500">
                       <code className="text-zinc-400">POST /api/rankings/screen</code> — up to 500 rows by <code className="text-zinc-400">rank_ordinal</code>.
@@ -454,7 +454,7 @@ export default function ApiReferencePage() {
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight mb-3">Fastest way to get started with agents</h2>
                   <p className="text-zinc-400 max-w-2xl">
-                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, makes a live metrics call, and quotes residual explained-risk from the JSON — no install, no terminal.
+                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, makes a live metrics call, and quotes residual explained-risk from the JSON. It runs in the chat window.
                   </p>
                 </div>
 
