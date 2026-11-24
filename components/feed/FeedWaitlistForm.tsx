@@ -47,6 +47,7 @@ export default function FeedWaitlistForm() {
           name: form.get('name'),
           company: form.get('company'),
           role: form.get('role'),
+          profile_url: form.get('profile_url'),
           intended_use: form.get('intended_use') || null,
           firm_type: form.get('firm_type') || null,
           firm_size: form.get('firm_size') || null,
@@ -104,25 +105,38 @@ export default function FeedWaitlistForm() {
         </p>
       </div>
 
-      <p className="pt-1 text-[11px] text-zinc-500">Everything below is optional except the terms box.</p>
+      <p className="pt-1 text-[11px] text-zinc-500 leading-snug">
+        The feed is free, for investment, research, risk and data professionals. A person reviews each request, so
+        tell us who you are: name, firm or affiliation, role and intended use are required.
+      </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor="fw-name" className={labelClass}>
-            Name
+            Name <span className="text-blue-400">*</span>
           </label>
-          <Input id="fw-name" name="name" autoComplete="name" maxLength={200} />
+          <Input id="fw-name" name="name" required autoComplete="name" maxLength={200} />
         </div>
         <div>
           <label htmlFor="fw-company" className={labelClass}>
-            Firm
+            Firm or affiliation <span className="text-blue-400">*</span>
           </label>
-          <Input id="fw-company" name="company" autoComplete="organization" maxLength={200} />
+          <Input id="fw-company" name="company" required autoComplete="organization" maxLength={200} />
         </div>
         <div>
           <label htmlFor="fw-role" className={labelClass}>
-            Role
+            Role <span className="text-blue-400">*</span>
           </label>
-          <Input id="fw-role" name="role" autoComplete="organization-title" maxLength={200} />
+          <Input id="fw-role" name="role" required autoComplete="organization-title" maxLength={200} />
+        </div>
+        <div>
+          <label htmlFor="fw-profile-url" className={labelClass}>
+            Firm website or LinkedIn profile <span className="text-zinc-500">(optional)</span>
+          </label>
+          <Input id="fw-profile-url" name="profile_url" inputMode="url" autoComplete="url" maxLength={300} />
+          <p className="mt-1 text-[11px] text-zinc-500 leading-snug">
+            Helpful if you use a personal address such as Gmail, or work independently. Personal addresses are
+            welcome and are reviewed by hand.
+          </p>
         </div>
         <div>
           <label htmlFor="fw-firm-type" className={labelClass}>
@@ -166,7 +180,9 @@ export default function FeedWaitlistForm() {
       </div>
 
       <fieldset>
-        <legend className={labelClass}>What would you use it for? (any that apply)</legend>
+        <legend className={labelClass}>
+          What would you use it for? (at least one) <span className="text-blue-400">*</span>
+        </legend>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {FEED_USES.map((u) => (
             <label key={u.value} className="flex items-start gap-2 text-sm text-zinc-300 leading-snug">
@@ -217,8 +233,8 @@ export default function FeedWaitlistForm() {
           <Link href="/legal/feed-terms" className="underline hover:text-white" target="_blank">
             free edition terms
           </Link>
-          : use inside my firm and quoting with attribution; no bulk redistribution or resale. Email me the feed;
-          we will send a link to confirm your address first. Unsubscribe at any time.{' '}
+          : use inside my firm and quoting with attribution; no bulk redistribution or resale. Email me the feed
+          once my request is approved; we will send a link to confirm your address first. Unsubscribe at any time.{' '}
           <span className="text-blue-400">*</span>
         </span>
       </label>
@@ -228,7 +244,7 @@ export default function FeedWaitlistForm() {
         disabled={status === 'submitting'}
         className="inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-60 transition-colors sm:w-auto"
       >
-        {status === 'submitting' ? 'Joining…' : 'Join the early-access list'}
+        {status === 'submitting' ? 'Sending…' : 'Request free access'}
       </button>
 
       {status === 'error' && message && (

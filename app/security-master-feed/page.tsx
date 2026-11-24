@@ -2,9 +2,11 @@
 // Landing page + early-access signup for the security master change feed.
 // A printed flyer links to /security-master-feed: keep this path stable.
 //
-// The feed is not live. Copy must not claim delivery, coverage counts or
-// latency that have not been measured. The sample event below is labelled
-// as an illustrative format and uses placeholder values only.
+// Early access. The feed is free, for approved investment, research, risk and
+// data professionals: the form is a request, reviewed by a person. Copy must not
+// claim coverage counts or latency that have not been measured. The sample
+// event below is labelled as an illustrative format and uses placeholder values only.
+// Real events: the dated public sample on riskmodels.org/events.
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -12,7 +14,7 @@ import FeedWaitlistForm from "@/components/feed/FeedWaitlistForm";
 
 const TITLE = "Security Master Change Feed — Early Access";
 const DESCRIPTION =
-  "A daily, SEC-filing-cited feed of US equity identity and status events: ticker and name changes, listing status, mergers and reorganisations, and splits, with corrections and point-in-time known-as-of dates. Early access; free to early clients for about a year.";
+  "A daily, SEC-filing-cited feed of US equity identity and status events: ticker and name changes, listing status, mergers and reorganisations, and splits, with corrections and point-in-time known-as-of dates. Early access; free for approved investment, research, risk and data professionals.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -84,7 +86,8 @@ const OUT_OF_SCOPE = [
 
 const EARLY_ACCESS = [
   "Free to early clients for about the first year",
-  "The spec and an illustrative sample before the first edition",
+  "For investment, research, risk and data professionals; a person reviews each request",
+  "Approved subscribers get email editions and a private RSS address",
   "A say in the delivery format: email digest, API, or webhook",
 ] as const;
 
@@ -142,7 +145,7 @@ export default function SecurityMasterFeedPage() {
             href="#join"
             className="inline-flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
           >
-            Join the early-access list
+            Request free access
           </a>
           <a
             href="#format"
@@ -152,8 +155,16 @@ export default function SecurityMasterFeedPage() {
           </a>
         </div>
         <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
-          The feed is in development and not yet delivered. Join the list to hear first, and to get
-          it free for about a year as an early client.
+          Early access. The feed is free for verified investment, research, risk and data
+          professionals. A dated public sample is at{" "}
+          <a href="https://www.riskmodels.org/events" className="text-blue-400 hover:text-blue-300">
+            riskmodels.org/events
+          </a>
+          ; approved subscribers read current events by email and{" "}
+          <Link href="/security-master-feed/access" className="text-blue-400 hover:text-blue-300">
+            private RSS
+          </Link>
+          . All data is end-of-day and historical.
         </p>
       </section>
 
@@ -223,7 +234,7 @@ export default function SecurityMasterFeedPage() {
         <div className="grid gap-6 md:grid-cols-5">
           <div className="md:col-span-2">
             <SectionLabel>Early access</SectionLabel>
-            <h2 className="text-xl font-bold text-white mb-3">Join the list</h2>
+            <h2 className="text-xl font-bold text-white mb-3">Request access</h2>
             <ul className="space-y-2">
               {EARLY_ACCESS.map((item) => (
                 <li key={item} className="flex items-start gap-1.5 text-sm text-zinc-300 leading-snug">
@@ -233,6 +244,18 @@ export default function SecurityMasterFeedPage() {
               ))}
             </ul>
             <p className="mt-4 text-sm text-zinc-500 leading-snug">
+              How it works: you confirm your email, then we review the request and email you the decision.
+              Work and academic addresses with a complete profile are ordinarily approved. Personal addresses
+              are reviewed by hand; a firm website or LinkedIn profile helps.
+            </p>
+            <p className="mt-3 text-sm text-zinc-500 leading-snug">
+              Already approved?{" "}
+              <Link href="/security-master-feed/access" className="text-blue-400 hover:text-blue-300">
+                Create your private RSS address
+              </Link>
+              .
+            </p>
+            <p className="mt-3 text-sm text-zinc-500 leading-snug">
               Questions:{" "}
               <a href="mailto:service@riskmodels.app" className="text-blue-400 hover:text-blue-300">
                 service@riskmodels.app

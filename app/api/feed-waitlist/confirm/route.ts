@@ -15,7 +15,8 @@
  * When the confirmed row is a contact that asked for a separate delivery address,
  * the same transaction creates that address's row and links it. After the response,
  * that ops address is marked confirmed. It is not sent its own confirmation. The
- * contact gets the welcome email. A confirmed delivery address gets no welcome:
+ * contact gets the welcome email, which says whether the request is approved or
+ * still under review: confirming an address does not approve it. A confirmed delivery address gets no welcome:
  * it receives editions only.
  *
  * The page /security-master-feed/confirm asks for a click before posting here, so
@@ -107,6 +108,22 @@ export async function POST(req: NextRequest) {
 
   const row = confirmed;
   const inviteUrl = row.purpose === "contact" ? await lookupFeedInviteUrl(admin, row.email) : null;
+  // Confirming an address is not approval. The page and the welcome say which state the contact is in.
+  // A failed read answers "under review", the state that promises nothing.
+  let approved = false;
+  if (row.purpose === "contact") {
+    try {
+      const { data, error } = await admin
+        .from("feed_waitlist")
+        .select("access_status")
+        .eq("id", row.id)
+        .maybeSingle();
+      if (error) console.error("[feed-waitlist/confirm] access_lookup_failed", safeErrorCode(error));
+      approved = (data as { access_status?: string } | null)?.access_status === "approved";
+    } catch (err) {
+      console.error("[feed-waitlist/confirm] access_lookup_failed", safeErrorCode(err));
+    }
+  }
   after(async () => {
     // The contact gets the welcome. A delivery address receives editions only, so it gets none.
     if (row.purpose === "contact") {
@@ -119,6 +136,7 @@ export async function POST(req: NextRequest) {
           unsubscribed_at: null,
           purpose: "contact",
           inviteUrl,
+          approved,
         });
       } catch (err) {
         console.error("[feed-waitlist/confirm] welcome_email_failed", safeErrorCode(err));
@@ -148,7 +166,7 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json(
-    { ok: true, purpose: row.purpose, delivery: Boolean(row.feed_email), inviteUrl },
+    { ok: true, purpose: row.purpose, delivery: Boolean(row.feed_email), inviteUrl, approved },
     { headers: NO_STORE },
   );
 }

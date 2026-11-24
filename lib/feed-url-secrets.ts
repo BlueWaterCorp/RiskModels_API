@@ -1,6 +1,8 @@
 /**
  * Secrets in feed links (/security-master-feed/confirm, /unsubscribe, /delivery,
- * /delivery/confirm) must not reach analytics.
+ * /delivery/confirm, /access/issue) must not reach analytics. `key` is a private
+ * feed credential: the private feed routes answer XML or JSON, not a page, so no
+ * tag ever runs on them, but a credential pasted onto any feed page is stripped too.
  *
  * 1. FEED_SECRET_STASH_SCRIPT runs inline at the top of <head> (app/layout.tsx),
  *    before Google Tag Manager, the Google tag and PostHog load. On a feed page it
@@ -15,7 +17,7 @@
  */
 
 export const FEED_PATH_PREFIX = "/security-master-feed";
-export const FEED_SECRET_PARAMS = ["token", "inbox"] as const;
+export const FEED_SECRET_PARAMS = ["token", "inbox", "key"] as const;
 const STORAGE_PREFIX = "rm_feed_secret:";
 
 /** In-memory copy, for browsers that block sessionStorage (the page still works; nothing persists). */

@@ -12,6 +12,9 @@ const sendFeedDeliveryConfirmation = vi.fn();
 const deliveryUpdate = vi.fn();
 const rateLimit = vi.fn();
 const afterTasks: Array<() => Promise<void> | void> = [];
+/** What the contact row's access_status reads as after the confirm. A new request is pending. */
+let accessStatus = "pending";
+let accessError: unknown = null;
 
 vi.mock("next/server", async (importOriginal) => {
   const mod = await importOriginal<typeof import("next/server")>();
@@ -74,7 +77,10 @@ describe("POST /api/feed-waitlist/confirm", () => {
     from.mockReset().mockReturnValue({
       select: () => ({
         eq: () => ({
-          maybeSingle: async () => ({ data: { referral_code: "9018ddd80c6a" }, error: null }),
+          maybeSingle: async () => ({
+            data: accessError ? null : { referral_code: "9018ddd80c6a", access_status: accessStatus },
+            error: accessError,
+          }),
         }),
       }),
       update: () => ({
@@ -90,6 +96,38 @@ describe("POST /api/feed-waitlist/confirm", () => {
     sendFeedDeliveryConfirmation.mockReset().mockResolvedValue({ id: "email-2" });
     rateLimit.mockReset().mockResolvedValue({ ok: true, remaining: 29, retryAfter: 3600 });
     afterTasks.length = 0;
+    accessStatus = "pending";
+    accessError = null;
+  });
+
+  describe("confirming an address is not approval", () => {
+    it("tells a pending contact the request is under review, on the page and in the welcome", async () => {
+      const res = await POST(jsonRequest(TOKEN));
+      expect((await res.json()).approved).toBe(false);
+      await runAfter();
+      expect(sendFeedEarlyAccessEmail.mock.calls[0]![0]).toMatchObject({ approved: false });
+    });
+
+    it("tells an already-approved contact so", async () => {
+      accessStatus = "approved";
+      const res = await POST(jsonRequest(TOKEN));
+      expect((await res.json()).approved).toBe(true);
+      await runAfter();
+      expect(sendFeedEarlyAccessEmail.mock.calls[0]![0]).toMatchObject({ approved: true });
+    });
+
+    it("treats rejected, revoked and an unreadable status as not approved", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+      for (const status of ["rejected", "revoked"]) {
+        accessStatus = status;
+        expect((await (await POST(jsonRequest(TOKEN))).json()).approved).toBe(false);
+      }
+      accessStatus = "approved";
+      accessError = { code: "XX000", message: "read failed for owner@example.com" };
+      expect((await (await POST(jsonRequest(TOKEN))).json()).approved).toBe(false);
+      expect(JSON.stringify(spy.mock.calls)).not.toContain("owner@example.com");
+      spy.mockRestore();
+    });
   });
 
   it("records consent through one atomic database call, matched by the token's hash", async () => {
@@ -100,6 +138,7 @@ describe("POST /api/feed-waitlist/confirm", () => {
       purpose: "contact",
       delivery: false,
       inviteUrl: "https://riskmodels.app/security-master-feed?ref=9018ddd80c6a",
+      approved: false,
     });
     expect(rpc).toHaveBeenCalledWith("feed_waitlist_confirm", {
       p_token_hash: createHash("sha256").update(TOKEN).digest("hex"),
@@ -140,6 +179,7 @@ describe("POST /api/feed-waitlist/confirm", () => {
         purpose: "contact",
         delivery: true,
         inviteUrl: "https://riskmodels.app/security-master-feed?ref=9018ddd80c6a",
+        approved: false,
       });
       expect(deliveryUpdate).not.toHaveBeenCalled();
       await runAfter();
@@ -172,7 +212,7 @@ describe("POST /api/feed-waitlist/confirm", () => {
   it("confirming a delivery address sends it no welcome and starts no further delivery request", async () => {
     mockRpc([confirmed({ email: "ops@example.com", purpose: "feed", name: null })]);
     const res = await POST(jsonRequest(TOKEN));
-    expect(await res.json()).toEqual({ ok: true, purpose: "feed", delivery: false, inviteUrl: null });
+    expect(await res.json()).toEqual({ ok: true, purpose: "feed", delivery: false, inviteUrl: null, approved: false });
     await runAfter();
     expect(sendFeedEarlyAccessEmail).not.toHaveBeenCalled();
     expect(sendFeedDeliveryConfirmation).not.toHaveBeenCalled();
