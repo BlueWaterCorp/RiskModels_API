@@ -134,11 +134,11 @@ export default function InstallationPage() {
 
       <section className="px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {BLOCKS.map(({ id, title, icon: Icon, setup, firstActionLabel, firstActionCode, firstActionLanguage, outcome }) => (
               <div
                 key={id}
-                className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+                className="flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6"
               >
                 <div className="mb-5 flex items-center gap-3">
                   <span className="inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">

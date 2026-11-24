@@ -356,7 +356,7 @@ export default function ApiReferencePage() {
         {/* Main + Right Panel */}
         <main className="col-span-12 lg:col-span-9 grid grid-cols-1 xl:grid-cols-12">
           {/* Main content */}
-          <div className="col-span-1 xl:col-span-8 p-6 lg:p-8 space-y-8">
+          <div className="col-span-1 xl:col-span-8 min-w-0 p-6 lg:p-8 space-y-8">
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
               <p className="text-sm font-medium text-emerald-300">
                 Returns variance + hedge ratios.
@@ -515,7 +515,7 @@ ${example}`)}
                   <Badge variant={methodVariant(selected.method)} className="text-base px-4 py-1">
                     {selected.method.toUpperCase()}
                   </Badge>
-                  <code className="text-xl lg:text-2xl font-mono tabular-nums text-zinc-200">
+                  <code className="text-xl lg:text-2xl font-mono tabular-nums text-zinc-200 break-all">
                     {BASE_URL}
                     {selected.path}
                   </code>
