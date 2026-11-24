@@ -11,6 +11,12 @@ appending a line here and cutting the row, rather than marking it ✅ in place.
 Process: `BWMACRO/docs/architecture/BACKLOG_LEDGER_CHECKLIST_PROCESS.md`.
 
 ## 2026-11
+- 2026-11-24 · RMAPI-41 · DECIDED: the Ads tag stays as configured; ad measurement is kept and the Lighthouse cookie finding is accepted · owner decision
+- 2026-11-24 · RMAPI-29 · CLOSED: fund holdings take `as_of` with a required `time_basis` · #515, #517
+- 2026-11-24 · RMAPI-25 · CLOSED: filer search served by `riskmodels_search` with `type: "filer"`; the old tool name returns a pointer (`lib/mcp/removed-tools.ts`) · audit 2026-11-24
+- 2026-11-24 · RMAPI-12 · CLOSED: filer search returns the current latest_report_date and AUM (Baupost 2026-09-30, $5.05B, live check) · audit 2026-11-24
+- 2026-11-24 · RMAPI-6 · CLOSED: each security's history starts at its first real data · #518
+- 2026-11-24 · RMAPI-1 · CLOSED: fund snapshot carries `net_expense_ratio` (`lib/funds/snapshot-composer.ts`), matching the search payload · audit 2026-11-24
 - 2026-11-24 · RMAPI-37 · PARTIAL: `frame-ancestors 'self'` enforced with `X-Frame-Options: SAMEORIGIN`; full policy sent report-only with a report endpoint; enforcement stays open · site review 3 PR
 - 2026-11-24 · RMAPI-36 · CLOSED: root layout reads no request headers (print frame chosen from the path in `components/SiteChrome.tsx`), so public pages are cacheable; `/get-key` and `/account` stay per-request; print renders refuse tag hosts · site review 3 PR
 - 2026-11-24 · RMAPI-34 · CLOSED: unknown `/docs/<slug>` returns 404 on the deployed preview of #556 (production before the change: 200). The root layout and analytics provider no longer wrap the page in Suspense boundaries, so the status is set before the response starts. Re-check on production after merge. · #556

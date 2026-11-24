@@ -229,6 +229,7 @@ export default async function HomePage() {
           <CodeExhibit
             caption={`Response · abridged · ${metrics.source === 'live' ? 'read' : 'recorded'} ${metrics.obtained}`}
             tabs={[{ id: 'json', label: 'JSON', code: abridged(metrics) }]}
+            collapsedLines={8}
           />
         </div>
       </section>

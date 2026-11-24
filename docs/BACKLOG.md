@@ -21,11 +21,6 @@ here from the old hand-maintained master on 2026-10-13 keep their full text in `
 
 Process: `BWMACRO/docs/architecture/BACKLOG_LEDGER_CHECKLIST_PROCESS.md`.
 
-## RMAPI-1 · `net_expense_ratio` is populated on the fund *search* payload but null on the fund *snapshot*
-
-**Impact:** IMPROVEMENT · `net_expense_ratio` is populated on the fund *search* payload but null on the fund *snapshot* (found 2026-08-03 during G.94). `VLISX = 0.04` comes back from search; the snapshot the roster analyzes carries no expense ratio, so `RosterRowData.netExpenseRatio` is null on every row today and G.94's fee-corroboration branch in the INDEX badge hover is dormant — it degrades honestly ("No expense ratio in this snapshot to … **Needs:** engineering.
-From the archived master, row D.12 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: D.12: Open — booked 2026-08-03.
-
 ## RMAPI-2 · Long-short sheet, phase 1 (internal)
 
 **Impact:** IMPROVEMENT · Long-short sheet, phase 1 (internal). Two pages from reported NAV and N-PORT signed positions over NET_ASSETS: statistics (CAGR, vol, Sharpe, Sortino, max DD, Calmar, best/worst, % positive, beta, 36m beta, correlation, CAPM alpha, up/down capture), monthly grid, rolling 12m, drawdown; long/short/gross/net history, top longs and shorts, sector long/short/net, holdings-implied vs realised beta, ERM3 L3 hedge legs. … **Needs:** engineering.
@@ -45,11 +40,6 @@ From the archived master, row G.58 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_202
 
 **Impact:** HYGIENE · Pre-rendered subject kinds accept no render params, and no vocabulary said so (found 2026-08-02 building G.60). Capability reports `top_holdings_erm_stacked` honors `top_n` and that the `filer_13f` pair is `prerendered: true`. Those two facts disagree in practice: render-svc reads a GCS object whose key includes the params, and only the default render was published. Measured on `BW-FILER-0001067983` @ 2026-03-31 … **Needs:** engineering.
 From the archived master, row G.61 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: G.61: Open — booked 2026-08-02; worked around in #272.
-
-## RMAPI-6 · `/api/decompose` serves rows for dates before a company existed
-
-**Impact:** MATERIAL · `/api/decompose` serves rows for dates before a company existed (found 2026-08-02 during G.71). Probing historical `as_of`, OKLO — which listed in 2024 — returns data at `as_of=2010-01-04`. The endpoint answers with *something* for any date in the panel rather than refusing dates outside a symbol's actual history. This matters more now that G.42 shipped real reality-mode `as_of` and G.71 threads it through the … **Needs:** engineering.
-From the archived master, row H.154 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: H.154: Open — booked 2026-08-02.
 
 ## RMAPI-7 · Interpretive IP (analyst doctrine) sits in the public repo's fallback stub
 
@@ -75,11 +65,6 @@ From the archived master, row V.9 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026
 
 **Impact:** MATERIAL · V.11: Verify whether the DD artifact renders price/market cap; V.13: Free tier weakens "authenticated": `POST /api/auth/provision-free` is unauthenticated + self-serve (anonymous user, no identity, no payment), 3 keys/IP/day × …; V.15: `/(print)/render-snapshot` renders a Price column across the holder's portfolio (up to 100 rows) in one authenticated, billed request. **Needs:** DECISION.
 From the archived master, rows V.11, V.13, V.15 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: V.11: Open — conditional, verify bucket contents + renderer; V.13: Open — posture question, no code change proposed; V.15: Open — posture decision, ask counsel/EODHD directly. Cleanest framing to raise on the next call: is a holder's own portfolio table one ….
-
-## RMAPI-12 · GET /13f/filers/search returns a stale latest_report_date / latest_aum_usd
-
-**Impact:** MATERIAL · `GET /13f/filers/search` returns a stale `latest_report_date` / `latest_aum_usd` that contradicts the same filer's snapshot. For `BW-FILER-CIK0001061768` (Baupost Group) the search index reports `latest_report_date` 2024-06-30 and `latest_aum_usd` $3,634,101; `GET /13f/filers/{id}/snapshot` for the same id returns `report_date` 2026-06-30, `total_aum_usd` $5,234,035,000, 21 holdings and `coverage_in_erm3` 1.0. Two … **Needs:** engineering.
-From the archived master, row H.207 (`BWMACRO/docs/ceo/archive/MASTER_BACKLOG_2026-10.md`; full text and evidence there). Status at archive: H.207: Open — reproduced live 2026-08-31 via MCP `riskmodels_search_filers` vs `riskmodels_get_filer_snapshot`; evidence in the session's ….
 
 ## RMAPI-13 · RiskModels API defects found in the 13F attribution study (RiskModels_API #373)
 
@@ -157,10 +142,6 @@ Review: Fable, 2026-10-14 (ETF strategy review).
 
 **Impact:** HYGIENE · The route docs for the filer portfolio, the fund NAV series and the filer snapshot describe fields and clocks that the handlers no longer return. **Needs:** engineering. Regenerate the three pages from the OpenAPI schema and add a drift check to CI.
 
-## RMAPI-25 · Filer-search MCP tool missing on the hosted server (2026-10-18)
-
-**Impact:** IMPROVEMENT · `riskmodels_search_filers` is in the plugin tool list and the REST route `/13f/filers/search` exists, but the hosted MCP server does not register the tool. Clients that rely on the server cannot resolve a filer name to an identifier. **Needs:** engineering. Register the tool on the server and extend the list-endpoints drift guard to compare the server's tool list with the plugin's.
-
 ## RMAPI-26 · Panel endpoints, holders of a security, entity history (2026-10-18)
 
 **Impact:** IMPROVEMENT · Three read paths do not exist: a panel read (many entities, one date range, one request), holders of a security at a date, and an entity's history of names and identifiers. Research clients call the per-entity routes in a loop. **Needs:** engineering, after RMAPI-17 to RMAPI-19. Specify the three routes together so they share the weight basis (RMAPI-20) and the acceptance-time clock (RMAPI-19).
@@ -168,11 +149,6 @@ Review: Fable, 2026-10-14 (ETF strategy review).
 ## RMAPI-27 · Filer search lists retired filers beside their live twins (2026-10-20)
 
 **Impact:** MATERIAL · Funds_DAG filer rebuild 4 (2026-10-20) kept 720 retired rows in `filers` with status `no_13f_book`, among them hand-typed duplicates of pension plans (CalPERS BW-FILER-CIK0000776606 beside live 0000919079; SWIB 0000706669 beside 0000854157). `searchFilers` (`lib/dal/filers-engine.ts:213`) queries `filers` with no status filter, so those names show twice and the retired row has no book. **Needs:** engineering: exclude `status = 'no_13f_book'` from search (keep direct id lookup working), with a test on a real retired row.
-
-## RMAPI-29 · Fund holdings have no historical as_of (Contrafund, 5 Nov) (2026-10-29)
-
-**Impact:** IMPROVEMENT · `GET /funds/{id}/holdings` is latest-only, so a 30 June 2020 Contrafund book cannot be served without opening the zarr by hand. Report date is the default; `available_date` is explicit. Existing filer `as_of` stays knowledge mode. **Needs:** engineering.
-Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 on this item: `as_of` and `time_basis` on `readFundHoldingsBook` and the holdings route; echo `filing_date`, `has_new_data`, `weight_basis`, `unmatched_mv`; `ticker_as_of=current_registry`. Tests: report date 2020-06-30 filed 2020-08-20, available_date returns 2020-03-31 filed 2020-05-26, Amazon weight over net assets (~11.28/121.37), 404 before history. Top-15 exposure stays labeled a sleeve. Fundamentals coverage is the ERM3 audit, not this item. No vintage parameter and no batch route before 5 November (batch remains RMAPI-26).
 
 ## RMAPI-30 · Fund look-through for individual accounts (from RMWEB-25)
 
@@ -223,9 +199,3 @@ Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessi
 - Add a history call per universe: each stock's entry and exit dates over a date range, priced per request from the price list.
 - List the eight universes on /pricing and in the home universe paragraph.
 - Add the SDK method and an MCP tool for the same call.
-
-## RMAPI-41 · Ads tag sets a third-party cookie on every page view (2026-11-24)
-
-**Impact:** IMPROVEMENT · `components/GoogleAdsTag.tsx` configures the Ads destination on load; outside the consent regions it sends remarketing and view-through requests to `doubleclick.net`, which sets `test_cookie`. Lighthouse best practices scores this (77). **Needs:** DECISION
-
-Options: (1) configure the Ads destination only when a conversion fires; (2) default `ad_storage` to denied everywhere and grant on banner consent; (3) record conversions server-side from the click id and drop the browser Ads tag. Each trades remarketing audiences or view-through and modeled conversions for a cookie-free page view.
