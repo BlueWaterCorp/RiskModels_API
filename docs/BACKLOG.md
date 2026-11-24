@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-34`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-35`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -192,3 +192,9 @@ Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 o
 
 Seen in a rendered preview of the 2026-11-23 edition (12 events). Stack the Status, Source role and Source cells under the event cell below about 480 px, or drop Source role at that width. Check the result in a real mail client, since several ignore media queries.
 
+
+## RMAPI-34 · Unknown `/docs/<slug>` returns HTTP 200 with the not-found page (2026-11-24)
+
+**Impact:** HYGIENE · In production an unknown docs slug renders the styled "Not Found" page with `noindex` but the response status is 200, although `app/docs/[slug]/page.tsx` sets `dynamicParams = false` and calls `notFound()`. Local dev returns 404. **Needs:** engineering
+
+Measured on 2026-11-24 after #554: `x-matched-path: /docs/[slug]`, status 200. The likely cause is that the route renders dynamically in production, so the status is sent before `notFound()` runs. Find what makes the route dynamic (root layout or middleware) and confirm the fix against the deployed site, since dev does not reproduce it.
