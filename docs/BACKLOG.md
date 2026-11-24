@@ -193,12 +193,6 @@ Plan: `BWMACRO/docs/rmapi_plans/PIT_UNIFICATION_AND_DEMO_PLAN_20261029.md`. P0 o
 Seen in a rendered preview of the 2026-11-23 edition (12 events). Stack the Status, Source role and Source cells under the event cell below about 480 px, or drop Source role at that width. Check the result in a real mail client, since several ignore media queries.
 
 
-## RMAPI-34 · Unknown `/docs/<slug>` returns HTTP 200 with the not-found page (2026-11-24)
-
-**Impact:** HYGIENE · In production an unknown docs slug renders the styled "Not Found" page with `noindex` but the response status is 200, although `app/docs/[slug]/page.tsx` sets `dynamicParams = false` and calls `notFound()`. Local dev returns 404. **Needs:** engineering
-
-Measured on 2026-11-24 after #554: `x-matched-path: /docs/[slug]`, status 200. The likely cause is that the route renders dynamically in production, so the status is sent before `notFound()` runs. Find what makes the route dynamic (root layout or middleware) and confirm the fix against the deployed site, since dev does not reproduce it.
-
 ## RMAPI-35 · Metrics response does not state the estimation window (2026-11-24)
 
 **Impact:** IMPROVEMENT · `GET /api/metrics/{ticker}` returns `_metadata.model_version`, `data_as_of`, `factor_set_id` and `universe_size`, and the matching `x-risk-model-version` / `x-data-as-of` headers, but no field or header states the estimation window behind the hedge ratios. A reader cannot cite the window from the response; the home page says so and links the methodology. **Needs:** engineering
@@ -207,7 +201,7 @@ Add the window (or a pointer to it) to `_metadata` in the shared metadata builde
 
 ## RMAPI-36 · Marketing pages are served `Cache-Control: private, no-cache, no-store` (2026-11-24)
 
-**Impact:** IMPROVEMENT · Every page renders dynamically and is uncacheable at the edge because `app/layout.tsx` calls `await headers()` to read `x-pathname` (set in middleware) and switch to the print layout for `/render-snapshot`. The same dynamic rendering is the likely cause of RMAPI-34. **Needs:** engineering
+**Impact:** IMPROVEMENT · Every page renders dynamically and is uncacheable at the edge because `app/layout.tsx` calls `await headers()` to read `x-pathname` (set in middleware) and switch to the print layout for `/render-snapshot`. **Needs:** engineering
 
 Move the print layout into its own route group with a separate root layout so the main layout reads no request data. Middleware also refreshes the session on these paths; leave that behaviour unchanged and verify sign-in after the move.
 
