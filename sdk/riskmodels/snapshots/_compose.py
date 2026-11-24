@@ -109,8 +109,8 @@ def render_riskmodels_logo(
     """Render the RiskModels wordmark + audio-wave icon as a PIL image.
 
     Designed for placement on a white snapshot background. The wave icon
-    uses the brand purple→blue→deep-purple gradient; the text defaults to
-    NAVY for legibility on white.
+    uses the brand red of the site lockup; the text defaults to NAVY for
+    legibility on white. Used when ``rsvg-convert`` is unavailable.
 
     Args:
         width: Output width in pixels.
@@ -128,9 +128,8 @@ def render_riskmodels_logo(
     draw = ImageDraw.Draw(img)
 
     # ── Audio wave icon (left side, ~30% of width) ──
-    # Stylized waveform: 11 vertical bars of varying heights, with a
-    # horizontal gradient from purple → blue → deep purple. Mirrors the
-    # brand mark visible at riskmodels.app/_next/static/.../logo.svg.
+    # Stylized waveform: 11 vertical bars of varying heights in the brand
+    # red of the site lockup (#ff0000 at 75% on white).
     icon_w = int(width * 0.30)
     icon_h = int(height * 0.65)
     icon_x = int(width * 0.02)
@@ -139,11 +138,10 @@ def render_riskmodels_logo(
     n_bars = 11
     # Bar heights as fractions of icon_h (peaks in the middle, like a wave).
     heights_frac = [0.25, 0.42, 0.62, 0.85, 1.00, 0.92, 0.78, 0.62, 0.48, 0.32, 0.20]
-    # Gradient stops from the brand SVG: #B521BA → #00ABFF → #290075
+    wave_red = (0xFF, 0x40, 0x40)
     grad_stops = [
-        (0.0, (0xB5, 0x21, 0xBA)),
-        (0.5, (0x00, 0xAB, 0xFF)),
-        (1.0, (0x29, 0x00, 0x75)),
+        (0.0, wave_red),
+        (1.0, wave_red),
     ]
 
     def _grad_color(t: float) -> tuple[int, int, int]:
@@ -193,10 +191,11 @@ def render_riskmodels_logo(
     return img
 
 
-# Portal ``/transparent_logo.svg`` (RiskModels Logo v2), wordmark recolored for light backgrounds.
+# The site header lockup (portal ``components/brand/lockup-svg.ts``): red wave mark and
+# the ``RiskModels`` wordmark, with the wordmark set to navy for white paper.
 _BRAND_LOGO_SVG = Path(__file__).resolve().parent / "assets" / "riskmodels_logo_on_white.svg"
 # Root SVG viewBox width / height — used to preserve aspect (avoid rsvg -w/-h stretch).
-_BRAND_LOGO_ASPECT = 679.2906978729442 / 240.18310546875
+_BRAND_LOGO_ASPECT = 315.840 / 129.053
 
 
 def _brand_logo_fit_dimensions(max_width: int, max_height: int) -> tuple[int, int]:
@@ -216,12 +215,13 @@ def render_portal_riskmodels_brand_logo(
 ) -> Image.Image:
     """Full wordmark from the portal brand SVG, tuned for white snapshot pages.
 
-    Matches the site header asset (gradient mark + ``RiskModels`` wordmark). The
-    bundled SVG is derived from ``public/transparent_logo.svg`` with wordmark
-    fills changed from white to navy so it reads on white paper.
+    Matches the site header lockup (red wave mark + navy ``RiskModels`` wordmark).
+    The bundled SVG is derived from the portal's ``components/brand/lockup-svg.ts``
+    with the load animation removed and the wordmark's ``currentColor`` set to navy
+    so it reads on white paper.
 
-    The source SVG's root ``viewBox`` is much larger than the visible artwork
-    (~60% empty vertical margin in the raster). After ``rsvg-convert`` (``-w``
+    The root ``viewBox`` is cropped close to the artwork; the nested SVG still
+    carries a small margin. After ``rsvg-convert`` (``-w``
     only, no aspect distortion), we **crop** to :meth:`PIL.Image.Image.getbbox`
     so the bitmap matches the ink, then **scale** uniformly to fit inside
     ``max_width`` × ``max_height`` (often upscaling slightly vs the uncropped
