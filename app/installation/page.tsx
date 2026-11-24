@@ -39,8 +39,8 @@ export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-k
     firstActionCode: `from riskmodels import RiskModelsClient
 
 client = RiskModelsClient.from_env()  # reads RISKMODELS_API_KEY
-data, lineage = client.snapshot_ticker("NVDA")
-print(data["snapshot"]["ticker_meta"])`,
+row = client.get_metrics("NVDA")  # costs $0.005
+print(row["l3_residual_er"])  # residual share of variance`,
     firstActionLanguage: 'python',
     outcome: '→ exposures + hedge ratios',
   },
@@ -67,16 +67,14 @@ riskmodels doctor   # verify key + API reachability`,
     icon: Globe,
     setup: {
       kind: 'code',
-      code: `POST https://riskmodels.app/api/snapshot
+      code: `GET https://riskmodels.app/api/metrics/NVDA   # costs $0.005
 Authorization: Bearer $RISKMODELS_API_KEY   # key from https://riskmodels.app/get-key`,
       language: 'http',
       filename: 'endpoint',
     },
     firstActionLabel: 'First action',
-    firstActionCode: `curl -X POST https://riskmodels.app/api/snapshot \\
-  -H "Authorization: Bearer $RISKMODELS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"type":"ticker","ticker":"NVDA"}'`,
+    firstActionCode: `curl https://riskmodels.app/api/metrics/NVDA \\
+  -H "Authorization: Bearer $RISKMODELS_API_KEY"`,
     firstActionLanguage: 'bash',
     outcome: '→ exposures + hedge ratios',
   },

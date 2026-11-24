@@ -8,7 +8,7 @@ type TypingStep = { command: string; outcome: string };
 const STEPS: TypingStep[] = [
   { command: 'python3 -m pip install "riskmodels-py>=0.5.1"', outcome: 'installs the SDK' },
   { command: 'riskmodels decompose NVDA',                    outcome: 'returns L3 + hedge ratios' },
-  { command: `curl -X POST https://riskmodels.app/api/snapshot -H "Authorization: Bearer $RISKMODELS_API_KEY" -H "Content-Type: application/json" -d '{"type":"ticker","ticker":"NVDA"}'`, outcome: 'same decomposition over HTTP' },
+  { command: `curl https://riskmodels.app/api/metrics/NVDA -H "Authorization: Bearer $RISKMODELS_API_KEY"`, outcome: 'same decomposition over HTTP' },
   { command: 'npx -y riskmodels@latest install',             outcome: 'MCP server + skills for your agent' },
   { command: '"Why did NVDA move?"',                         outcome: 'agent → exposures + hedge ratios' },
 ];
