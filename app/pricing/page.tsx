@@ -387,7 +387,7 @@ export default function PricingPage() {
                       clipRule="evenodd"
                     />
                   </svg>
-                  $20 free credits after card setup
+                  $20 free credits at sign-in, card optional
                 </span>
                 <p className="text-[11px] text-zinc-500">Credits never expire</p>
               </div>
@@ -601,8 +601,8 @@ export default function PricingPage() {
                 $20 in free credits
               </p>
               <p className="text-xs text-zinc-400 max-w-xl leading-snug">
-                Add a card to activate your key — we credit <span className="text-zinc-200">$20</span>{" "}
-                instantly. No upfront charge. This is not a refill pack; it&apos;s our welcome
+                We credit <span className="text-zinc-200">$20</span>{" "}
+                when you sign in. A card is optional and only needed for top-ups and auto-refill. This is not a refill pack; it&apos;s our welcome
                 balance so you can ship an agentic integration before you spend.
               </p>
             </div>

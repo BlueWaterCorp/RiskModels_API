@@ -130,7 +130,7 @@ export default function PricingEstimator() {
           <p className="text-[11px] text-zinc-600 leading-snug border-t border-zinc-800/80 pt-2">
             ({baselineMonthly.toLocaleString()} baseline × {formatUsd(BASELINE_AVG_COST_USD)} avg) + (
             {premiumMonthly.toLocaleString()} premium × {formatUsd(PREMIUM_AVG_COST_USD)} avg). Your
-            first $20 in credits are free after card setup.
+            first $20 in credits are granted at sign-in; a card is optional.
           </p>
         </div>
       </div>
