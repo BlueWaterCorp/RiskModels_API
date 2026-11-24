@@ -29,13 +29,18 @@ const BLOCKS: Block[] = [
     setup: {
       kind: 'code',
       code: `# Python 3.10+
-python3 -m pip install "riskmodels-py>=0.3.4"
-# Optional extras: [viz] (Kaleido, Seaborn), [xarray] (cubes)`,
+python3 -m pip install "riskmodels-py>=0.5.1"
+# Optional extras: [viz] (Kaleido, Seaborn), [xarray] (cubes)
+export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-key`,
       language: 'bash',
       filename: 'install',
     },
     firstActionLabel: 'First action',
-    firstActionCode: 'decompose("NVDA")',
+    firstActionCode: `from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()  # reads RISKMODELS_API_KEY
+row = client.get_metrics("NVDA")  # costs $0.005
+print(row["l3_residual_er"])  # residual share of variance`,
     firstActionLanguage: 'python',
     outcome: '→ exposures + hedge ratios',
   },
@@ -46,6 +51,7 @@ python3 -m pip install "riskmodels-py>=0.3.4"
     setup: {
       kind: 'code',
       code: `npm install -g riskmodels@latest
+export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-key
 riskmodels doctor   # verify key + API reachability`,
       language: 'bash',
       filename: 'install',
@@ -61,12 +67,14 @@ riskmodels doctor   # verify key + API reachability`,
     icon: Globe,
     setup: {
       kind: 'code',
-      code: 'POST /decompose',
+      code: `GET https://riskmodels.app/api/metrics/NVDA   # costs $0.005
+Authorization: Bearer $RISKMODELS_API_KEY   # key from https://riskmodels.app/get-key`,
       language: 'http',
       filename: 'endpoint',
     },
     firstActionLabel: 'First action',
-    firstActionCode: 'curl -X POST /decompose',
+    firstActionCode: `curl https://riskmodels.app/api/metrics/NVDA \\
+  -H "Authorization: Bearer $RISKMODELS_API_KEY"`,
     firstActionLanguage: 'bash',
     outcome: '→ exposures + hedge ratios',
   },
@@ -124,11 +132,11 @@ export default function InstallationPage() {
 
       <section className="px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-5xl">
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {BLOCKS.map(({ id, title, icon: Icon, setup, firstActionLabel, firstActionCode, firstActionLanguage, outcome }) => (
               <div
                 key={id}
-                className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6"
+                className="flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6"
               >
                 <div className="mb-5 flex items-center gap-3">
                   <span className="inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">

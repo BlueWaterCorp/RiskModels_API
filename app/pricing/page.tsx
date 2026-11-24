@@ -387,7 +387,7 @@ export default function PricingPage() {
                       clipRule="evenodd"
                     />
                   </svg>
-                  $20 free credits after card setup
+                  $20 free credits at sign-in, card optional
                 </span>
                 <p className="text-[11px] text-zinc-500">Credits never expire</p>
               </div>
@@ -402,7 +402,7 @@ export default function PricingPage() {
             <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
               {[
                 "Full access to all ~3,000 US equities",
-                "41-factor ERM3 (Equity Risk Model v3) risk decompositions",
+                "ERM3 (Equity Risk Model v3) risk decompositions: market, sector, subsector and residual",
                 "Hedge ratios at L1 / L2 / L3",
                 "Model history: hedge ratios from Dec 2010, residual risk from Dec 2011, L* from 2013",
                 "REST API + CLI access",
@@ -601,8 +601,8 @@ export default function PricingPage() {
                 $20 in free credits
               </p>
               <p className="text-xs text-zinc-400 max-w-xl leading-snug">
-                Add a card to activate your key — we credit <span className="text-zinc-200">$20</span>{" "}
-                instantly. No upfront charge. This is not a refill pack; it&apos;s our welcome
+                We credit <span className="text-zinc-200">$20</span>{" "}
+                when you sign in. A card is optional and only needed for top-ups and auto-refill. This is not a refill pack; it&apos;s our welcome
                 balance so you can ship an agentic integration before you spend.
               </p>
             </div>

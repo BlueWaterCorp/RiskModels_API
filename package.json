@@ -21,8 +21,9 @@
     "doppler:env": "doppler secrets download --no-file --format env -p erm3 -c dev > .env.local",
     "build:openapi": "node scripts/yaml-to-json.js",
     "start": "next start",
-    "lint": "next lint && npm run lint:silent-defaults",
+    "lint": "next lint && npm run lint:silent-defaults && npm run lint:docs-mdx",
     "lint:silent-defaults": "node scripts/check-silent-defaults.mjs",
+    "lint:docs-mdx": "node scripts/check-docs-mdx.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:notebook": "python3 scripts/execute_quickstart_notebook.py",
@@ -93,6 +94,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@mdx-js/mdx": "^3.1.0",
     "@types/inquirer": "^9.0.7",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",

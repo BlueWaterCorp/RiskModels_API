@@ -10,6 +10,10 @@ appending a line here and cutting the row, rather than marking it ✅ in place.
 
 Process: `BWMACRO/docs/architecture/BACKLOG_LEDGER_CHECKLIST_PROCESS.md`.
 
+## 2026-11
+- 2026-11-23 · site fixes (docs) · CLOSED: `/docs/api` compiled with an MDX error (`*_hr` read as emphasis in `content/docs/api.mdx`); fixed, and `npm run lint` now compiles every `content/docs/*.mdx` (`scripts/check-docs-mdx.mjs`); unknown `/docs/<slug>` returns HTTP 404 with a styled not-found page; horizontal overflow at 390 px on `/docs/*`, `/api-reference`, `/installation`. · this PR
+- 2026-11-23 · site fixes (copy) · CLOSED: the $20 credit is described as granted at sign-in with a card optional (pricing, estimator, sign-in email); `/installation` examples run as copied, SDK pin 0.5.1, API example leads with `POST /snapshot`; nav "Agents" links `/for-agents`; "41-factor" removed from pricing. · this PR
+
 ## 2026-10
 - 2026-10-20 · RMAPI-28 · CLOSED: the filer 9-box style lookup read `filers_latest`, which no migration creates (PostgREST 404, error swallowed, so filers never got a 9-box); it now reads `filer_portfolios_latest.dominant_9box` (written by the Funds_DAG sync; 14,223 of 15,705 rows set) and logs a failed lookup. · this PR
 - 2026-10-15 · RMAPI-15 · CLOSED: `/portfolio/exposure` adds `beta.risk_basis` (xᵀΣe_SPY/σ²_SPY beside the labelled L1 beta), `scenario_inputs` (ETF beta_to_spy and vol; per-name rows with `include_positions`), a `top_contributors` length parameter (1-1000 or "all"), the `hedge_added_variance` warning threshold 1.02 (owner decision 2026-10-15), and docs for the 2011-12-07 as_of floor and `X-Balance-Remaining` units (50,000 per USD). · #475

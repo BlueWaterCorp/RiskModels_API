@@ -7,6 +7,9 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { notFound } from 'next/navigation';
 
+// Unknown slugs 404 at the router (real HTTP 404), not after the stream starts.
+export const dynamicParams = false;
+
 export async function generateStaticParams() {
   return getAllDocSlugs().map((slug) => ({ slug }));
 }
@@ -45,10 +48,19 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
   }
 
   return (
-    <article className="prose prose-invert max-w-none prose-headings:font-bold prose-h1:text-4xl prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h3:text-xl prose-h3:mt-6 prose-p:text-zinc-400 prose-a:text-primary hover:prose-a:text-primary/80 prose-code:text-zinc-200 prose-code:bg-zinc-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 prose-table:border-zinc-800 prose-th:border-zinc-700 prose-td:border-zinc-800 prose-hr:border-zinc-800 prose-hr:my-10">
+    <article className="prose prose-invert max-w-none prose-headings:font-bold prose-h1:text-4xl prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h3:text-xl prose-h3:mt-6 prose-p:text-zinc-400 prose-a:text-primary hover:prose-a:text-primary/80 prose-code:text-zinc-200 prose-code:bg-zinc-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800 prose-table:border-zinc-800 prose-th:border-zinc-700 prose-td:border-zinc-800 prose-hr:border-zinc-800 prose-hr:my-10 [&_:not(pre)>code]:[overflow-wrap:anywhere]">
       <MDXRemote
         source={doc.content}
-        components={{ CopyPythonSnippet, CopyInline }}
+        components={{
+          CopyPythonSnippet,
+          CopyInline,
+          // Wide tables scroll inside their own box instead of widening the page.
+          table: (props) => (
+            <div className="overflow-x-auto">
+              <table {...props} />
+            </div>
+          ),
+        }}
         options={{
           mdxOptions: {
             remarkPlugins: [remarkMath, remarkGfm],
