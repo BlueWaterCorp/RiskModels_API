@@ -32,11 +32,11 @@ Earlier values are no longer delivered (they were estimated on a partial window)
 ## October 2026 — long/short portfolio exposure
 
 **New: `POST /api/portfolio/exposure`.** Send a signed book of dollar positions (shorts
-negative, up to 1000 names, ETFs allowed). Nothing is normalised. The response carries L1
+negative, up to 1000 names, ETFs allowed). Nothing is normalized. The response carries L1
 beta-dollars by sector, ETF hedge trades at L\*, L1, L2 and L3 (stock hedge, ETFs already held,
 and the net neutralising trade), a systematic and residual risk split, coverage of the submitted
 gross by each calculation, and a `warnings` array. `as_of` computes the same output at a past
-model date. {'$'}0.25 per call up to 25 names modelled, {'$'}1.00 above.
+model date. {'$'}0.25 per call up to 25 names modeled, {'$'}1.00 above.
 
 **New: exposure history feeds.** `POST /api/portfolio/exposure/history` (month-end) and
 `POST /api/portfolio/exposure/history/daily` take tickers only and return Parquet files with each
@@ -51,7 +51,7 @@ warning. Guide: [Long/short exposure](/docs/long-short-exposure).
 
 ---
 
-## August 2026 — catalogue reprice
+## August 2026 — catalog reprice
 
 Self-serve rates moved on **14 August 2026**. Lookups are **$0.005**; ticker-returns is
 **$0.02 + $0.01 per extra year**; batch Lstar is **$0.015/position** (25% off `GET /lstar`).
@@ -123,7 +123,7 @@ discovered from the contract:
 
 The two snapshot endpoints return image or PDF bytes, not JSON.
 
-### Response behaviour
+### Response behavior
 
 **Rate-limited JSON endpoints now return `429`.** Throttled public endpoints previously
 returned HTTP `200` with a status-badge body, which parses as a successful empty result. If

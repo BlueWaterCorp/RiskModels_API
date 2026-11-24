@@ -1,16 +1,17 @@
-// Pricing: request prices, credit, and annual licences.
+// Pricing: request prices, credit, and annual licenses.
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import PricingFAQ, { type PricingFaqItem } from "@/components/pricing/PricingFAQ";
 import { SectionHead } from "@/components/site/SectionHead";
+import { StackedRows } from "@/components/site/StackedRows";
 import { getCapabilityById } from "@/lib/agent/capabilities";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/pricing" },
   title: "Pricing",
   description:
-    "Pay per request from $0.005; $20 of credit at sign-in with no card. Annual licences: Desk $50,000, Firm $150,000, Production $250,000.",
+    "Pay per request from $0.005; $20 of credit at sign-in with no card. Annual licenses: Desk $50,000, Firm $150,000, Production $250,000.",
 };
 
 const baselineRows = [
@@ -94,16 +95,16 @@ const premiumRows = [
   },
 ];
 
-const licenceRows: Array<[string, string, string, string]> = [
+const licenseRows: Array<[string, string, string, string]> = [
   ["Price per year", "$50,000", "$150,000", "$250,000"],
   ["Use", "One team, one strategy", "Unlimited internal use across the firm", "Systematic production dependency"],
-  ["Universe", "Standard universe: about 3,000 US stocks by market capitalisation, with dated membership for any past trading day", "Full published universe", "Full published universe"],
+  ["Universe", "Standard universe: about 3,000 US stocks by market capitalization, with dated membership for any past trading day", "Full published universe", "Full published universe"],
   ["Support", "Named contact; onboarding for the desk workflow", "Named contact; onboarding for research systems", "Incident contact; onboarding for production pipelines and entitlement review"],
   ["Availability", "Higher request limits than pay-per-request", "SLA on availability of the public API", "Contracted SLA"],
   ["Model versions", "Notice of scheduled deprecations", "Deprecation policy with a stated notice window", "Version pinning of model vintages; minimum notice window"],
 ];
 
-const licenceContacts = [
+const licenseContacts = [
   ["Desk", "mailto:service@riskmodels.app?subject=Desk%20license"],
   ["Firm", "mailto:service@riskmodels.app?subject=Firm%20license"],
   ["Production", "mailto:service@riskmodels.app?subject=Production%20license"],
@@ -172,7 +173,21 @@ function monthlyExamples() {
 
 function PriceTable({ caption, rows }: { caption: string; rows: typeof baselineRows }) {
   return (
-    <div className="rm-scroll-x mt-8">
+    <>
+    <StackedRows
+      className="mt-8"
+      caption={caption}
+      rows={rows.map((r) => ({
+        key: r.endpoint,
+        title: r.endpoint,
+        lines: [
+          /^[\d,~ /–]+$/.test(r.callsPer20)
+            ? `${r.cost} · ${r.callsPer20} requests per $20`
+            : `${r.cost} · requests per $20: ${r.callsPer20}`,
+        ],
+      }))}
+    />
+    <div className="rm-scroll-x mt-8 hidden sm:block">
       <table className="rm-table min-w-[34rem]">
         <caption className="rm-label pb-3 text-left">{caption}</caption>
         <thead>
@@ -193,6 +208,7 @@ function PriceTable({ caption, rows }: { caption: string; rows: typeof baselineR
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -202,7 +218,7 @@ export default function PricingPage() {
     <div className="rm-page pb-24">
       <header className="pb-14 pt-12 sm:pt-16">
         <p className="rm-label">Pricing</p>
-        <h1 className="rm-h1 mt-4 max-w-3xl">Pay per request. Annual licences for firms.</h1>
+        <h1 className="rm-h1 mt-4 max-w-3xl">Pay per request. Annual licenses for firms.</h1>
         <p className="rm-lede mt-6 max-w-2xl">
           A new account receives $20 of credit at sign-in, with no card. After that, each successful request
           draws on prepaid credit at the prices below. There is no subscription and no seat fee.
@@ -211,8 +227,8 @@ export default function PricingPage() {
           <Link href="/get-key" className="rm-btn">
             Get an API key
           </Link>
-          <a href="#licences" className="rm-btn-ghost">
-            Annual licences
+          <a href="#licenses" className="rm-btn-ghost">
+            Annual licenses
           </a>
         </div>
       </header>
@@ -236,7 +252,16 @@ export default function PricingPage() {
           .
         </p>
 
-        <div className="rm-scroll-x mt-10">
+        <StackedRows
+          className="mt-10"
+          caption="Three example months"
+          rows={examples.map((e) => ({
+            key: e.name,
+            title: `${e.name}: ${usd(e.total)} a month`,
+            lines: [<span key="u" className="font-sans">{e.usage}</span>, e.sum],
+          }))}
+        />
+        <div className="rm-scroll-x mt-10 hidden sm:block">
           <table className="rm-table min-w-[38rem]">
             <caption className="rm-label pb-3 text-left">Three example months</caption>
             <thead>
@@ -274,7 +299,27 @@ export default function PricingPage() {
             <code className="rm-mono">402</code>.
           </p>
         </SectionHead>
-        <div className="rm-scroll-x mt-8">
+        <StackedRows
+          className="mt-8"
+          caption="Rate limits"
+          rows={[
+            { key: "standard", title: "Standard", lines: ["30 requests per minute · every key by default"] },
+            {
+              key: "raised",
+              title: "Raised",
+              lines: [
+                "100 or more requests per minute",
+                <span key="r" className="font-sans">
+                  By request, for steady spend above $100 a month:{" "}
+                  <a href="mailto:service@riskmodels.app?subject=High%20volume%20pricing" className="rm-link">
+                    service@riskmodels.app
+                  </a>
+                </span>,
+              ],
+            },
+          ]}
+        />
+        <div className="rm-scroll-x mt-8 hidden sm:block">
           <table className="rm-table min-w-[30rem]">
             <thead>
               <tr>
@@ -304,14 +349,35 @@ export default function PricingPage() {
         </div>
       </section>
 
-      <section className="rm-section" aria-labelledby="licences">
-        <SectionHead n="03" label="Institutional · annual licences" title="Desk, Firm and Production" id="licences">
+      <section className="rm-section" aria-labelledby="licenses">
+        <span id="licences" aria-hidden="true" />
+        <SectionHead n="03" label="Institutional · annual licenses" title="Desk, Firm and Production" id="licenses">
           <p>
-            Annual licences are for teams that need a named contact, a service level, or a fixed model
+            Annual licenses are for teams that need a named contact, a service level, or a fixed model
             version. Service levels and usage rights are defined in the signed agreement.
           </p>
         </SectionHead>
-        <div className="rm-scroll-x mt-8">
+        <div className="mt-8 space-y-8 sm:hidden">
+          {licenseContacts.map(([name, href], t) => (
+            <div key={name}>
+              <h3 className="rm-h3">
+                {name} · <span className="rm-mono">{licenseRows[0][t + 1]}</span> a year
+              </h3>
+              <dl className="mt-3 border-t border-[var(--rm-ink)]">
+                {licenseRows.slice(1).map((row) => (
+                  <div key={row[0]} className="border-b border-rule py-2.5">
+                    <dt className="rm-label">{row[0]}</dt>
+                    <dd className="mt-1 text-sm leading-snug text-ink">{row[t + 1]}</dd>
+                  </div>
+                ))}
+              </dl>
+              <a href={href} className="rm-link mt-3 inline-block text-sm">
+                Email about {name}
+              </a>
+            </div>
+          ))}
+        </div>
+        <div className="rm-scroll-x mt-8 hidden sm:block">
           <table className="rm-table min-w-[44rem]">
             <thead>
               <tr>
@@ -322,7 +388,7 @@ export default function PricingPage() {
               </tr>
             </thead>
             <tbody>
-              {licenceRows.map(([label, desk, firm, production], i) => (
+              {licenseRows.map(([label, desk, firm, production], i) => (
                 <tr key={label}>
                   <th scope="row" className="rm-label align-top">{label}</th>
                   {[desk, firm, production].map((cell, j) => (
@@ -334,7 +400,7 @@ export default function PricingPage() {
               ))}
               <tr>
                 <th scope="row" className="rm-label align-top">Enquire</th>
-                {licenceContacts.map(([name, href]) => (
+                {licenseContacts.map(([name, href]) => (
                   <td key={name}>
                     <a href={href} className="rm-link">
                       Email about {name}
@@ -347,7 +413,7 @@ export default function PricingPage() {
         </div>
         <p className="rm-small mt-4 max-w-3xl">
           A scoped proof of concept on public data is typically $25,000 and is credited toward a Desk or Firm
-          licence. Manager-research work on holdings is scoped on top of a licence. RiskModels provides
+          license. Manager-research work on holdings is scoped on top of a license. RiskModels provides
           analytics and research tooling, not investment advice or manager recommendations.{" "}
           <a href="mailto:service@riskmodels.app?subject=Institutional%20engagement" className="rm-link">
             Ask about scope

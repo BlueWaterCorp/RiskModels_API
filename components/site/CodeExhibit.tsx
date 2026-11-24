@@ -11,7 +11,7 @@ export interface CodeTab {
   note?: string;
 }
 
-/** Tabbed, copyable code on a ruled plate. No syntax colour, no window chrome. */
+/** Tabbed, copyable code on a ruled plate. No syntax color, no window chrome. */
 export function CodeExhibit({ tabs, caption }: { tabs: CodeTab[]; caption?: string }) {
   const [active, setActive] = useState(tabs[0]?.id);
   const tab = tabs.find((t) => t.id === active) ?? tabs[0];

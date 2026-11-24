@@ -18,7 +18,7 @@ const sections: { title: string; body: string[] }[] = [
   {
     title: '1. What these terms cover',
     body: [
-      `These terms apply to the free edition of the RiskModels Event Ledger: the daily email edition, its attached data file (events_YYYY-MM-DD.jsonl) and the latest-events list on riskmodels.org, together "the free edition". RiskModels is a registered DBA of ${LEGAL_ENTITY} ("we"). The signup form asks you to accept these terms, and the version you accepted is recorded when you confirm your address. Paid licences and the RiskModels API are covered by their own terms.`,
+      `These terms apply to the free edition of the RiskModels Event Ledger: the daily email edition, its attached data file (events_YYYY-MM-DD.jsonl) and the latest-events list on riskmodels.org, together "the free edition". RiskModels is a registered DBA of ${LEGAL_ENTITY} ("we"). The signup form asks you to accept these terms, and the version you accepted is recorded when you confirm your address. Paid licenses and the RiskModels API are covered by their own terms.`,
     ],
   },
   {
@@ -35,15 +35,15 @@ const sections: { title: string; body: string[] }[] = [
       'Redistribute the free edition in bulk: no reposting or re-publishing whole editions or data files, no systematic forwarding outside your firm, and no feeding them into a service that others use.',
       'Resell it, sublicense it, or include it in a product or data service you offer to others.',
       'Use it to build, train or supplement a competing event, corporate-action or security master feed.',
-      'Remove or change the attribution, the licence label of an event, or the notices in an edition.',
-      'Redistribution, bulk or external use, or use in a product needs a paid licence. Write to service@riskmodels.app.',
+      'Remove or change the attribution, the license label of an event, or the notices in an edition.',
+      'Redistribution, bulk or external use, or use in a product needs a paid license. Write to service@riskmodels.app.',
     ],
   },
   {
     title: '4. What is in it, and what is not',
     body: [
       'Events come from public SEC filings (EDGAR) and from fields RiskModels derives from them and from its own records. Only fields on a published list for each event type are included. Each line of the data file carries a license_label saying what it is and naming any derived fields.',
-      'The free edition never contains exact market capitalisation values, or prices. Figures RiskModels computes from market data (for example size buckets, ranks, weights and risk metrics) are its own derived data and may appear. The free edition is not a source of prices or market data.',
+      'The free edition never contains exact market capitalization values, or prices. Figures RiskModels computes from market data (for example size buckets, ranks, weights and risk metrics) are its own derived data and may appear. The free edition is not a source of prices or market data.',
       'If an edition includes an event first discovered through the GDELT Project, the edition credits it.',
     ],
   },
@@ -83,7 +83,7 @@ export default function FeedTermsPage() {
         <p className="mt-3 text-sm text-zinc-400">Version {FEED_TERMS_VERSION}</p>
         <p className="mt-5 text-base leading-7 text-zinc-300">
           The short version: use it inside your firm and quote it with attribution. Do not redistribute it in bulk,
-          resell it, or build a competing feed from it; that needs a paid licence. It comes as is, corrections are
+          resell it, or build a competing feed from it; that needs a paid license. It comes as is, corrections are
           flagged in the open, and it is not investment advice.
         </p>
       </section>

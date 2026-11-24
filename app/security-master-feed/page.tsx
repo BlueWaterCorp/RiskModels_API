@@ -19,7 +19,7 @@ export const revalidate = 300;
 
 const TITLE = "Security Master Change Feed — Early Access";
 const DESCRIPTION =
-  "A daily, SEC-filing-cited feed of US equity identity and status events: ticker and name changes, listing status, mergers and reorganisations, and splits, with corrections and point-in-time known-as-of dates. Early access; free for approved investment, research, risk and data professionals.";
+  "A daily, SEC-filing-cited feed of US equity identity and status events: ticker and name changes, listing status, mergers and reorganizations, and splits, with corrections and point-in-time known-as-of dates. Early access; free for approved investment, research, risk and data professionals.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -35,7 +35,7 @@ export const metadata: Metadata = {
 const EDITION_CONTENTS = [
   {
     h: "Identity and status events",
-    p: "Ticker and name changes, listing status (Form 25 and 8-K Item 3.01), mergers and reorganisations, and splits.",
+    p: "Ticker and name changes, listing status (Form 25 and 8-K Item 3.01), mergers and reorganizations, and splits.",
   },
   {
     h: "A filing behind every event",
@@ -78,7 +78,7 @@ export default async function SecurityMasterFeedPage() {
         <p className="rm-label">Security master change feed · Early access</p>
         <h1 className="rm-h1 mt-4 max-w-4xl">A daily, filing-cited record of US equity identity changes</h1>
         <p className="rm-lede mt-6 max-w-2xl">
-          Ticker and name changes, listing status, mergers and reorganisations, and splits, each tied to the
+          Ticker and name changes, listing status, mergers and reorganizations, and splits, each tied to the
           SEC filing that supports it. Corrections to earlier editions are published in the open.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">

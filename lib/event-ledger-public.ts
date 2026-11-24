@@ -193,7 +193,7 @@ function fileOf(verified: DigestItem[], gdeltCredit: boolean, generatedAt: strin
     description:
       "The latest verified events in the RiskModels Event Ledger: US equity identity and listing-status events, each tied to the SEC filing behind it.",
     selection:
-      "Verified events whose licence is redistributable public record or derived data, newest first by the time they became publicly knowable. Corrections and withdrawals are flagged, and an event they replace is left out. Candidates and internal rows are left out, as is any event with a field outside the published allow-list or carrying a licensed market value such as a price. Ticker and company name, when present, are derived by RiskModels from its security master.",
+      "Verified events whose license is redistributable public record or derived data, newest first by the time they became publicly knowable. Corrections and withdrawals are flagged, and an event they replace is left out. Candidates and internal rows are left out, as is any event with a field outside the published allow-list or carrying a licensed market value such as a price. Ticker and company name, when present, are derived by RiskModels from its security master.",
     count: verified.length,
     latest_known_date: verified[0]?.knowledgeDate ?? null,
     terms: FEED_TERMS_URL,

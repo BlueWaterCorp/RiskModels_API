@@ -7,7 +7,7 @@ interface LogoProps {
   subWord?: string;
 }
 
-/** Header lockup. The wordmark follows the text colour: navy on paper, white on the dark field. */
+/** Header lockup. The wordmark follows the text color: navy on paper, white on the dark field. */
 export default function Logo({ className = '', subWord }: LogoProps) {
   return (
     <Link

@@ -159,7 +159,7 @@ user/client pair, so persist the new value on every refresh.
 ### A note on scopes
 
 `mcp:read` is the only scope the authorization server advertises. Scope is currently
-**informational** — the API records it for telemetry but authorises on key validity and
+**informational** — the API records it for telemetry but authorizes on key validity and
 account balance, not scope. Do not rely on it for access control.
 
 
@@ -186,7 +186,7 @@ const { data } = await supabase
   .eq('periodicity', 'daily');
 ```
 
-Row Level Security (RLS) is enforced — users can only access data they are authorised for.
+Row Level Security (RLS) is enforced — users can only access data they are authorized for.
 
 ## AI Agent Provisioning Flow
 

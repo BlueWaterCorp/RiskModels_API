@@ -11,6 +11,8 @@ appending a line here and cutting the row, rather than marking it ✅ in place.
 Process: `BWMACRO/docs/architecture/BACKLOG_LEDGER_CHECKLIST_PROCESS.md`.
 
 ## 2026-11
+- 2026-11-24 · RMAPI-37 · PARTIAL: `frame-ancestors 'self'` enforced with `X-Frame-Options: SAMEORIGIN`; full policy sent report-only with a report endpoint; enforcement stays open · site review 3 PR
+- 2026-11-24 · RMAPI-36 · CLOSED: root layout reads no request headers (print frame chosen from the path in `components/SiteChrome.tsx`), so public pages are cacheable; `/get-key` and `/account` stay per-request; print renders refuse tag hosts · site review 3 PR
 - 2026-11-24 · RMAPI-34 · CLOSED: unknown `/docs/<slug>` returns 404 on the deployed preview of #556 (production before the change: 200). The root layout and analytics provider no longer wrap the page in Suspense boundaries, so the status is set before the response starts. Re-check on production after merge. · #556
 - 2026-11-23 · site fixes (docs) · CLOSED: `/docs/api` compiled with an MDX error (`*_hr` read as emphasis in `content/docs/api.mdx`); fixed, and `npm run lint` now compiles every `content/docs/*.mdx` (`scripts/check-docs-mdx.mjs`); unknown `/docs/<slug>` returns HTTP 404 with a styled not-found page; horizontal overflow at 390 px on `/docs/*`, `/api-reference`, `/installation`. · this PR
 - 2026-11-23 · site fixes (copy) · CLOSED: the $20 credit is described as granted at sign-in with a card optional (pricing, estimator, sign-in email); `/installation` examples run as copied, SDK pin 0.5.1, API example leads with `POST /snapshot`; nav "Agents" links `/for-agents`; "41-factor" removed from pricing. · this PR
