@@ -59,6 +59,9 @@ export function UTMTracker() {
     } catch {
       /* private mode */
     }
+    // The endpoint needs a session and answers 401 without one. The session
+    // cookie is readable here, so a signed-out visit skips the request.
+    if (!document.cookie.includes('-auth-token')) return;
     void fetch('/api/agent-accounts/attribution', {
       method: 'POST',
       credentials: 'include',

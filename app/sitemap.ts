@@ -17,6 +17,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ['/', 1.0],
     ['/compare/barra-axioma', 0.8],
     ['/pricing', 0.8],
+    ['/status', 0.4],
     ['/docs', 0.8],
     ['/installation', 0.7],
     ['/api-reference', 0.7],

@@ -7,6 +7,18 @@ const nextConfig = {
   transpilePackages: ['@riskmodels/web'],
   /** Avoid broken vendor-chunk references for Supabase in server/prerender workers (Navbar pulls auth into every layout). */
   serverExternalPackages: ['@supabase/supabase-js', '@supabase/ssr', 'playwright-core'],
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), browsing-topics=()' },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       {

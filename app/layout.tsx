@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Inter, IBM_Plex_Mono, Newsreader } from 'next/font/google';
 import { headers } from 'next/headers';
 import 'katex/dist/katex.min.css';
 import '@/styles/globals.css';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { Suspense } from 'react';
 import { ChatBubble } from '@/components/chat/ChatBubble';
 import { GoogleAdsTag } from '@/components/GoogleAdsTag';
 import { GoogleTagManager, GoogleTagManagerNoScript } from '@/components/GoogleTagManager';
@@ -13,12 +12,20 @@ import { PostHogProvider } from '@/components/posthog-provider';
 import { FEED_SECRET_STASH_SCRIPT } from '@/lib/feed-url-secrets';
 import { ConsentBanner } from '@/components/ConsentBanner';
 import { UTMTracker } from '@/components/UTMTracker';
+import { ThemeProvider } from '@/components/ThemeProvider';
 import { CANONICAL_SITE_URL } from '@/lib/constants';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
 
-const jetbrainsMono = JetBrains_Mono({
+const newsreader = Newsreader({
   subsets: ['latin'],
+  variable: '--font-newsreader',
+  display: 'swap',
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
   variable: '--font-mono',
   display: 'swap',
 });
@@ -29,12 +36,12 @@ export const metadata: Metadata = {
   // split SEO signal. See CANONICAL_SITE_URL in lib/constants.
   metadataBase: new URL(CANONICAL_SITE_URL),
   title: {
-    default: 'RiskModels API — Precision Equity Risk Intelligence',
+    default: 'RiskModels API — US equity risk decomposition and ETF hedge ratios',
     template: '%s | RiskModels API',
   },
   description:
     'Map any US equity across market, sector, subsector, and residual risk — with model-derived ETF hedge ratios for the systematic layers in one API call. ~3,000 US equities, daily hedge-ratio history from 2010.',
-  keywords: ['API', 'risk models', 'equity risk', 'hedge ratios', 'factor analysis', 'quantitative finance', 'AI agents', 'MCP', 'model context protocol', 'OpenAPI', 'ETF hedge', 'factor decomposition', 'Barra alternative', 'quant finance API'],
+  keywords: ['API', 'risk models', 'equity risk', 'hedge ratios', 'factor analysis', 'quantitative finance', 'AI agents', 'MCP', 'model context protocol', 'OpenAPI', 'ETF hedge', 'factor decomposition', 'quant finance API'],
   authors: [{ name: 'Blue Water Macro Corp' }],
   creator: 'Blue Water Macro Corp',
   publisher: 'Blue Water Macro Corp',
@@ -42,7 +49,7 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: 'https://riskmodels.app',
-    title: 'RiskModels API — Precision Equity Risk Intelligence',
+    title: 'RiskModels API — US equity risk decomposition and ETF hedge ratios',
     description:
       'Map any US equity across market, sector, subsector, and residual risk — with model-derived ETF hedge ratios for the systematic layers in one API call. ~3,000 US equities, daily hedge-ratio history from 2010.',
     siteName: 'RiskModels API',
@@ -93,7 +100,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" className="light" suppressHydrationWarning>
       <head>
         {/* Before any tag: moves feed-link secrets (token, inbox) out of the URL (lib/feed-url-secrets.ts). */}
         <script dangerouslySetInnerHTML={{ __html: FEED_SECRET_STASH_SCRIPT }} />
@@ -107,22 +114,24 @@ export default async function RootLayout({
         {/* Google tag: last in <head>, just before </head> (see GoogleAdsTag) */}
         <GoogleAdsTag />
       </head>
-      <body className={`${inter.className} ${jetbrainsMono.variable}`}>
+      <body className={`${inter.className} ${inter.variable} ${newsreader.variable} ${plexMono.variable}`}>
         <GoogleTagManagerNoScript />
-        <Suspense fallback={null}>
-          <PostHogProvider>
-            <div className="flex flex-col min-h-screen">
-              <Navbar />
-              <main className="flex-1 min-h-0 pt-24 sm:pt-28 md:pt-32 lg:pt-36">
-                {children}
-              </main>
-              <Footer />
-            </div>
-            <ChatBubble />
-            <UTMTracker />
-            <ConsentBanner />
-          </PostHogProvider>
-        </Suspense>
+        {/* No Suspense boundary above the page: one here lets the response start with
+            status 200 before a page can answer notFound(). */}
+        <PostHogProvider>
+            <ThemeProvider>
+              <div className="flex flex-col min-h-screen">
+                <Navbar />
+                <main className="flex-1 min-h-0 pt-16 sm:pt-[4.5rem]">
+                  {children}
+                </main>
+                <Footer />
+              </div>
+              <ChatBubble />
+              <UTMTracker />
+              <ConsentBanner />
+            </ThemeProvider>
+        </PostHogProvider>
       </body>
     </html>
   );

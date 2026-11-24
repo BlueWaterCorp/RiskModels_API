@@ -1,34 +1,28 @@
-import Image from 'next/image';
 import Link from 'next/link';
+import { LOCKUP_SVG } from '@/components/brand/lockup-svg';
 
 interface LogoProps {
-  width?: number;
-  height?: number;
   className?: string;
-  /** Italic-serif sub-wordmark rendered next to the logo (matches riskmodels.net Workspace treatment). */
+  /** Italic-serif sub-wordmark beside the lockup, as on the research site. */
   subWord?: string;
 }
 
-/** Brand mark for the top nav. The logo is the .net canonical (red EKG mark with "RiskModels" tucked underneath). Scaled to read as the brand anchor at every breakpoint. */
-export default function Logo({ width = 520, height = 305, className = '', subWord }: LogoProps) {
+/** Header lockup. The wordmark follows the text colour: navy on paper, white on the dark field. */
+export default function Logo({ className = '', subWord }: LogoProps) {
   return (
     <Link
       href="/"
-      className={`flex shrink-0 items-center gap-3 sm:gap-4 md:gap-5 ${className}`}
-      title="RiskModels — back to home"
+      className={`flex min-w-0 shrink-0 items-center gap-2.5 ${className}`}
+      aria-label="RiskModels API home"
     >
-      <Image
-        src="/transparent_logo.svg"
-        alt="RiskModels"
-        width={width}
-        height={height}
-        priority
-        className="h-16 sm:h-20 md:h-24 lg:h-[6.5rem] w-auto object-contain object-left"
-        style={{ width: 'auto' }}
+      <span
+        aria-hidden="true"
+        className="block h-12 shrink-0 text-[#002a5e] dark:text-white sm:h-14 [&>svg]:block [&>svg]:h-full [&>svg]:w-auto"
+        dangerouslySetInnerHTML={{ __html: LOCKUP_SVG }}
       />
       {subWord ? (
-        <span className="hidden items-center gap-3 font-serif italic tracking-tight text-zinc-300/90 sm:inline-flex sm:gap-4 md:gap-5 text-2xl sm:text-3xl md:text-4xl lg:text-[2.75rem]">
-          <span aria-hidden="true" className="h-10 w-px bg-zinc-700 sm:h-12 md:h-14 lg:h-16" />
+        <span className="hidden items-center gap-2 font-serif text-base italic tracking-tight text-ink-muted sm:inline-flex">
+          <span aria-hidden="true" className="h-5 w-px bg-rule" />
           {subWord}
         </span>
       ) : null}

@@ -282,7 +282,7 @@ export default function ApiReferencePage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="grid grid-cols-12 min-h-screen">
         {/* Sidebar */}
-        <aside className="col-span-12 lg:col-span-3 border-r border-zinc-800 bg-zinc-950/95 backdrop-blur-sm sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
+        <aside className="col-span-12 lg:col-span-3 border-r border-zinc-800 bg-zinc-950/95 backdrop-blur-sm sticky top-[4.5rem] h-[calc(100vh-4.5rem)] overflow-y-auto">
           <div className="p-4 lg:p-6 space-y-6">
             <div>
               <label htmlFor="api-search" className="sr-only">
@@ -357,11 +357,18 @@ export default function ApiReferencePage() {
         <main className="col-span-12 lg:col-span-9 grid grid-cols-1 xl:grid-cols-12">
           {/* Main content */}
           <div className="col-span-1 xl:col-span-8 min-w-0 p-6 lg:p-8 space-y-8">
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-4 py-3">
-              <p className="text-sm font-medium text-emerald-300">
-                Returns variance + hedge ratios.
+            <header className="border-b border-rule pb-6">
+              <p className="rm-label">Reference</p>
+              <h1 className="rm-h1 mt-3 !text-[2.25rem]">API reference</h1>
+              <p className="rm-body mt-3 max-w-2xl">
+                Endpoints, parameters, response fields and the price of each request. The machine-readable
+                contract is{' '}
+                <a href="/openapi.json" className="rm-link">
+                  openapi.json
+                </a>
+                .
               </p>
-            </div>
+            </header>
 
             {selectedId === 'coreConcepts' ? (
               <div className="space-y-6">
@@ -400,7 +407,7 @@ export default function ApiReferencePage() {
                 <div className="rounded-xl border border-amber-900/40 bg-amber-950/10 p-5">
                   <div className="font-mono text-xs uppercase tracking-widest text-amber-400 mb-2">Best Residual — Lstar Dispatch</div>
                   <p className="text-sm text-zinc-300 mb-2">
-                    Not every stock’s subsector ETF actually explains material variance. <strong>Lstar</strong> is the recommended cascade depth ERM3 publishes per stock and date — L3 only when subsector hedging earns its place, L2 when only sector does, L1 otherwise. Pass an explicit threshold to apply the legacy 1% marginal-ER rule instead.
+                    For some stocks the subsector ETF explains little variance. <strong>Lstar</strong> is the recommended cascade depth ERM3 publishes per stock and date — L3 only when subsector hedging earns its place, L2 when only sector does, L1 otherwise. An explicit threshold applies the legacy 1% marginal-ER rule.
                   </p>
                   <p className="text-sm text-zinc-300">
                     <code className="text-zinc-400">lstar_rr</code> returns the residual <em>at the level the model actually picked</em>;{' '}
@@ -421,7 +428,7 @@ export default function ApiReferencePage() {
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
                     <div className="font-mono text-xs uppercase tracking-widest text-terminal mb-2">Universe rank screen</div>
                     <p className="text-sm text-zinc-300 mb-2">
-                      Server-side percentile / decile / sector filters over the full ranking cross-section. The stat-arb cross-section in one call — not N per-ticker round-trips.
+                      Server-side percentile / decile / sector filters over the full ranking cross-section. The stat-arb cross-section in one call.
                     </p>
                     <p className="text-xs text-zinc-500">
                       <code className="text-zinc-400">POST /api/rankings/screen</code> — up to 500 rows by <code className="text-zinc-400">rank_ordinal</code>.
@@ -447,7 +454,7 @@ export default function ApiReferencePage() {
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight mb-3">Fastest way to get started with agents</h2>
                   <p className="text-zinc-400 max-w-2xl">
-                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, makes a live metrics call, and quotes residual explained-risk from the JSON — no install, no terminal.
+                    Paste one line into any AI chat (Claude, ChatGPT, Grok, Gemini web, Cursor). The agent reads riskmodels.app, makes a live metrics call, and quotes residual explained-risk from the JSON. It runs in the chat window.
                   </p>
                 </div>
 
@@ -573,7 +580,7 @@ ${example}`)}
           </div>
 
           {/* Right sticky panel */}
-          <div className="col-span-1 xl:col-span-4 border-l border-zinc-800 bg-zinc-950/80 p-6 sticky top-16 h-fit xl:max-h-[calc(100vh-4rem)] overflow-y-auto">
+          <div className="col-span-1 xl:col-span-4 border-l border-zinc-800 bg-zinc-950/80 p-6 sticky top-[4.5rem] h-fit xl:max-h-[calc(100vh-4.5rem)] overflow-y-auto">
             {(selectedId === 'coreConcepts' || selectedId === 'agentOnboarding') ? (
               <div className="space-y-6 pt-2">
                 <div>

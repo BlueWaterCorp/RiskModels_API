@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Logo from './Logo';
 import PortalSearch from './PortalSearch';
+import { ThemeToggle } from './ThemeToggle';
 import { LogOut, Menu, X } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -44,12 +45,13 @@ export default function Navbar() {
   }, [router]);
 
   const navLinks: { href: string; label: string; external?: boolean }[] = [
+    { href: '/installation', label: 'Quickstart' },
+    { href: '/api-reference', label: 'API reference' },
     { href: '/docs', label: 'Docs' },
-    { href: '/installation', label: 'Installation' },
-    { href: '/api-reference', label: 'API Reference' },
-    { href: '/cli', label: 'CLI' },
-    { href: '/pricing', label: 'Pricing' },
     { href: '/for-agents', label: 'Agents' },
+    { href: '/security-master-feed', label: 'Event feed' },
+    { href: '/pricing', label: 'Pricing' },
+    { href: '/status', label: 'Status' },
     {
       href: 'https://riskmodels.org/research?utm_source=riskmodels-app&utm_medium=primary-nav&utm_campaign=cross-site',
       label: 'Research',
@@ -57,29 +59,20 @@ export default function Navbar() {
     },
   ];
 
+  const linkBase = 'rm-mono rounded-[2px] px-2.5 py-1.5 text-xs transition-colors';
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-zinc-800/80 bg-zinc-950/85 shadow-sm shadow-black/20 backdrop-blur-md supports-[backdrop-filter]:bg-zinc-950/75">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-3 lg:gap-4 h-24 sm:h-28 md:h-32 lg:h-36 min-w-0">
-          <div className="flex-shrink-0">
-            <Logo subWord="API" />
-          </div>
+    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-rule bg-background/95 backdrop-blur-md">
+      <div className="mx-auto max-w-screen-2xl px-4 sm:px-6">
+        <div className="flex h-16 min-w-0 items-center gap-3 sm:h-[4.5rem] lg:gap-5">
+          <Logo subWord="API" />
 
-          {/* Search needs ~150px of non-shrinkable content (icon + input + ⌘K);
-              below xl the bar is too tight and it overflows over the Docs link. */}
-          <div className="hidden xl:block flex-1 min-w-0 max-w-xl">
-            <PortalSearch />
-          </div>
-
-          <div className="hidden md:flex items-center gap-1 lg:gap-2 flex-shrink-0">
+          <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
             {navLinks.map((link) => {
               const active = !link.external && navActive(pathname, link.href);
-              const className = [
-                'rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors',
-                active
-                  ? 'bg-zinc-800/90 text-white ring-1 ring-zinc-700/80'
-                  : 'text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-100',
-              ].join(' ');
+              const className = `${linkBase} ${
+                active ? 'bg-secondary text-ink' : 'text-ink-muted hover:bg-secondary/60 hover:text-ink'
+              }`;
               if (link.external) {
                 return (
                   <a
@@ -90,6 +83,9 @@ export default function Navbar() {
                     className={className}
                   >
                     {link.label}
+                    <span aria-hidden className="ml-0.5 text-[11px] opacity-70">
+                      ↗
+                    </span>
                   </a>
                 );
               }
@@ -101,11 +97,14 @@ export default function Navbar() {
             })}
           </div>
 
-          <div className="hidden md:flex items-center gap-2 lg:gap-3 flex-shrink-0 ml-auto">
+          <div className="ml-auto flex shrink-0 items-center gap-2 lg:ml-0">
+            <div className="hidden w-56 2xl:block">
+              <PortalSearch />
+            </div>
             {user ? (
               <>
                 <span
-                  className="hidden xl:inline text-xs text-zinc-500 max-w-[200px] truncate"
+                  className="hidden max-w-[180px] truncate text-xs text-ink-muted 2xl:inline"
                   title={user.email ?? undefined}
                 >
                   {user.email}
@@ -113,51 +112,52 @@ export default function Navbar() {
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-500 hover:text-zinc-200 transition-colors px-1"
+                  className="rm-mono hidden items-center gap-1.5 px-1 text-xs text-ink-muted hover:text-ink lg:inline-flex"
                 >
-                  <LogOut size={14} className="opacity-80" aria-hidden />
+                  <LogOut size={13} aria-hidden />
                   Sign out
                 </button>
               </>
             ) : (
               <Link
                 href="/get-key"
-                className="text-sm font-medium text-zinc-500 hover:text-zinc-200 transition-colors px-1"
+                className="rm-mono hidden px-1 text-xs text-ink-muted underline-offset-4 hover:text-ink hover:underline lg:inline-flex"
               >
                 Sign in
               </Link>
             )}
             <Link
               href="/get-key"
-              className="px-3.5 py-2 text-sm font-semibold rounded-lg bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-md shadow-blue-950/30 ring-1 ring-white/10 hover:from-blue-400 hover:to-blue-500 transition-all"
+              className="rm-mono inline-flex h-8 items-center rounded-[2px] border border-navy px-3 max-[350px]:hidden text-xs text-navy transition-colors hover:bg-navy hover:text-[var(--rm-on-navy)]"
             >
-              {user ? 'API keys' : 'Get API Key'}
+              {user ? 'API keys' : (
+                <>
+                  <span className="sm:hidden">API key</span>
+                  <span className="hidden sm:inline">Get a free API key</span>
+                </>
+              )}
             </Link>
+            <ThemeToggle className="hidden sm:inline-flex" />
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="inline-flex size-8 items-center justify-center rounded-[2px] border border-rule text-ink-muted hover:text-ink lg:hidden"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
+            </button>
           </div>
-
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-2 text-zinc-300 hover:text-zinc-100 ml-auto"
-            aria-label="Toggle menu"
-          >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
         </div>
       </div>
 
       {mobileMenuOpen && (
-        <div className="md:hidden bg-zinc-900/95 border-t border-zinc-800 backdrop-blur-md">
-          <div className="px-4 py-3 space-y-4 max-h-[min(85vh,32rem)] overflow-y-auto">
+        <div className="border-t border-rule bg-background lg:hidden">
+          <div className="max-h-[min(85vh,34rem)] space-y-4 overflow-y-auto px-4 py-3">
             <PortalSearch />
-            <div className="space-y-1 pt-1">
+            <div className="divide-y divide-[var(--rm-rule)] border-y border-rule">
               {navLinks.map((link) => {
                 const active = !link.external && navActive(pathname, link.href);
-                const className = [
-                  'block rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors',
-                  active
-                    ? 'bg-zinc-800 text-white'
-                    : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100',
-                ].join(' ');
+                const className = `block px-1 py-2.5 text-sm ${active ? 'font-semibold text-ink' : 'text-ink-muted hover:text-ink'}`;
                 if (link.external) {
                   return (
                     <a
@@ -168,7 +168,7 @@ export default function Navbar() {
                       className={className}
                       onClick={() => setMobileMenuOpen(false)}
                     >
-                      {link.label}
+                      {link.label} <span aria-hidden>↗</span>
                     </a>
                   );
                 }
@@ -184,39 +184,29 @@ export default function Navbar() {
                 );
               })}
             </div>
-            <div className="pt-3 border-t border-zinc-800 space-y-2">
+            <div className="flex items-center justify-between gap-3">
               {user ? (
-                <>
-                  {user.email && (
-                    <p className="text-center text-xs text-zinc-500 px-2 truncate" title={user.email}>
-                      {user.email}
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => void handleSignOut()}
-                    className="w-full flex items-center justify-center gap-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 py-2"
-                  >
-                    <LogOut size={16} aria-hidden />
-                    Sign out
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => void handleSignOut()}
+                  className="inline-flex items-center gap-2 text-sm text-ink-muted hover:text-ink"
+                  title={user.email ?? undefined}
+                >
+                  <LogOut size={15} aria-hidden />
+                  Sign out
+                </button>
               ) : (
                 <Link
                   href="/get-key"
-                  className="block text-center text-sm font-medium text-zinc-400 hover:text-zinc-200 py-2"
+                  className="text-sm text-ink-muted hover:text-ink"
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Sign in
                 </Link>
               )}
-              <Link
-                href="/get-key"
-                className="block px-4 py-2.5 text-sm font-semibold text-white bg-gradient-to-b from-blue-500 to-blue-600 rounded-lg text-center transition-all shadow-md shadow-blue-950/25"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {user ? 'API keys' : 'Get API Key'}
-              </Link>
+              <span className="inline-flex items-center gap-2 text-xs text-ink-muted">
+                Light / dark <ThemeToggle />
+              </span>
             </div>
           </div>
         </div>

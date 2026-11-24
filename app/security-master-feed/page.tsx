@@ -4,13 +4,18 @@
 //
 // Early access. The feed is free, for approved investment, research, risk and
 // data professionals: the form is a request, reviewed by a person. Copy must not
-// claim coverage counts or latency that have not been measured. The sample
-// event below is labelled as an illustrative format and uses placeholder values only.
-// Real events: the dated public sample on riskmodels.org/events.
+// claim coverage counts or latency that have not been measured. The rows and
+// the record shown are the public sample served by ./latest.json, read at
+// render; when it cannot be read the page says so.
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import FeedWaitlistForm from "@/components/feed/FeedWaitlistForm";
+import { FeedTable } from "@/components/site/FeedTable";
+import { SectionHead } from "@/components/site/SectionHead";
+import { getFeedSample } from "@/lib/site/live";
+
+export const revalidate = 300;
 
 const TITLE = "Security Master Change Feed — Early Access";
 const DESCRIPTION =
@@ -26,34 +31,6 @@ export const metadata: Metadata = {
     url: "https://riskmodels.app/security-master-feed",
   },
 };
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-xs font-semibold uppercase tracking-widest text-blue-400 mb-1.5">
-      {children}
-    </p>
-  );
-}
-
-function SectionDivider() {
-  return (
-    <div className="max-w-4xl mx-auto px-6">
-      <hr className="border-zinc-800/80" />
-    </div>
-  );
-}
-
-function Check() {
-  return (
-    <svg className="w-3.5 h-3.5 text-blue-400 mt-1 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-      <path
-        fillRule="evenodd"
-        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-}
 
 const EDITION_CONTENTS = [
   {
@@ -91,182 +68,154 @@ const EARLY_ACCESS = [
   "A say in the delivery format: email digest, API, or webhook",
 ] as const;
 
-// Placeholder values only — not a real security or filing.
-const ILLUSTRATIVE_EDITION = `{
-  "edition": "YYYY-MM-DD",
-  "events": [
-    {
-      "event_type": "ticker_change",
-      "effective_date": "YYYY-MM-DD",
-      "known_as_of": "YYYY-MM-DD",
-      "keys": {
-        "figi": "BBG000000000",
-        "cik": "0000000000",
-        "riskmodels_id": "BW-EXAMPLE",
-        "ticker": "NEWT"
-      },
-      "old_value": "OLDT",
-      "new_value": "NEWT",
-      "filing": {
-        "form": "8-K",
-        "accession": "0000000000-00-000000",
-        "filed": "YYYY-MM-DD"
-      }
-    }
-  ],
-  "corrections": [
-    {
-      "field": "name",
-      "keys": { "riskmodels_id": "BW-EXAMPLE" },
-      "old_value": "Example Holdings Inc",
-      "new_value": "Example Holdings Corp",
-      "first_published_in": "YYYY-MM-DD",
-      "reason": "filing_reread"
-    }
-  ]
-}`;
 
-export default function SecurityMasterFeedPage() {
+export default async function SecurityMasterFeedPage() {
+  const feed = await getFeedSample();
+  const first = feed?.events[0];
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      {/* ── Hero ── */}
-      <section className="mx-auto max-w-4xl px-4 sm:px-6 pt-12 pb-8 text-center">
-        <SectionLabel>Security master change feed · Early access</SectionLabel>
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-3">
-          A daily, filing-cited record of US equity identity changes
-        </h1>
-        <p className="text-base text-zinc-300 max-w-2xl mx-auto mb-4 leading-relaxed">
-          Ticker and name changes, listing status, mergers and reorganisations, and splits, each
-          tied to the SEC filing that supports it, with corrections to earlier editions published in
-          the open.
+    <div className="rm-page pb-24">
+      <header className="pb-14 pt-12 sm:pt-16">
+        <p className="rm-label">Security master change feed · Early access</p>
+        <h1 className="rm-h1 mt-4 max-w-4xl">A daily, filing-cited record of US equity identity changes</h1>
+        <p className="rm-lede mt-6 max-w-2xl">
+          Ticker and name changes, listing status, mergers and reorganisations, and splits, each tied to the
+          SEC filing that supports it. Corrections to earlier editions are published in the open.
         </p>
-        <div className="flex flex-col sm:flex-row gap-2 justify-center mb-4">
-          <a
-            href="#join"
-            className="inline-flex items-center justify-center rounded-md bg-blue-600 hover:bg-blue-500 text-white font-semibold px-5 py-2.5 transition-colors text-sm"
-          >
+        <div className="mt-8 flex flex-wrap gap-3">
+          <a href="#join" className="rm-btn">
             Request free access
           </a>
-          <a
-            href="#format"
-            className="inline-flex items-center justify-center rounded-md border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white font-medium px-5 py-2.5 transition-colors text-sm"
-          >
-            See the format
+          <a href="#format" className="rm-btn-ghost">
+            See a record
           </a>
         </div>
-        <p className="text-sm text-zinc-500 max-w-2xl mx-auto leading-snug">
-          Early access. The feed is free for verified investment, research, risk and data
-          professionals. A dated public sample is at{" "}
-          <a href="https://www.riskmodels.org/events" className="text-blue-400 hover:text-blue-300">
-            riskmodels.org/events
-          </a>
-          ; approved subscribers read current events by email and{" "}
-          <Link href="/security-master-feed/access" className="text-blue-400 hover:text-blue-300">
+        <p className="rm-small mt-4 max-w-2xl">
+          Free for verified investment, research, risk and data professionals. Approved subscribers read
+          current events by email and{" "}
+          <Link href="/security-master-feed/access" className="rm-link">
             private RSS
           </Link>
           . All data is end-of-day and historical.
         </p>
+      </header>
+
+      <section className="rm-section" aria-labelledby="sample">
+        <SectionHead n="01" label="Public sample" title="The current public sample" id="sample">
+          <p>
+            {feed?.sample_note ??
+              "The public sample holds a small number of recent events; approved subscribers receive current events."}
+          </p>
+        </SectionHead>
+        <div className="mt-8">
+          {feed ? (
+            <>
+              <FeedTable events={feed.events} />
+              <p className="rm-small mt-4">
+                Read from{" "}
+                <Link href="/security-master-feed/latest.json" prefetch={false} className="rm-link rm-mono">
+                  /security-master-feed/latest.json
+                </Link>
+                , generated {feed.generated_at.slice(0, 10)}. A longer dated sample is at{" "}
+                <a href="https://www.riskmodels.org/events" className="rm-link">
+                  riskmodels.org/events
+                </a>
+                .
+              </p>
+            </>
+          ) : (
+            <p className="rm-small border-y border-rule py-4">
+              Data unavailable. The read of the feed sample failed; it is served at{" "}
+              <Link href="/security-master-feed/latest.json" prefetch={false} className="rm-link rm-mono">
+                /security-master-feed/latest.json
+              </Link>
+              .
+            </p>
+          )}
+        </div>
       </section>
 
-      <SectionDivider />
-
-      {/* ── What each edition contains ── */}
-      <section className="mx-auto max-w-4xl px-4 sm:px-6 py-10">
-        <SectionLabel>What each edition contains</SectionLabel>
-        <h2 className="text-xl font-bold text-white mb-5">One edition with each daily data release</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <section className="rm-section" aria-labelledby="contents">
+        <SectionHead n="02" label="Contents" title="One edition with each daily data release" id="contents" />
+        <dl className="mt-8 divide-y divide-[var(--rm-rule)] border-y border-rule">
           {EDITION_CONTENTS.map((item) => (
-            <div
-              key={item.h}
-              className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 backdrop-blur-md p-5"
-            >
-              <p className="text-base font-bold text-white mb-1.5">{item.h}</p>
-              <p className="text-sm text-zinc-400 leading-relaxed">{item.p}</p>
+            <div key={item.h} className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
+              <dt className="rm-h3 lg:col-span-4">{item.h}</dt>
+              <dd className="rm-body lg:col-span-8">{item.p}</dd>
             </div>
           ))}
-        </div>
-        <div className="mt-6">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 mb-2">
-            Not in scope
-          </p>
-          <ul className="space-y-1.5">
-            {OUT_OF_SCOPE.map((item) => (
-              <li key={item} className="text-sm text-zinc-400 leading-snug">
-                {item}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-sm text-zinc-500 leading-snug">
-            Event types are limited to what SEC filings support. The feed is the identity part of
-            each RiskModels data release, the same record the{" "}
-            <Link href="/docs/api" className="text-blue-400 hover:text-blue-300">
-              RiskModels API
-            </Link>{" "}
-            uses to resolve historical tickers.
-          </p>
-        </div>
-      </section>
-
-      <SectionDivider />
-
-      {/* ── Illustrative format ── */}
-      <section id="format" className="mx-auto max-w-4xl px-4 sm:px-6 py-10 scroll-mt-20">
-        <SectionLabel>Illustrative format</SectionLabel>
-        <h2 className="text-xl font-bold text-white mb-1">What an edition looks like</h2>
-        <p className="text-sm text-zinc-400 mb-4 leading-relaxed">
-          Placeholder values, not a real security or filing. Field names may change before the first
-          edition; early-access members see the spec first.
+          <div className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
+            <dt className="rm-h3 lg:col-span-4">Outside scope</dt>
+            <dd className="rm-body lg:col-span-8">{OUT_OF_SCOPE.join("; ")}.</dd>
+          </div>
+        </dl>
+        <p className="rm-small mt-4 max-w-3xl">
+          Event types are limited to what SEC filings support. The feed is the identity part of each RiskModels
+          data release, the same record the{" "}
+          <Link href="/docs/api" className="rm-link">
+            RiskModels API
+          </Link>{" "}
+          uses to resolve historical tickers.
         </p>
-        <div className="relative rounded-lg border border-zinc-800/80 bg-zinc-900/60">
-          <span className="absolute top-2 right-2 rounded-md border border-orange-400/30 bg-orange-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
-            Illustrative format
-          </span>
-          <pre className="overflow-x-auto p-4 pt-9 text-xs leading-relaxed text-zinc-300">
-            <code>{ILLUSTRATIVE_EDITION}</code>
-          </pre>
+      </section>
+
+      <section className="rm-section" aria-labelledby="format">
+        <SectionHead n="03" label="Format" title="One record, as served" id="format">
+          <p>
+            The first event of the public sample, printed as the file returns it. Field names may change
+            during early access; subscribers are told first.
+          </p>
+        </SectionHead>
+        <div className="mt-8">
+          {first ? (
+            <figure className="rm-plate min-w-0">
+              <figcaption className="rm-label border-b border-rule px-3 py-2 sm:px-4">
+                latest.json · events[0] · generated {feed.generated_at.slice(0, 10)}
+              </figcaption>
+              <pre className="rm-code px-3 py-3 sm:px-4">
+                <code>{JSON.stringify(first, null, 2)}</code>
+              </pre>
+            </figure>
+          ) : (
+            <p className="rm-small border-y border-rule py-4">Data unavailable. No record could be read.</p>
+          )}
         </div>
       </section>
 
-      <SectionDivider />
-
-      {/* ── Signup ── */}
-      <section id="join" className="mx-auto max-w-4xl px-4 sm:px-6 py-10 scroll-mt-20">
-        <div className="grid gap-6 md:grid-cols-5">
-          <div className="md:col-span-2">
-            <SectionLabel>Early access</SectionLabel>
-            <h2 className="text-xl font-bold text-white mb-3">Request access</h2>
-            <ul className="space-y-2">
+      <section className="rm-section" aria-labelledby="join">
+        <div className="grid gap-x-12 gap-y-10 lg:grid-cols-2">
+          <div>
+            <p className="rm-label">04 · Early access</p>
+            <h2 id="join" className="rm-h2 mt-3">
+              Request access
+            </h2>
+            <ul className="mt-6 divide-y divide-[var(--rm-rule)] border-y border-rule">
               {EARLY_ACCESS.map((item) => (
-                <li key={item} className="flex items-start gap-1.5 text-sm text-zinc-300 leading-snug">
-                  <Check />
+                <li key={item} className="py-3 text-[0.9375rem] text-ink">
                   {item}
                 </li>
               ))}
             </ul>
-            <p className="mt-4 text-sm text-zinc-500 leading-snug">
-              How it works: you confirm your email, then we review the request and email you the decision.
-              Work and academic addresses with a complete profile are ordinarily approved. Personal addresses
-              are reviewed by hand; a firm website or LinkedIn profile helps.
+            <p className="rm-body mt-6">
+              You confirm your email, then we review the request and email you the decision. Work and academic
+              addresses with a complete profile are ordinarily approved. Personal addresses are reviewed by
+              hand; a firm website or LinkedIn profile helps.
             </p>
-            <p className="mt-3 text-sm text-zinc-500 leading-snug">
+            <p className="rm-small mt-4">
               Already approved?{" "}
-              <Link href="/security-master-feed/access" className="text-blue-400 hover:text-blue-300">
+              <Link href="/security-master-feed/access" className="rm-link">
                 Create your private RSS address
               </Link>
-              .
-            </p>
-            <p className="mt-3 text-sm text-zinc-500 leading-snug">
-              Questions:{" "}
-              <a href="mailto:service@riskmodels.app" className="text-blue-400 hover:text-blue-300">
+              . Questions:{" "}
+              <a href="mailto:service@riskmodels.app" className="rm-link">
                 service@riskmodels.app
               </a>
             </p>
           </div>
-          <div className="md:col-span-3 rounded-xl border border-blue-500/30 bg-zinc-900/40 backdrop-blur-md p-5 shadow-[0_0_60px_-20px_rgba(59,130,246,0.25)]">
+          <div className="min-w-0">
             <FeedWaitlistForm />
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

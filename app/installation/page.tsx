@@ -1,185 +1,132 @@
 import type { Metadata } from 'next';
-import { Bot, Code2, Globe, Terminal } from 'lucide-react';
-import CodeBlock from '@/components/CodeBlock';
-import QuickstartTyping from '@/components/QuickstartTyping';
+import Link from 'next/link';
+import { CodeExhibit } from '@/components/site/CodeExhibit';
+import { ConnectorSteps } from '@/components/site/ConnectorSteps';
+import { SectionHead } from '@/components/site/SectionHead';
+import { getCapabilityById } from '@/lib/agent/capabilities';
+import {
+  AGENT_INSTALL,
+  CLI_FIRST_CALL,
+  CLI_INSTALL,
+  CURL_FIRST_CALL,
+  EXECUTED_ON,
+  PYTHON_FIRST_CALL,
+  PYTHON_FIRST_CALL_OUTPUT,
+  PYTHON_INSTALL,
+} from '@/lib/site/examples';
 
 export const metadata: Metadata = {
-  title: 'Installation — RiskModels',
-  description: 'Use RiskModels from Python, CLI, API, or your AI agent.',
+  alternates: { canonical: '/installation' },
+  title: 'Quickstart',
+  description: 'Make a first RiskModels API request with curl, Python, the command line or an AI assistant.',
 };
-
-type Block = {
-  id: string;
-  title: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  setup:
-    | { kind: 'code'; code: string; language: string; filename: string }
-    | { kind: 'caption'; text: string };
-  firstActionLabel: string;
-  firstActionCode: string;
-  firstActionLanguage: string;
-  outcome: string;
-};
-
-const BLOCKS: Block[] = [
-  {
-    id: 'python',
-    title: 'Python',
-    icon: Code2,
-    setup: {
-      kind: 'code',
-      code: `# Python 3.10+
-python3 -m pip install "riskmodels-py>=0.5.1"
-# Optional extras: [viz] (Kaleido, Seaborn), [xarray] (cubes)
-export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-key`,
-      language: 'bash',
-      filename: 'install',
-    },
-    firstActionLabel: 'First action',
-    firstActionCode: `from riskmodels import RiskModelsClient
-
-client = RiskModelsClient.from_env()  # reads RISKMODELS_API_KEY
-row = client.get_metrics("NVDA")  # costs $0.005
-print(row["l3_residual_er"])  # residual share of variance`,
-    firstActionLanguage: 'python',
-    outcome: '→ exposures + hedge ratios',
-  },
-  {
-    id: 'cli',
-    title: 'CLI',
-    icon: Terminal,
-    setup: {
-      kind: 'code',
-      code: `npm install -g riskmodels@latest
-export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-key
-riskmodels doctor   # verify key + API reachability`,
-      language: 'bash',
-      filename: 'install',
-    },
-    firstActionLabel: 'First action',
-    firstActionCode: 'riskmodels decompose NVDA',
-    firstActionLanguage: 'bash',
-    outcome: '→ exposures + hedge ratios',
-  },
-  {
-    id: 'api',
-    title: 'API',
-    icon: Globe,
-    setup: {
-      kind: 'code',
-      code: `GET https://riskmodels.app/api/metrics/NVDA   # costs $0.005
-Authorization: Bearer $RISKMODELS_API_KEY   # key from https://riskmodels.app/get-key`,
-      language: 'http',
-      filename: 'endpoint',
-    },
-    firstActionLabel: 'First action',
-    firstActionCode: `curl https://riskmodels.app/api/metrics/NVDA \\
-  -H "Authorization: Bearer $RISKMODELS_API_KEY"`,
-    firstActionLanguage: 'bash',
-    outcome: '→ exposures + hedge ratios',
-  },
-  {
-    id: 'agent',
-    title: 'Agent',
-    icon: Bot,
-    setup: {
-      kind: 'code',
-      code: `RISKMODELS_API_KEY=… npx -y riskmodels@latest install
-# MCP plus the five skills. Server only: add --no-skills
-# Skills alone: npx skills add BlueWaterCorp/riskmodels-plugin`,
-      language: 'bash',
-      filename: 'install',
-    },
-    firstActionLabel: 'Ask',
-    firstActionCode: '"Explain NVDA risk"',
-    firstActionLanguage: 'text',
-    outcome: '→ exposures + hedge ratios',
-  },
-];
 
 export default function InstallationPage() {
+  const price = getCapabilityById('metrics')?.pricing.cost_usd;
+  const cost = price != null ? `$${price}` : 'the listed price';
   return (
-    <div className="mx-auto min-h-screen w-full max-w-[90rem] overflow-x-hidden bg-zinc-950">
-      <section className="border-b border-zinc-800 px-4 pb-12 pt-16 sm:px-6 sm:pt-20 lg:px-8">
-        <div className="mx-auto max-w-3xl text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-            Install
-          </p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-white sm:text-5xl">
-            Get started in seconds
-          </h1>
-          <p className="mt-4 text-base leading-relaxed text-zinc-400 sm:text-lg">
-            Use RiskModels from Python, CLI, API, or your AI agent.
-          </p>
-          <p className="mx-auto mt-4 max-w-2xl rounded-lg border border-emerald-500/25 bg-emerald-950/35 px-4 py-3 text-left text-sm leading-relaxed text-emerald-100/90">
-            <strong className="text-emerald-200">Browsers &amp; AI agents:</strong> if you need a Bearer token for MAG7
-            demos before sign-in, open{' '}
-            <a
-              className="font-mono text-emerald-300 underline underline-offset-2 hover:text-emerald-200"
-              href={`${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ?? 'https://riskmodels.app'}/llms.txt`}
-            >
-              llms.txt
-            </a>{' '}
-            — it includes a shared <code className="rounded bg-black/35 px-1">RISKMODELS_API_KEY</code> when the host enables one (faster than{' '}
-            <code className="rounded bg-black/35 px-1">POST /api/auth/provision-free</code> for one-shot questions).
-          </p>
+    <div className="rm-page pb-24">
+      <header className="pb-14 pt-12 sm:pt-16">
+        <p className="rm-label">Quickstart</p>
+        <h1 className="rm-h1 mt-4 max-w-3xl">Make a first request</h1>
+        <p className="rm-lede mt-6 max-w-2xl">
+          Every route below returns the same data: the risk decomposition and ETF hedge ratios for one stock.
+          Each needs an API key, and the request costs {cost} against the $20 of credit a new key carries.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link href="/get-key" className="rm-btn">
+            Get an API key
+          </Link>
+          <Link href="/api-reference" className="rm-btn-ghost">
+            Read the reference
+          </Link>
         </div>
+        <p className="rm-small mt-4">
+          The examples on this page were run against production on {EXECUTED_ON}.
+        </p>
+      </header>
 
-        <div className="mx-auto mt-10 max-w-2xl">
-          <QuickstartTyping className="text-center" />
+      <section className="rm-section" aria-labelledby="http">
+        <SectionHead n="01" label="HTTP" title="curl" id="http">
+          <p>
+            Set <code className="rm-mono">RISKMODELS_API_KEY</code> in the shell, then send one request. The
+            response is JSON; the fields are defined in the{' '}
+            <Link href="/api-reference" className="rm-link">
+              API reference
+            </Link>
+            .
+          </p>
+        </SectionHead>
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <CodeExhibit tabs={[{ id: 'set', label: 'Set the key', code: 'export RISKMODELS_API_KEY=rm_agent_...' }]} />
+          <CodeExhibit tabs={[{ id: 'curl', label: 'Request', code: CURL_FIRST_CALL }]} />
         </div>
       </section>
 
-      <section className="px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-5xl">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {BLOCKS.map(({ id, title, icon: Icon, setup, firstActionLabel, firstActionCode, firstActionLanguage, outcome }) => (
-              <div
-                key={id}
-                className="flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6"
-              >
-                <div className="mb-5 flex items-center gap-3">
-                  <span className="inline-flex rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-400">
-                    <Icon size={18} />
-                  </span>
-                  <h2 className="text-lg font-semibold text-white">{title}</h2>
-                </div>
+      <section className="rm-section" aria-labelledby="python">
+        <SectionHead n="02" label="Python" title="Python SDK" id="python">
+          <p>
+            The SDK returns one row with readable field names:{' '}
+            <code className="rm-mono">l3_residual_er</code> is the residual share of variance and{' '}
+            <code className="rm-mono">l3_market_hr</code> the market hedge ratio.
+          </p>
+        </SectionHead>
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <CodeExhibit tabs={[{ id: 'install', label: 'Install', code: PYTHON_INSTALL }]} />
+          <CodeExhibit
+            tabs={[
+              {
+                id: 'call',
+                label: 'Request',
+                code: PYTHON_FIRST_CALL,
+                note: `Printed ${PYTHON_FIRST_CALL_OUTPUT} on ${EXECUTED_ON}.`,
+              },
+            ]}
+          />
+        </div>
+      </section>
 
-                <div className="space-y-4">
-                  {setup.kind === 'code' ? (
-                    <CodeBlock
-                      code={setup.code}
-                      language={setup.language}
-                      filename={setup.filename}
-                    />
-                  ) : (
-                    <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">
-                      {setup.text}
-                    </div>
-                  )}
+      <section className="rm-section" aria-labelledby="cli">
+        <SectionHead n="03" label="Command line" title="Command line" id="cli">
+          <p>
+            <code className="rm-mono">riskmodels doctor</code> checks Node, the key and the assistant
+            configuration on the machine. <code className="rm-mono">decompose</code> prints the four layers as
+            JSON. More commands are on the{' '}
+            <Link href="/cli" className="rm-link">
+              command line page
+            </Link>
+            .
+          </p>
+        </SectionHead>
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <CodeExhibit tabs={[{ id: 'install', label: 'Install', code: CLI_INSTALL }]} />
+          <CodeExhibit tabs={[{ id: 'call', label: 'Request', code: CLI_FIRST_CALL }]} />
+        </div>
+      </section>
 
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                      {firstActionLabel}
-                    </p>
-                    <CodeBlock
-                      code={firstActionCode}
-                      language={firstActionLanguage}
-                      filename={firstActionLanguage === 'text' ? 'prompt' : firstActionLanguage}
-                    />
-                  </div>
-                </div>
-
-                <p className="mt-5 text-xs font-mono text-emerald-400/80">{outcome}</p>
-              </div>
-            ))}
+      <section className="rm-section" aria-labelledby="assistant">
+        <SectionHead n="04" label="Assistants" title="AI assistant" id="assistant">
+          <p>
+            The hosted connector needs no key: sign in once in the browser. For a local setup with a key, the
+            installer writes the server entry into the assistant configurations it finds.
+          </p>
+        </SectionHead>
+        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+          <ConnectorSteps />
+          <div className="min-w-0">
+            <CodeExhibit tabs={[{ id: 'install', label: 'Local install, with a key', code: AGENT_INSTALL }]} />
+            <p className="rm-small mt-3">
+              Other clients and addresses are on the{' '}
+              <Link href="/docs/agent-integration" className="rm-link">
+                connector setup page
+              </Link>
+              . Machine-readable instructions for agents are in{' '}
+              <a href="/llms.txt" className="rm-link">
+                llms.txt
+              </a>
+              .
+            </p>
           </div>
-
-          <ul className="mx-auto mt-12 max-w-2xl space-y-1.5 text-center text-xs text-zinc-500">
-            <li>No auth required to understand usage</li>
-            <li>No walls before first call</li>
-            <li>Copy-paste friendly</li>
-          </ul>
         </div>
       </section>
     </div>
