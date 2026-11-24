@@ -7,6 +7,9 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { notFound } from 'next/navigation';
 
+// Unknown slugs 404 at the router (real HTTP 404), not after the stream starts.
+export const dynamicParams = false;
+
 export async function generateStaticParams() {
   return getAllDocSlugs().map((slug) => ({ slug }));
 }
