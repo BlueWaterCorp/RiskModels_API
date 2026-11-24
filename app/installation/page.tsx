@@ -29,13 +29,18 @@ const BLOCKS: Block[] = [
     setup: {
       kind: 'code',
       code: `# Python 3.10+
-python3 -m pip install "riskmodels-py>=0.3.4"
-# Optional extras: [viz] (Kaleido, Seaborn), [xarray] (cubes)`,
+python3 -m pip install "riskmodels-py>=0.5.1"
+# Optional extras: [viz] (Kaleido, Seaborn), [xarray] (cubes)
+export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-key`,
       language: 'bash',
       filename: 'install',
     },
     firstActionLabel: 'First action',
-    firstActionCode: 'decompose("NVDA")',
+    firstActionCode: `from riskmodels import RiskModelsClient
+
+client = RiskModelsClient.from_env()  # reads RISKMODELS_API_KEY
+data, lineage = client.snapshot_ticker("NVDA")
+print(data["snapshot"]["ticker_meta"])`,
     firstActionLanguage: 'python',
     outcome: '→ exposures + hedge ratios',
   },
@@ -46,6 +51,7 @@ python3 -m pip install "riskmodels-py>=0.3.4"
     setup: {
       kind: 'code',
       code: `npm install -g riskmodels@latest
+export RISKMODELS_API_KEY=rm_agent_...   # key from https://riskmodels.app/get-key
 riskmodels doctor   # verify key + API reachability`,
       language: 'bash',
       filename: 'install',
@@ -61,12 +67,16 @@ riskmodels doctor   # verify key + API reachability`,
     icon: Globe,
     setup: {
       kind: 'code',
-      code: 'POST /decompose',
+      code: `POST https://riskmodels.app/api/snapshot
+Authorization: Bearer $RISKMODELS_API_KEY   # key from https://riskmodels.app/get-key`,
       language: 'http',
       filename: 'endpoint',
     },
     firstActionLabel: 'First action',
-    firstActionCode: 'curl -X POST /decompose',
+    firstActionCode: `curl -X POST https://riskmodels.app/api/snapshot \\
+  -H "Authorization: Bearer $RISKMODELS_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"type":"ticker","ticker":"NVDA"}'`,
     firstActionLanguage: 'bash',
     outcome: '→ exposures + hedge ratios',
   },

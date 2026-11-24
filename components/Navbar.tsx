@@ -49,7 +49,7 @@ export default function Navbar() {
     { href: '/api-reference', label: 'API Reference' },
     { href: '/cli', label: 'CLI' },
     { href: '/pricing', label: 'Pricing' },
-    { href: '/llms.txt', label: 'Agents' },
+    { href: '/for-agents', label: 'Agents' },
     {
       href: 'https://riskmodels.org/research?utm_source=riskmodels-app&utm_medium=primary-nav&utm_campaign=cross-site',
       label: 'Research',
