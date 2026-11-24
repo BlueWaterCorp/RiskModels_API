@@ -175,7 +175,10 @@ export default async function HomePage() {
             </table>
           </div>
           <p className="rm-small mt-3">
-            Hedge ratio is dollars of the ETF per dollar of stock; negative is a short. Values are from{' '}
+            Hedge ratio is dollars of the ETF per dollar of stock: negative is a short, positive a long, because
+            each layer is measured after the ones above it. Share of variance is the share that layer&rsquo;s
+            hedge removed over the estimation window; the four sum to 100%, and one can fall slightly below zero
+            when that hedge added variance. Values are from{' '}
             <code className="rm-mono">GET /api/metrics/NVDA</code>,{' '}
             {metrics.source === 'live'
               ? `read from production on ${metrics.obtained}`

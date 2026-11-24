@@ -38,12 +38,12 @@ const baselineRows = [
 
 const premiumRows = [
   {
-    endpoint: "Lstar recommended hedge level",
+    endpoint: "Recommended hedge level",
     cost: "$0.02 + $0.01/extra year",
     callsPer20: "1,000 (1y)",
   },
   {
-    endpoint: "Batch Lstar (25% off single Lstar)",
+    endpoint: "Recommended hedge level, batch (25% off single)",
     cost: "$0.015/pos",
     callsPer20: "varies",
   },
@@ -97,7 +97,7 @@ const premiumRows = [
 const licenceRows: Array<[string, string, string, string]> = [
   ["Price per year", "$50,000", "$150,000", "$250,000"],
   ["Use", "One team, one strategy", "Unlimited internal use across the firm", "Systematic production dependency"],
-  ["Universe", "Standard universe (uni_mc_3000)", "Full published universe", "Full published universe"],
+  ["Universe", "Standard universe, about 3,000 US stocks", "Full published universe", "Full published universe"],
   ["Support", "Named contact; onboarding for the desk workflow", "Named contact; onboarding for research systems", "Incident contact; onboarding for production pipelines and entitlement review"],
   ["Availability", "Higher request limits than pay-per-request", "SLA on availability of the public API", "Contracted SLA"],
   ["Model versions", "Notice of scheduled deprecations", "Deprecation policy with a stated notice window", "Version pinning of model vintages; minimum notice window"],

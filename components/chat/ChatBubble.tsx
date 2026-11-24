@@ -163,7 +163,7 @@ export function ChatBubble() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Open RiskModels AI chat"
-          className="fixed bottom-4 right-4 z-50 flex h-11 w-11 sm:bottom-5 sm:right-5 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-blue-600 text-white transition hover:scale-105 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-zinc-950"
+          className="fixed z-50 flex max-sm:right-[8.75rem] max-sm:top-3.5 max-sm:h-9 max-sm:w-9 sm:bottom-5 sm:right-5 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-blue-600 text-white transition hover:scale-105 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 focus:ring-offset-zinc-950"
         >
           <MessageCircle className="h-6 w-6" />
           <span className="absolute -top-1 -right-1 flex h-3 w-3">
