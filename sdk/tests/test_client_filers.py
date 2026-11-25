@@ -312,3 +312,28 @@ def test_get_filer_snapshot_pdf_without_path_only_returns_bytes(tmp_path: Path):
     pdf = _client(handler).get_filer_snapshot_pdf(FILER_ID)
     assert isinstance(pdf, bytes) and pdf.startswith(b"%PDF")
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("method", "entity_id", "path"),
+    [
+        ("get_filer_attribution_history", FILER_ID, f"/13f/filers/{FILER_ID}/attribution-history"),
+        ("get_fund_attribution_history", "BW-FUND-S000006037", "/funds/BW-FUND-S000006037/attribution-history"),
+    ],
+)
+def test_attribution_history_builds_url_and_params(method, entity_id, path):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(
+            200,
+            json={"history_kind": "actual", "time_basis": "period_of_report", "first_reliable_date": "2002-01-02"},
+        )
+
+    out = getattr(_client(handler), method)(entity_id, start_date="2020-01-01", end_date="2020-12-31")
+    assert out["history_kind"] == "actual"
+    assert out["time_basis"] == "period_of_report"
+    assert path in captured["url"]
+    assert "start_date=2020-01-01" in captured["url"]
+    assert "end_date=2020-12-31" in captured["url"]

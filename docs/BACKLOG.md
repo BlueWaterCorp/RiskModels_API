@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-42`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-43`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -199,3 +199,8 @@ Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessi
 - Add a history call per universe: each stock's entry and exit dates over a date range, priced per request from the price list.
 - List the eight universes on /pricing and in the home universe paragraph.
 - Add the SDK method and an MCP tool for the same call.
+
+## RMAPI-42 · Filer attribution history applies the coverage rule itself until a published filer mask exists
+
+**Impact:** IMPROVEMENT · `/13f/filers/{id}/attribution-history` (2026-11-24) sets `first_reliable_date` by applying the 50% enter / 10% exit thresholds in `lib/portfolio/actual-history.ts` to the session coverage of the filer's daily returns store (mapped share × priced share). Funds read the same rule from their store, which is already blanked outside the fund mask. Two copies of one rule can drift: if the fund mask thresholds change, the filer side does not follow. Example dates on the current stores: Pershing Square first return 2006-01-03, first reliable 2007-01-04 (2006 books 27% covered); Baupost 2002-07-02 and 2011-07-01. When the filer coverage mask lands in the filer masks store (tracked in Funds_DAG FDAG-97, the FDAG-81 remainder "filer masks were not built"), read it instead and delete the local thresholds. **Needs:** Funds_DAG (FDAG-97), then engineering.
+

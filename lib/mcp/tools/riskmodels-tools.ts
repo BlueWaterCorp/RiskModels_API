@@ -1163,7 +1163,7 @@ export function registerRiskModelsTools(
     .min(1)
     .describe("bw_filer_id, e.g. BW-FILER-CIK0001067983, or a composite entity id BW-SYNTH-…");
 
-  const FILER_INCLUDES = ["concentration", "portfolio_history", "metrics"] as const;
+  const FILER_INCLUDES = ["concentration", "portfolio_history", "attribution_history", "metrics"] as const;
 
   server.registerTool(
     "riskmodels_get_filer",
@@ -1188,7 +1188,7 @@ export function registerRiskModelsTools(
           .max(FILER_INCLUDES.length)
           .optional()
           .describe(
-            'Extra data, one GET per value: "concentration" ($0.02): median and latest effective N, top-5 and top-10 weight share and weight HHI over the history window, GET /13f/filers/{bw_filer_id}/concentration; "portfolio_history" ($0.02): quarter-end diagnostics, AUM and style attribution over the history window, GET /13f/filers/{bw_filer_id}/portfolio; "metrics" ($0.02): latest metrics row (diagnostics, AUM, ERM3 coverage, 9-box style attribution), GET /13f/filers/{bw_filer_id}. The window is the last history_months months (default 24), e.g. ["concentration","metrics"]',
+            'Extra data, one GET per value: "concentration" ($0.02): median and latest effective N, top-5 and top-10 weight share and weight HHI over the history window, GET /13f/filers/{bw_filer_id}/concentration; "portfolio_history" ($0.02): quarter-end diagnostics, AUM and style attribution over the history window, GET /13f/filers/{bw_filer_id}/portfolio; "attribution_history" ($0.02): daily market/sector/subsector/residual attribution of the reported books, weights changing at each report date, from the first session with at least 50% of book weight covered, GET /13f/filers/{bw_filer_id}/attribution-history; "metrics" ($0.02): latest metrics row (diagnostics, AUM, ERM3 coverage, 9-box style attribution), GET /13f/filers/{bw_filer_id}. The window is the last history_months months (default 24), e.g. ["concentration","metrics"]',
           ),
         history_months: HISTORY_MONTHS_PARAM,
       },
@@ -1197,7 +1197,7 @@ export function registerRiskModelsTools(
       const wanted = [...new Set<string>(include ?? [])];
       if (!snapshot && holdings_top === undefined && wanted.length === 0) {
         return toolErrorResult({
-          error: "snapshot=false needs holdings_top or at least one include value (concentration, portfolio_history, metrics).",
+          error: "snapshot=false needs holdings_top or at least one include value (concentration, portfolio_history, attribution_history, metrics).",
         });
       }
       const id = encodeURIComponent(bw_filer_id.trim());
@@ -1205,6 +1205,7 @@ export function registerRiskModelsTools(
       const legs: Record<string, EntityLeg> = {
         concentration: { path: `/13f/filers/${id}/concentration`, query: window, usd: 0.02 },
         portfolio_history: { path: `/13f/filers/${id}/portfolio`, query: window, usd: 0.02 },
+        attribution_history: { path: `/13f/filers/${id}/attribution-history`, query: window, usd: 0.02 },
         metrics: { path: `/13f/filers/${id}`, usd: 0.02 },
       };
       return run(() =>
@@ -1224,7 +1225,7 @@ export function registerRiskModelsTools(
     },
   );
 
-  const FUND_INCLUDES = ["hedge", "nav_history", "portfolio_history", "metrics"] as const;
+  const FUND_INCLUDES = ["hedge", "nav_history", "portfolio_history", "attribution_history", "metrics"] as const;
 
   server.registerTool(
     "riskmodels_get_fund",
@@ -1249,7 +1250,7 @@ export function registerRiskModelsTools(
           .max(FUND_INCLUDES.length)
           .optional()
           .describe(
-            'Extra data, one GET per value: "hedge" ($0.02): latest L1/L2/L3 ETF hedge ratios from the holdings look-through, with teo and the holdings report date behind them, GET /funds/{bw_fund_id}/hedge; "nav_history" ($0.02): month-end NAV close and monthly NAV return over the history window, GET /funds/{bw_fund_id}/nav; "portfolio_history" ($0.02): month-end portfolio return components and diagnostics over the history window, GET /funds/{bw_fund_id}/portfolio; "metrics" ($0.02): latest return decomposition and diagnostics, GET /funds/{bw_fund_id}. The window is the last history_months months (default 24), e.g. ["hedge","nav_history"]',
+            'Extra data, one GET per value: "hedge" ($0.02): latest L1/L2/L3 ETF hedge ratios from the holdings look-through, with teo and the holdings report date behind them, GET /funds/{bw_fund_id}/hedge; "nav_history" ($0.02): month-end NAV close and monthly NAV return over the history window, GET /funds/{bw_fund_id}/nav; "portfolio_history" ($0.02): month-end portfolio return components and diagnostics over the history window, GET /funds/{bw_fund_id}/portfolio; "attribution_history" ($0.02): daily market/sector/subsector/residual attribution of the reported books, weights changing at each report date, from the first session inside the coverage rule, GET /funds/{bw_fund_id}/attribution-history; "metrics" ($0.02): latest return decomposition and diagnostics, GET /funds/{bw_fund_id}. The window is the last history_months months (default 24), e.g. ["hedge","nav_history"]',
           ),
         history_months: HISTORY_MONTHS_PARAM,
       },
@@ -1258,7 +1259,7 @@ export function registerRiskModelsTools(
       const wanted = [...new Set<string>(include ?? [])];
       if (!snapshot && holdings_limit === undefined && wanted.length === 0) {
         return toolErrorResult({
-          error: "snapshot=false needs holdings_limit or at least one include value (hedge, nav_history, portfolio_history, metrics).",
+          error: "snapshot=false needs holdings_limit or at least one include value (hedge, nav_history, portfolio_history, attribution_history, metrics).",
         });
       }
       const id = encodeURIComponent(bw_fund_id.trim());
@@ -1267,6 +1268,7 @@ export function registerRiskModelsTools(
         hedge: { path: `/funds/${id}/hedge`, usd: 0.02 },
         nav_history: { path: `/funds/${id}/nav`, query: window, usd: 0.02 },
         portfolio_history: { path: `/funds/${id}/portfolio`, query: window, usd: 0.02 },
+        attribution_history: { path: `/funds/${id}/attribution-history`, query: window, usd: 0.02 },
         metrics: { path: `/funds/${id}`, usd: 0.02 },
       };
       return run(() =>

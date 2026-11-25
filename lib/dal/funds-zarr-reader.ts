@@ -89,6 +89,7 @@ import {
   generateCacheKey,
   isSkippableCacheWarmPayload,
 } from "@/lib/cache/redis";
+import type { DailyReturnsCube } from "@/lib/portfolio/actual-history";
 
 // Fund/filer zarr + Supabase reads refresh weekly at most (13F filings
 // quarterly, fund portfolios/NAV weekly, holdings-top quarterly) — see
@@ -590,6 +591,111 @@ export function readFundPortfolioDailySeries(
   options: FundPortfolioOptions = {},
 ): Promise<FundPortfolioRow[]> {
   return readFundPortfolioSeries(bwFundId, options, "ds_portfolio_daily.zarr");
+}
+
+// ---------------------------------------------------------------------------
+// Daily returns cube — ds_fund_returns_daily.zarr / ds_filer_returns_daily.zarr
+// dims (teo, lag_basis); the report_date column is the period-of-report clock.
+// ---------------------------------------------------------------------------
+
+const DAILY_CUBE_FLOAT_VARS = [
+  "gross_return",
+  "l1_market",
+  "l2_sector",
+  "l3_subsector",
+  "l3_residual",
+  "style_return",
+  "weight_coverage",
+  "mapping_coverage",
+] as const;
+
+/** One lag_basis column of a (teo, lag_basis) float var; null when the var is absent. */
+async function readFloatColumn2d(
+  grp: Group<Readable>,
+  varName: string,
+  col: number,
+): Promise<(number | null)[] | null> {
+  try {
+    const arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    const ch = await get(arr, [null, col]);
+    const d = ch?.data;
+    if (d instanceof Float32Array || d instanceof Float64Array) {
+      return Array.from(d, (x) => (Number.isFinite(x) ? x : null));
+    }
+    return null;
+  } catch (err) {
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) return null;
+    throw err;
+  }
+}
+
+/** One lag_basis column of a (teo, lag_basis) datetime var as ISO strings ("" = NaT). */
+async function readDateColumn2d(
+  grp: Group<Readable>,
+  varName: string,
+  col: number,
+): Promise<string[] | null> {
+  try {
+    const arr = await open.v2(grp.resolve(varName), { kind: "array" });
+    const ch = await get(arr, [null, col]);
+    return decodeCfOrNsDates(ch?.data, (arr.attrs ?? {}) as Record<string, unknown>);
+  } catch (err) {
+    if (err instanceof NodeNotFoundError || err instanceof KeyError) return null;
+    throw err;
+  }
+}
+
+/**
+ * The report_date (period-of-report) column of an entity's daily returns cube.
+ * Null when the store is not published, has no teos, or carries no
+ * `report_date` lag basis. Filers read `bw_filer_id/…/ds_filer_returns_daily.zarr`;
+ * funds read `bw_fund_id/…/ds_fund_returns_daily.zarr`.
+ */
+export async function readDailyReturnsCube(
+  subject: "fund" | "filer",
+  id: string,
+): Promise<DailyReturnsCube | null> {
+  const ck = generateCacheKey("funds_zarr", "daily_returns_cube:report_date", { subject, id });
+  return withZarrCache(ck, () => computeDailyReturnsCube(subject, id), { emptyValue: null });
+}
+
+async function computeDailyReturnsCube(
+  subject: "fund" | "filer",
+  id: string,
+): Promise<DailyReturnsCube | null> {
+  const grp =
+    subject === "fund"
+      ? await openFundZarrGroup(id, "ds_fund_returns_daily.zarr")
+      : await openFilerZarrGroup(id, "ds_filer_returns_daily.zarr");
+  if (!grp) return null;
+  const [teo, bases] = await Promise.all([readTeoStrings(grp), readStringVarStrings(grp, "lag_basis")]);
+  if (!teo || teo.length === 0 || !bases) return null;
+  const col = bases.indexOf("report_date");
+  if (col < 0) return null;
+
+  const [floats, holdingReportDate] = await Promise.all([
+    Promise.all(DAILY_CUBE_FLOAT_VARS.map((v) => readFloatColumn2d(grp, v, col))),
+    subject === "filer" ? readDateColumn2d(grp, "holding_report_date", col) : Promise.resolve(null),
+  ]);
+  const byName = Object.fromEntries(
+    DAILY_CUBE_FLOAT_VARS.map((v, i) => [v, floats[i]]),
+  ) as Record<(typeof DAILY_CUBE_FLOAT_VARS)[number], (number | null)[] | null>;
+  const { gross_return, l1_market, l2_sector, l3_subsector, l3_residual } = byName;
+  if (!gross_return || !l1_market || !l2_sector || !l3_subsector || !l3_residual) return null;
+  return {
+    teo,
+    gross_return,
+    l1_market,
+    l2_sector,
+    l3_subsector,
+    l3_residual,
+    // The fund store keeps style out of l3_residual; the filer store's
+    // l3_residual already includes it (its style_return is a split of it).
+    style_return: subject === "fund" ? byName.style_return : null,
+    weight_coverage: byName.weight_coverage,
+    mapping_coverage: subject === "filer" ? byName.mapping_coverage : null,
+    holding_report_date: holdingReportDate,
+  };
 }
 
 // ---------------------------------------------------------------------------
