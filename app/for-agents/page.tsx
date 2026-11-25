@@ -38,16 +38,16 @@ riskmodels manifest --format anthropic   # or: openai | zed`;
 
 export default function ForAgentsPage() {
   return (
-    <div className="rm-page pb-24">
-      <header className="pb-14 pt-12 sm:pt-16">
+    <div className="rm-page pb-12">
+      <header className="pb-4 pt-8 sm:pt-10">
         <p className="rm-label">For AI agents</p>
         <h1 className="rm-h1 mt-4 max-w-3xl">What an agent needs to find, call and cite RiskModels.</h1>
-        <p className="rm-lede mt-6 max-w-2xl">
+        <p className="rm-lede mt-4 max-w-2xl">
           The API returns a four-layer risk decomposition and ETF hedge ratios as JSON. Each response states
           the model version and data date it came from and the price of the call, so an answer built on it
           can be cited and reconciled to a bill.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/get-key" className="rm-btn">
             Get an API key
           </Link>
@@ -61,7 +61,7 @@ export default function ForAgentsPage() {
         <SectionHead n="01" label="Discovery" title="Machine-readable entry points" id="discovery">
           <p>None of these needs a key.</p>
         </SectionHead>
-        <div className="rm-scroll-x mt-8">
+        <div className="rm-scroll-x mt-6">
           <table className="rm-table min-w-[34rem]">
             <thead>
               <tr>
@@ -102,7 +102,7 @@ export default function ForAgentsPage() {
             .
           </p>
         </SectionHead>
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           <CodeExhibit
             caption="Decompose one stock"
             tabs={[
@@ -140,7 +140,7 @@ export default function ForAgentsPage() {
             describes the model.
           </p>
         </SectionHead>
-        <dl className="mt-8 border-t border-[var(--rm-ink)]">
+        <dl className="mt-6 border-t border-[var(--rm-ink)]">
           {RESPONSE_FACTS.map(([k, v]) => (
             <div key={k} className="grid gap-1 border-b border-rule py-3 sm:grid-cols-12 sm:gap-8">
               <dt className="text-[15px] font-medium text-ink sm:col-span-3">{k}</dt>

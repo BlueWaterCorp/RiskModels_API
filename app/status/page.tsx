@@ -33,7 +33,7 @@ export default async function StatusPage() {
 
   return (
     <div className="rm-page">
-      <header className="pt-10 sm:pt-14">
+      <header className="pt-8 sm:pt-10">
         <p className="rm-label">Operations</p>
         <h1 className="rm-h1 mt-4">Status</h1>
         <p className="rm-lede mt-5">

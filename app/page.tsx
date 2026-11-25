@@ -120,7 +120,7 @@ export default async function HomePage() {
   return (
     <div className="rm-page">
       {/* 1 · Masthead */}
-      <header className="grid gap-x-10 gap-y-8 pb-2 pt-6 sm:pt-14 lg:grid-cols-12 lg:pt-16">
+      <header className="grid gap-x-10 gap-y-8 pb-2 pt-6 sm:pt-10 lg:grid-cols-12 lg:pt-12">
         <div className="lg:col-span-7">
           <p className="rm-label">Equity risk data · API</p>
           <h1 className="rm-h1 mt-4">
@@ -220,7 +220,7 @@ export default async function HomePage() {
             hedge and the model metadata.
           </p>
         </SectionHead>
-        <div className="mt-8 grid items-start gap-6 lg:grid-cols-5">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-5">
           <div className="min-w-0 lg:col-span-2">
             <CodeExhibit
               caption="Request"
@@ -243,7 +243,7 @@ export default async function HomePage() {
 
       {/* 3 · Figures */}
       {/* Figures sit under the example they come from: hairline, close spacing. */}
-      <section className="mt-8 border-t border-rule pt-6" aria-label="Coverage">
+      <section className="mt-6 border-t border-rule pt-5" aria-label="Coverage">
         <dl className="grid grid-cols-1 gap-x-8 gap-y-8 min-[360px]:grid-cols-2 lg:grid-cols-4">
           <div>
             <dd className="rm-num">{coverage ? coverage.universe_stock_count.toLocaleString('en-US') : '—'}</dd>
@@ -298,7 +298,7 @@ export default async function HomePage() {
             ];
           })}
         />
-        <div className="rm-scroll-x mt-8 hidden sm:block">
+        <div className="rm-scroll-x mt-6 hidden sm:block">
           <table className="rm-table min-w-[36rem]">
             <thead>
               <tr>
@@ -339,7 +339,7 @@ export default async function HomePage() {
           .
         </p>
 
-        <div className="mt-12 grid gap-x-10 gap-y-6 lg:grid-cols-12">
+        <div className="mt-10 grid gap-x-10 gap-y-6 lg:grid-cols-12">
           <div className="lg:col-span-6">
             <h3 className="rm-h3">The universe is a dated membership list</h3>
             <p className="rm-body mt-3">
@@ -381,7 +381,7 @@ export default async function HomePage() {
             billed to the signed-in account at the prices above.
           </p>
         </SectionHead>
-        <div className="mt-8 grid gap-x-10 gap-y-8 lg:grid-cols-12">
+        <div className="mt-6 grid gap-x-10 gap-y-8 lg:grid-cols-12">
           <div className="min-w-0 lg:col-span-7">
             <ConnectorSteps />
           </div>
@@ -438,7 +438,7 @@ export default async function HomePage() {
             and private RSS.
           </p>
         </SectionHead>
-        <div className="mt-8">
+        <div className="mt-6">
           {feed ? (
             <>
               <FeedTable events={feed.events.slice(0, 5)} />
@@ -469,20 +469,20 @@ export default async function HomePage() {
             accuracy is in the published papers, which state what has been tested and how.
           </p>
         </SectionHead>
-        <ul className="mt-8 divide-y divide-[var(--rm-rule)] border-y border-rule">
+        <ul className="mt-6 divide-y divide-[var(--rm-rule)] border-y border-rule">
           {METHOD.map((m) => (
-            <li key={m.href} className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
-              <a href={m.href} target="_blank" rel="noopener noreferrer" className="rm-h3 rm-link lg:col-span-5">
+            <li key={m.href} className="grid gap-x-8 gap-y-1 py-3 lg:grid-cols-12">
+              <a href={m.href} target="_blank" rel="noopener noreferrer" className="rm-h3 rm-link lg:col-span-4">
                 {m.title}
               </a>
-              <p className="text-[0.9375rem] text-ink-muted lg:col-span-7">{m.note} On riskmodels.org.</p>
+              <p className="text-[0.9375rem] text-ink-muted lg:col-span-8">{m.note} On riskmodels.org.</p>
             </li>
           ))}
-          <li className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
-            <Link href="/docs/methodology" className="rm-h3 rm-link lg:col-span-5">
+          <li className="grid gap-x-8 gap-y-1 py-3 lg:grid-cols-12">
+            <Link href="/docs/methodology" className="rm-h3 rm-link lg:col-span-4">
               Field definitions
             </Link>
-            <p className="text-[0.9375rem] text-ink-muted lg:col-span-7">
+            <p className="text-[0.9375rem] text-ink-muted lg:col-span-8">
               What each returned field means and how it is computed.
             </p>
           </li>
@@ -498,7 +498,7 @@ export default async function HomePage() {
             license.
           </p>
         </SectionHead>
-        <p className="mt-6 lg:ml-[25%] lg:pl-2">
+        <p className="mt-5">
           <TrackedLink href="/pricing" location="home-pricing" className="rm-btn-ghost">
             See prices and licenses
           </TrackedLink>
@@ -508,7 +508,7 @@ export default async function HomePage() {
       {/* 9 · Operations */}
       <section className="rm-section" aria-labelledby="operations">
         <SectionHead n="07" label="Operations" title="Status and records" id="operations" />
-        <div className="mt-8 grid gap-x-10 gap-y-8 lg:grid-cols-12">
+        <div className="mt-6 grid gap-x-10 gap-y-8 lg:grid-cols-12">
           <div className="min-w-0 lg:col-span-7">
             {health ? (
               <table className="rm-table">

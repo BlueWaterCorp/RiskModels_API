@@ -187,7 +187,7 @@ function PriceTable({ caption, rows }: { caption: string; rows: typeof baselineR
         ],
       }))}
     />
-    <div className="rm-scroll-x mt-8 hidden sm:block">
+    <div className="rm-scroll-x mt-6 hidden sm:block">
       <table className="rm-table min-w-[34rem]">
         <caption className="rm-label pb-3 text-left">{caption}</caption>
         <thead>
@@ -215,15 +215,15 @@ function PriceTable({ caption, rows }: { caption: string; rows: typeof baselineR
 export default function PricingPage() {
   const examples = monthlyExamples();
   return (
-    <div className="rm-page pb-24">
-      <header className="pt-12 sm:pt-16">
+    <div className="rm-page pb-12">
+      <header className="pb-4 pt-8 sm:pt-10">
         <p className="rm-label">Pricing</p>
         <h1 className="rm-h1 mt-4 max-w-3xl">Pay per request. Annual licenses for firms.</h1>
-        <p className="rm-lede mt-6 max-w-2xl">
+        <p className="rm-lede mt-4 max-w-2xl">
           A new account receives $20 of credit at sign-in, with no card. After that, each successful request
           draws on prepaid credit at the prices below. There is no subscription and no seat fee.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/get-key" className="rm-btn">
             Get an API key
           </Link>
@@ -261,7 +261,7 @@ export default function PricingPage() {
             lines: [<span key="u" className="font-sans">{e.usage}</span>, e.sum],
           }))}
         />
-        <div className="rm-scroll-x mt-10 hidden sm:block">
+        <div className="rm-scroll-x mt-8 hidden sm:block">
           <table className="rm-table min-w-[38rem]">
             <caption className="rm-label pb-3 text-left">Three example months</caption>
             <thead>
@@ -319,7 +319,7 @@ export default function PricingPage() {
             },
           ]}
         />
-        <div className="rm-scroll-x mt-8 hidden sm:block">
+        <div className="rm-scroll-x mt-6 hidden sm:block">
           <table className="rm-table min-w-[30rem]">
             <thead>
               <tr>
@@ -377,7 +377,7 @@ export default function PricingPage() {
             </div>
           ))}
         </div>
-        <div className="rm-scroll-x mt-8 hidden sm:block">
+        <div className="rm-scroll-x mt-6 hidden sm:block">
           <table className="rm-table min-w-[44rem]">
             <thead>
               <tr>
@@ -424,7 +424,7 @@ export default function PricingPage() {
 
       <section className="rm-section" aria-labelledby="faq">
         <SectionHead n="04" label="Questions" title="Billing questions" id="faq" />
-        <div className="mt-8">
+        <div className="mt-6">
           <PricingFAQ items={faqs} />
         </div>
       </section>

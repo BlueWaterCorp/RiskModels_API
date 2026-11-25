@@ -19,7 +19,7 @@ export function SectionHead({
       <p className="rm-label">
         {n} · {label}
       </p>
-      <h2 id={id} className="rm-h2 mt-3">
+      <h2 id={id} className="rm-h2 mt-2">
         {title}
       </h2>
       {children ? <div className="rm-body mt-3">{children}</div> : null}

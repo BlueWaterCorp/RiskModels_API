@@ -25,15 +25,15 @@ export default function InstallationPage() {
   const price = getCapabilityById('metrics')?.pricing.cost_usd;
   const cost = price != null ? `$${price}` : 'the listed price';
   return (
-    <div className="rm-page pb-24">
-      <header className="pb-14 pt-12 sm:pt-16">
+    <div className="rm-page pb-12">
+      <header className="pb-4 pt-8 sm:pt-10">
         <p className="rm-label">Quickstart</p>
         <h1 className="rm-h1 mt-4 max-w-3xl">Make a first request</h1>
-        <p className="rm-lede mt-6 max-w-2xl">
+        <p className="rm-lede mt-4 max-w-2xl">
           Every route below returns the same data: the risk decomposition and ETF hedge ratios for one stock.
           Each needs an API key, and the request costs {cost} against the $20 of credit a new key carries.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/get-key" className="rm-btn">
             Get an API key
           </Link>
@@ -57,7 +57,7 @@ export default function InstallationPage() {
             .
           </p>
         </SectionHead>
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           <CodeExhibit tabs={[{ id: 'set', label: 'Set the key', code: 'export RISKMODELS_API_KEY=rm_agent_...' }]} />
           <CodeExhibit tabs={[{ id: 'curl', label: 'Request', code: CURL_FIRST_CALL }]} />
         </div>
@@ -71,7 +71,7 @@ export default function InstallationPage() {
             <code className="rm-mono">l3_market_hr</code> the market hedge ratio.
           </p>
         </SectionHead>
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           <CodeExhibit tabs={[{ id: 'install', label: 'Install', code: PYTHON_INSTALL }]} />
           <CodeExhibit
             tabs={[
@@ -98,7 +98,7 @@ export default function InstallationPage() {
             .
           </p>
         </SectionHead>
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           <CodeExhibit tabs={[{ id: 'install', label: 'Install', code: CLI_INSTALL }]} />
           <CodeExhibit tabs={[{ id: 'call', label: 'Request', code: CLI_FIRST_CALL }]} />
         </div>
@@ -111,7 +111,7 @@ export default function InstallationPage() {
             installer writes the server entry into the assistant configurations it finds.
           </p>
         </SectionHead>
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
           <ConnectorSteps />
           <div className="min-w-0">
             <CodeExhibit tabs={[{ id: 'install', label: 'Local install, with a key', code: AGENT_INSTALL }]} />
