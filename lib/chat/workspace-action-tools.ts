@@ -142,7 +142,7 @@ export const WORKSPACE_ACTION_TOOLS_REGISTRY: ChatToolDef[] = [
     openaiTool: fnTool(
       "set_window",
       `Change the riskmodels.net workspace's lookback window. ONLY these presets are performable: ${presetSummary()}. ` +
-        "'max' equals '2y' today — 504 trading days is all the client fetches. If the user asks for a " +
+        "'max' is the longest history the workspace holds for the subject (up to 2000 trading days). If the user asks for a " +
         "window that is not offered (e.g. 3 years or 5 years), do NOT silently substitute another " +
         "window: tell them which windows are offered and let them choose.",
       {
