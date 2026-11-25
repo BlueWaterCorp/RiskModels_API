@@ -73,15 +73,15 @@ export default async function SecurityMasterFeedPage() {
   const feed = await getFeedSample();
   const first = feed?.events[0];
   return (
-    <div className="rm-page pb-24">
-      <header className="pb-14 pt-12 sm:pt-16">
+    <div className="rm-page pb-12">
+      <header className="pb-4 pt-8 sm:pt-10">
         <p className="rm-label">Security master change feed · Early access</p>
         <h1 className="rm-h1 mt-4 max-w-4xl">A daily, filing-cited record of US equity identity changes</h1>
-        <p className="rm-lede mt-6 max-w-2xl">
+        <p className="rm-lede mt-4 max-w-2xl">
           Ticker and name changes, listing status, mergers and reorganizations, and splits, each tied to the
           SEC filing that supports it. Corrections to earlier editions are published in the open.
         </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <a href="#join" className="rm-btn">
             Request free access
           </a>
@@ -106,7 +106,7 @@ export default async function SecurityMasterFeedPage() {
               "The public sample holds a small number of recent events; approved subscribers receive current events."}
           </p>
         </SectionHead>
-        <div className="mt-8">
+        <div className="mt-6">
           {feed ? (
             <>
               <FeedTable events={feed.events} />
@@ -136,14 +136,14 @@ export default async function SecurityMasterFeedPage() {
 
       <section className="rm-section" aria-labelledby="contents">
         <SectionHead n="02" label="Contents" title="One edition with each daily data release" id="contents" />
-        <dl className="mt-8 divide-y divide-[var(--rm-rule)] border-y border-rule">
+        <dl className="mt-6 divide-y divide-[var(--rm-rule)] border-y border-rule">
           {EDITION_CONTENTS.map((item) => (
-            <div key={item.h} className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
+            <div key={item.h} className="grid gap-x-8 gap-y-1 py-3 lg:grid-cols-12">
               <dt className="rm-h3 lg:col-span-4">{item.h}</dt>
               <dd className="rm-body lg:col-span-8">{item.p}</dd>
             </div>
           ))}
-          <div className="grid gap-x-8 gap-y-1 py-4 lg:grid-cols-12">
+          <div className="grid gap-x-8 gap-y-1 py-3 lg:grid-cols-12">
             <dt className="rm-h3 lg:col-span-4">Outside scope</dt>
             <dd className="rm-body lg:col-span-8">{OUT_OF_SCOPE.join("; ")}.</dd>
           </div>
@@ -165,7 +165,7 @@ export default async function SecurityMasterFeedPage() {
             during early access; subscribers are told first.
           </p>
         </SectionHead>
-        <div className="mt-8">
+        <div className="mt-6">
           {first ? (
             <figure className="rm-plate min-w-0">
               <figcaption className="rm-label border-b border-rule px-3 py-2 sm:px-4">
