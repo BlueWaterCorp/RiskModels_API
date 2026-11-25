@@ -2213,6 +2213,35 @@ class RiskModelsClient:
         )
         return data
 
+    def get_fund_attribution_history(
+        self,
+        bw_fund_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Daily attribution of the fund's reported books (``$0.02``).
+
+        Market, sector, subsector and residual legs with weights changing at
+        each report date (``history_kind="actual"``,
+        ``time_basis="period_of_report"``). The series starts at
+        ``first_reliable_date`` (rule in ``first_reliable_rule``); sessions
+        outside the coverage rule after it carry null legs. ``series`` holds
+        parallel arrays keyed ``teo``, ``gross``, ``market``, ``sector``,
+        ``subsector``, ``residual``, ``coverage``.
+        """
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/funds/{quote(bw_fund_id, safe='')}/attribution-history",
+            params=params or None,
+        )
+        return data
+
     def get_fund_holdings(
         self,
         bw_fund_id: str,
@@ -2795,6 +2824,35 @@ class RiskModelsClient:
         data, _lineage, _r = self._transport.request(
             "GET",
             f"/13f/filers/{quote(bw_filer_id, safe='')}/portfolio",
+            params=params or None,
+        )
+        return data
+
+    def get_filer_attribution_history(
+        self,
+        bw_filer_id: str,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Daily attribution of the 13F filer's reported books (``$0.02``).
+
+        Market, sector, subsector and residual legs with weights changing at
+        each report date (``history_kind="actual"``,
+        ``time_basis="period_of_report"``). The series starts at
+        ``first_reliable_date`` (rule in ``first_reliable_rule``); sessions
+        outside the coverage rule after it carry null legs. ``series`` holds
+        parallel arrays keyed ``teo``, ``gross``, ``market``, ``sector``,
+        ``subsector``, ``residual``, ``coverage``.
+        """
+        params: dict[str, str] = {}
+        if start_date is not None:
+            params["start_date"] = start_date
+        if end_date is not None:
+            params["end_date"] = end_date
+        data, _lineage, _r = self._transport.request(
+            "GET",
+            f"/13f/filers/{quote(bw_filer_id, safe='')}/attribution-history",
             params=params or None,
         )
         return data

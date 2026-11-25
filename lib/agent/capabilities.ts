@@ -2723,6 +2723,54 @@ export const CAPABILITIES: Capability[] = [
     tags: ["funds", "history", "time-series"],
   },
   {
+    id: "fund-attribution-history",
+    name: "Fund Attribution History",
+    description:
+      "Daily return attribution of the fund's reported books — market, sector, subsector and residual legs, " +
+      "weights changing at each report date (history_kind \"actual\", time_basis \"period_of_report\"). " +
+      "Starts at first_reliable_date: the first session whose book has at least 50% of its weight covered; " +
+      "later sessions below 10% coverage carry null legs until coverage is back to 50%. Each session carries " +
+      "its coverage. Optional ?start_date and ?end_date (inclusive, YYYY-MM-DD) trim the series.",
+    endpoint: "/api/funds/{bw_fund_id}/attribution-history",
+    method: "GET",
+    parameters: {
+      bw_fund_id: {
+        type: "string",
+        required: true,
+        description: "Funds_DAG canonical fund id (format: BW-FUND-{series_id})",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "fund_attribution_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "monthly",
+      sources: ["bw_fund_id/{id}/ds_fund_returns_daily.zarr"],
+    },
+    tags: ["funds", "history", "time-series", "attribution"],
+  },
+  {
     id: "fund-nav-history",
     name: "Fund NAV History",
     description:
@@ -3549,6 +3597,54 @@ export const CAPABILITIES: Capability[] = [
       sources: ["bw_filer_id/{id}/ds_portfolio.zarr", "filers"],
     },
     tags: ["13f", "filers", "history", "time-series"],
+  },
+  {
+    id: "filer-attribution-history",
+    name: "13F Filer Attribution History",
+    description:
+      "Daily return attribution of the filer's reported books — market, sector, subsector and residual legs, " +
+      "weights changing at each report date (history_kind \"actual\", time_basis \"period_of_report\"). " +
+      "Starts at first_reliable_date: the first session whose book has at least 50% of its weight covered; " +
+      "later sessions below 10% coverage carry null legs until coverage is back to 50%. Each session carries " +
+      "its coverage. Optional ?start_date and ?end_date (inclusive, YYYY-MM-DD) trim the series.",
+    endpoint: "/api/13f/filers/{bw_filer_id}/attribution-history",
+    method: "GET",
+    parameters: {
+      bw_filer_id: {
+        type: "string",
+        required: true,
+        description: "Funds_DAG canonical filer id (format: BW-FILER-CIK{cik}).",
+      },
+      start_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive lower bound, YYYY-MM-DD",
+      },
+      end_date: {
+        type: "string",
+        required: false,
+        description: "Inclusive upper bound, YYYY-MM-DD",
+      },
+    },
+    pricing: {
+      model: "per_request",
+      tier: "baseline",
+      cost_usd: 0.02,
+      currency: "USD",
+      billing_code: "filer_attribution_history_v1",
+    },
+    performance: {
+      avg_latency_ms: 300,
+      p95_latency_ms: 800,
+      availability_sla: 99.9,
+      rate_limit_per_minute: 60,
+    },
+    confidence: {
+      data_quality_score: 0.9,
+      update_frequency: "quarterly",
+      sources: ["bw_filer_id/{id}/ds_filer_returns_daily.zarr"],
+    },
+    tags: ["13f", "filers", "history", "time-series", "attribution"],
   },
   {
     id: "filer-concentration",

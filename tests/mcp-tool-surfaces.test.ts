@@ -347,6 +347,7 @@ describe("MCP tool routing (method + REST path)", () => {
       ["hedge", `GET /funds/${id}/hedge`, false],
       ["nav_history", `GET /funds/${id}/nav`, true],
       ["portfolio_history", `GET /funds/${id}/portfolio`, true],
+      ["attribution_history", `GET /funds/${id}/attribution-history`, true],
       ["metrics", `GET /funds/${id}`, false],
     ];
     for (const [value, route, windowed] of cases) {
@@ -368,6 +369,7 @@ describe("MCP tool routing (method + REST path)", () => {
     const cases: Array<[string, string, boolean]> = [
       ["concentration", `GET /13f/filers/${id}/concentration`, true],
       ["portfolio_history", `GET /13f/filers/${id}/portfolio`, true],
+      ["attribution_history", `GET /13f/filers/${id}/attribution-history`, true],
       ["metrics", `GET /13f/filers/${id}`, false],
     ];
     for (const [value, route, windowed] of cases) {

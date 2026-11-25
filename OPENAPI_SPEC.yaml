@@ -4603,6 +4603,62 @@ components:
         effective_n: { type: number, format: float, nullable: true }
         top10_weight_sum: { type: number, format: float, nullable: true }
 
+    ActualHistoryBody:
+      type: object
+      description: Shared body of the attribution-history endpoints.
+      required: [history_kind, time_basis, frequency, first_reliable_date, first_reliable_rule, start_date, end_date, n_periods, n_gap_periods, return_identity, series]
+      properties:
+        history_kind: { type: string, enum: [actual] }
+        time_basis: { type: string, enum: [period_of_report] }
+        frequency: { type: string, enum: [daily] }
+        first_reliable_date: { type: string, format: date }
+        first_reliable_rule:
+          type: object
+          required: [coverage_enter, coverage_exit, coverage_measure, description]
+          properties:
+            coverage_enter: { type: number, example: 0.5 }
+            coverage_exit: { type: number, example: 0.1 }
+            coverage_measure: { type: string }
+            description: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        n_periods: { type: integer }
+        n_gap_periods: { type: integer, description: Sessions in the window outside the coverage rule (null legs). }
+        return_identity: { type: string, enum: ["gross = market + sector + subsector + residual"] }
+        series:
+          type: object
+          description: Parallel arrays, one entry per session. Legs are daily arithmetic returns.
+          required: [teo, gross, market, sector, subsector, residual, coverage]
+          properties:
+            teo: { type: array, items: { type: string, format: date } }
+            gross: { type: array, items: { type: number, nullable: true } }
+            market: { type: array, items: { type: number, nullable: true } }
+            sector: { type: array, items: { type: number, nullable: true } }
+            subsector: { type: array, items: { type: number, nullable: true } }
+            residual: { type: array, items: { type: number, nullable: true } }
+            coverage: { type: array, items: { type: number, nullable: true } }
+            book_report_date:
+              type: array
+              description: Report date of the book in force (filers only).
+              items: { type: string, format: date, nullable: true }
+    FundAttributionHistoryResponse:
+      allOf:
+        - type: object
+          required: [bw_fund_id]
+          properties:
+            bw_fund_id: { type: string }
+            ticker: { type: string, nullable: true }
+            fund_name: { type: string, nullable: true }
+        - $ref: "#/components/schemas/ActualHistoryBody"
+    FilerAttributionHistoryResponse:
+      allOf:
+        - type: object
+          required: [bw_filer_id]
+          properties:
+            bw_filer_id: { type: string }
+            cik: { type: string, nullable: true }
+            name: { type: string, nullable: true }
+        - $ref: "#/components/schemas/ActualHistoryBody"
     FundPortfolioHistoryResponse:
       type: object
       description: >
@@ -13702,6 +13758,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/RateLimitExceeded"
 
+  /funds/{bw_fund_id}/attribution-history:
+    get:
+      summary: Fund attribution history (actual reported books)
+      description: >
+        Daily return attribution of the fund's reported books (market,
+        sector, subsector, residual), weights changing at each report date.
+        `history_kind` is `actual`; `time_basis` is `period_of_report` (a
+        book is held from the first close on or after its report date). The
+        series starts at `first_reliable_date`, the first session whose book
+        has at least 50% of its weight covered; later sessions below 10%
+        coverage carry null legs until coverage is back to 50%
+        (`first_reliable_rule`). `coverage` is reported per session.
+      operationId: getFundAttributionHistory
+      tags: [Funds]
+      x-pricing:
+        capability_id: fund-attribution-history
+        tier: baseline
+        cost_usd: 0.02
+        billing_code: fund_attribution_history_v1
+      parameters:
+        - name: bw_fund_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FUND-S000006037
+        - name: start_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive lower bound (YYYY-MM-DD). Does not change first_reliable_date.
+        - name: end_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive upper bound (YYYY-MM-DD).
+      responses:
+        "200":
+          description: Daily attribution series.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: Last session in the returned series.
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FundAttributionHistoryResponse"
+        "400":
+          description: Malformed date params or start_date > end_date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Unknown id, no published history, or no session meets the coverage rule in the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
+
   /funds/{bw_fund_id}/nav:
     get:
       summary: Per-fund NAV time series (yfinance)
@@ -14263,6 +14392,79 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "429":
           description: Rate limit exceeded.
+
+  /13f/filers/{bw_filer_id}/attribution-history:
+    get:
+      summary: 13F filer attribution history (actual reported books)
+      description: >
+        Daily return attribution of the filer's reported books (market,
+        sector, subsector, residual), weights changing at each report date.
+        `history_kind` is `actual`; `time_basis` is `period_of_report` (a
+        book is held from the first close on or after its report date). The
+        series starts at `first_reliable_date`, the first session whose book
+        has at least 50% of its weight covered; later sessions below 10%
+        coverage carry null legs until coverage is back to 50%
+        (`first_reliable_rule`). `coverage` is reported per session.
+      operationId: getFilerAttributionHistory
+      tags: [13F Filers]
+      x-pricing:
+        capability_id: filer-attribution-history
+        tier: baseline
+        cost_usd: 0.02
+        billing_code: filer_attribution_history_v1
+      parameters:
+        - name: bw_filer_id
+          in: path
+          required: true
+          schema: { type: string }
+          example: BW-FILER-CIK0001067983
+        - name: start_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive lower bound (YYYY-MM-DD). Does not change first_reliable_date.
+        - name: end_date
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Inclusive upper bound (YYYY-MM-DD).
+      responses:
+        "200":
+          description: Daily attribution series.
+          headers:
+            X-Data-As-Of:
+              schema: { type: string, format: date }
+              description: Last session in the returned series.
+            X-API-Cost-USD:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilerAttributionHistoryResponse"
+        "400":
+          description: Malformed date params or start_date > end_date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Insufficient prepaid balance.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientBalance"
+        "404":
+          description: Unknown id, no published history, or no session meets the coverage rule in the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RateLimitExceeded"
 
   /13f/filers/{bw_filer_id}/concentration:
     get:

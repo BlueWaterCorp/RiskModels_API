@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-24 — Attribution history of reported books (funds, 13F filers)
+
+- `GET /api/funds/{bw_fund_id}/attribution-history` and `GET /api/13f/filers/{bw_filer_id}/attribution-history` ($0.02 each, same tier as `/portfolio`): daily market, sector, subsector and residual returns of the subject's reported books, weights changing at each report date. The body states `history_kind: "actual"`, `time_basis: "period_of_report"` and `frequency: "daily"`.
+- The series starts at `first_reliable_date`, the first session whose book has at least 50% of its weight covered; after it, sessions below 10% coverage carry null legs until coverage is back to 50% (`first_reliable_rule`, `n_gap_periods`). Each session carries `coverage`; filer sessions also carry `book_report_date`.
+- SDK: `get_fund_attribution_history`, `get_filer_attribution_history`. MCP: `riskmodels_get_fund` and `riskmodels_get_filer` accept `include: ["attribution_history"]`.
+
 ## 2026-11-23 — Event Ledger subscriber access
 
 - `/security-master-feed/latest.json` now serves a dated public sample: up to five verified events, each at least seven days old, marked `sample: true`.
