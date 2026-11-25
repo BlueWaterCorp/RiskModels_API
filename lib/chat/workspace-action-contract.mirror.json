@@ -26,13 +26,14 @@
     "6m": 126,
     "1y": 252,
     "2y": 504,
-    "max": 504
+    "max": 2000
   },
   "offered_lookback_days": [
     63,
     126,
     252,
-    504
+    504,
+    2000
   ],
   "subject_kinds": [
     "fund",
