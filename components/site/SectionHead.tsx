@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-/** Numbered section head: mono label in the margin column, serif heading beside it. */
+/** Numbered section head: mono label stacked above the serif heading, one rhythm on every page. */
 export function SectionHead({
   n,
   label,
@@ -15,16 +15,14 @@ export function SectionHead({
   id?: string;
 }) {
   return (
-    <div className="grid gap-x-8 gap-y-3 lg:grid-cols-12">
-      <p className="rm-label lg:col-span-3">
+    <div className="max-w-3xl">
+      <p className="rm-label">
         {n} · {label}
       </p>
-      <div className="lg:col-span-9">
-        <h2 id={id} className="rm-h2">
-          {title}
-        </h2>
-        {children ? <div className="rm-body mt-3">{children}</div> : null}
-      </div>
+      <h2 id={id} className="rm-h2 mt-3">
+        {title}
+      </h2>
+      {children ? <div className="rm-body mt-3">{children}</div> : null}
     </div>
   );
 }

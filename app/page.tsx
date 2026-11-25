@@ -75,6 +75,9 @@ function share(n: number | null): string {
   return n == null ? 'n/a' : `${(n * 100).toFixed(1).replace('-', '−')}%`;
 }
 
+/** Endpoint source under a figure: its own mono line, never broken inside the path. */
+const ENDPOINT_LINE = "rm-mono mt-1 block whitespace-nowrap text-[0.6875rem] sm:text-[0.75rem]";
+
 function abridged(m: MetricsExhibit): string {
   return JSON.stringify(
     {
@@ -187,7 +190,7 @@ export default async function HomePage() {
           ) : null}
           <p className="rm-small mt-2">
             Hedge ratio is dollars of the ETF per dollar of stock: negative is a short, positive a long. Source:{' '}
-            <code className="rm-mono">GET /api/metrics/NVDA</code>,{' '}
+            <code className="rm-mono whitespace-nowrap">GET /api/metrics/NVDA</code>,{' '}
             {metrics.source === 'live' ? `read on ${metrics.obtained}` : `recorded on ${metrics.obtained}`}.
           </p>
           <details className="rm-small mt-2">
@@ -217,50 +220,59 @@ export default async function HomePage() {
             hedge and the model metadata.
           </p>
         </SectionHead>
-        <div className="mt-8 grid items-start gap-6 lg:grid-cols-2">
-          <CodeExhibit
-            caption="Request"
+        <div className="mt-8 grid items-start gap-6 lg:grid-cols-5">
+          <div className="min-w-0 lg:col-span-2">
+            <CodeExhibit
+              caption="Request"
             tabs={[
               { id: 'curl', label: 'curl', code: CURL, note: `Needs an API key. Costs ${usd(metricsPrice)} per request.` },
               { id: 'python', label: 'Python', code: PYTHON, note: 'The SDK returns the same fields under short names.' },
               { id: 'cli', label: 'Command line', code: CLI, note: 'Needs Node.js 18 or later and RISKMODELS_API_KEY.' },
             ]}
           />
-          <CodeExhibit
-            caption={`Response · abridged · ${metrics.source === 'live' ? 'read' : 'recorded'} ${metrics.obtained}`}
+          </div>
+          <div className="min-w-0 lg:col-span-3">
+            <CodeExhibit
+              caption={`Response · abridged · ${metrics.source === 'live' ? 'read' : 'recorded'} ${metrics.obtained}`}
             tabs={[{ id: 'json', label: 'JSON', code: abridged(metrics) }]}
-            collapsedLines={8}
-          />
+              collapsedLines={8}
+            />
+          </div>
         </div>
       </section>
 
       {/* 3 · Figures */}
-      <section className="rm-section" aria-label="Coverage">
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-8 lg:grid-cols-4">
+      {/* Figures sit under the example they come from: hairline, close spacing. */}
+      <section className="mt-8 border-t border-rule pt-6" aria-label="Coverage">
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-8 min-[360px]:grid-cols-2 lg:grid-cols-4">
           <div>
             <dd className="rm-num">{coverage ? coverage.universe_stock_count.toLocaleString('en-US') : '—'}</dd>
             <dt className="rm-small mt-2">
               US stocks with a record in the API: the 2,786 on the membership list for 2026-11-23, plus stocks
-              outside it. <span className="rm-mono">/api/health</span>
+              outside it.
+              <span className={ENDPOINT_LINE}>/api/health</span>
             </dt>
           </div>
           <div>
             <dd className="rm-num">{HEDGE_ETFS.market + HEDGE_ETFS.sector + HEDGE_ETFS.subsector}</dd>
             <dt className="rm-small mt-2">
               Hedge ETFs: {HEDGE_ETFS.market} market, {HEDGE_ETFS.sector} sector, {HEDGE_ETFS.subsector} subsector,
-              counted {HEDGE_ETFS.countedOn}. <span className="rm-mono break-all">/api/data/etf/universe</span>
+              counted {HEDGE_ETFS.countedOn}.
+              <span className={ENDPOINT_LINE}>/api/data/etf/universe</span>
             </dt>
           </div>
           <div>
             <dd className="rm-num">{coverage ? coverage.latest_teo : '—'}</dd>
             <dt className="rm-small mt-2">
-              Latest trading day in the data. <span className="rm-mono">/api/health</span>
+              Latest trading day in the data.
+              <span className={ENDPOINT_LINE}>/api/health</span>
             </dt>
           </div>
           <div>
             <dd className="rm-num">{usd(metricsPrice)}</dd>
             <dt className="rm-small mt-2">
-              Per request for one stock&rsquo;s metrics. <span className="rm-mono">/api/pricing</span>
+              Per request for one stock&rsquo;s metrics.
+              <span className={ENDPOINT_LINE}>/api/pricing</span>
             </dt>
           </div>
         </dl>

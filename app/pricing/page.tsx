@@ -216,7 +216,7 @@ export default function PricingPage() {
   const examples = monthlyExamples();
   return (
     <div className="rm-page pb-24">
-      <header className="pb-14 pt-12 sm:pt-16">
+      <header className="pt-12 sm:pt-16">
         <p className="rm-label">Pricing</p>
         <h1 className="rm-h1 mt-4 max-w-3xl">Pay per request. Annual licenses for firms.</h1>
         <p className="rm-lede mt-6 max-w-2xl">
