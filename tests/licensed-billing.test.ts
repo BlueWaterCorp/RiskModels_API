@@ -3,6 +3,7 @@ import { extractRequestFacets } from "@/lib/agent/request-facets";
 import {
   licensedTelemetryMetadata,
   shouldSkipCharge,
+  isInternalAccount,
 } from "@/lib/agent/licensed-billing";
 
 describe("extractRequestFacets", () => {
@@ -98,5 +99,22 @@ describe("licensedTelemetryMetadata", () => {
     expect(meta.billing_mode).toBeUndefined();
     expect(meta.list_price_usd).toBeUndefined();
     expect(meta.fetch_latency_ms).toBe(12);
+  });
+});
+
+describe("isInternalAccount", () => {
+  it("matches an id on the comma-separated list, ignoring spaces", () => {
+    expect(isInternalAccount("u-2", "u-1, u-2 ,u-3")).toBe(true);
+  });
+  it("is false for anyone not on the list", () => {
+    expect(isInternalAccount("customer", "u-1,u-2")).toBe(false);
+  });
+  it("is false when the list is empty or unset, or the user is unknown", () => {
+    expect(isInternalAccount("u-1", "")).toBe(false);
+    expect(isInternalAccount("u-1", undefined)).toBe(false);
+    expect(isInternalAccount(null, "u-1")).toBe(false);
+  });
+  it("never matches an empty id from a trailing comma", () => {
+    expect(isInternalAccount("", "u-1,")).toBe(false);
   });
 });

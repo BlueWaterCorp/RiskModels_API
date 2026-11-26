@@ -8,6 +8,23 @@ export type LicenseAccount = {
   licenseTier: string | null;
 };
 
+/**
+ * First-party accounts that are never charged: our own test and operator
+ * accounts, listed by user id in RISKMODELS_INTERNAL_USER_IDS (comma-separated).
+ * Customers are never on this list.
+ */
+export function isInternalAccount(
+  userId: string | null | undefined,
+  raw: string | undefined = process.env.RISKMODELS_INTERNAL_USER_IDS,
+): boolean {
+  if (!userId || !raw) return false;
+  return raw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .includes(userId);
+}
+
 export function shouldSkipCharge(opts: {
   internalUnlimited?: boolean;
   billingMode?: BillingMode | string | null;
