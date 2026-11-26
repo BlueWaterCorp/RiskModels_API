@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-43`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-44`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -204,3 +204,7 @@ Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessi
 
 **Impact:** IMPROVEMENT · `/13f/filers/{id}/attribution-history` (2026-11-24) sets `first_reliable_date` by applying the 50% enter / 10% exit thresholds in `lib/portfolio/actual-history.ts` to the session coverage of the filer's daily returns store (mapped share × priced share). Funds read the same rule from their store, which is already blanked outside the fund mask. Two copies of one rule can drift: if the fund mask thresholds change, the filer side does not follow. Example dates on the current stores: Pershing Square first return 2006-01-03, first reliable 2007-01-04 (2006 books 27% covered); Baupost 2002-07-02 and 2011-07-01. When the filer coverage mask lands in the filer masks store (tracked in Funds_DAG FDAG-97, the FDAG-81 remainder "filer masks were not built"), read it instead and delete the local thresholds. **Needs:** Funds_DAG (FDAG-97), then engineering.
 
+## RMAPI-43 · Dividend yield and distribution history per stock (2026-11-25)
+
+**Impact:** IMPROVEMENT · The API serves total returns but no dividend fields per stock, so a caller cannot separate income from price return or screen by yield, and the imputed-trades scorecard cannot tell a dividend taken as cash from a small sale (FDAG-134). Conrad, 2026-11-25: dividend yield is a valuable point to build for the API. **Needs:** engineering (yield from existing fields); ERM3 only for ex-dates.
+Proposed: `GET /api/metrics/{ticker}` gains trailing-12-month dividend yield and its as-of date; a priced history endpoint returns dated distributions with yield per period. Primary source, available now: the SEC fundamentals already carry quarterly `dividends_paid` (cash paid, 99.7% of a 1,200-company sample) and `dividends_declared` (98.1%), point in time by filing date (`ERM3/erm3/core/fundamentals_concepts.py`); trailing yield = TTM `dividends_paid` / point-in-time market cap, the basis `payout_ratio` already uses. Ex-dates and per-share amounts, if wanted later, come from the adjusted-close inference ERM3-76 already runs, as a second witness. Serve yields and per-share amounts under the derived-data terms; confirm the raw-field rule before any amount is exposed. Price on the existing per-stock scale.

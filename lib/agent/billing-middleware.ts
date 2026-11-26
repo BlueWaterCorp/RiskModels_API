@@ -24,6 +24,7 @@ import { createPaymentRequiredResponse, createMonthlyCapExceededResponse } from 
 import { generateRequestId, logTelemetry } from "./telemetry";
 import { extractApiKey, validateApiKey } from "./api-keys";
 import {
+  isInternalAccount,
   loadLicenseAccount,
   licensedTelemetryMetadata,
   shouldSkipCharge,
@@ -636,7 +637,7 @@ export function withBilling(
       // user, or whenever RISKMODELS_GATEWAY_UNLIMITED=true (blanket exemption).
       const gatewayBillingUid =
         process.env.RISKMODELS_GATEWAY_BILLING_USER_ID?.trim();
-      const internalUnlimited =
+      let internalUnlimited =
         isTrustedServiceGateway &&
         (process.env.RISKMODELS_GATEWAY_UNLIMITED === "true" ||
           (!!gatewayBillingUid && userId === gatewayBillingUid));
@@ -695,6 +696,12 @@ export function withBilling(
           );
         }
         userId = user.id;
+      }
+
+      // Our own accounts (CI test user, operators) are never charged, whether
+      // they call with a key or through the portal gateway.
+      if (!internalUnlimited && isInternalAccount(userId)) {
+        internalUnlimited = true;
       }
 
       // Org keys take billing mode / license tier from the org row.
@@ -827,7 +834,7 @@ export function withBilling(
 
       // 3. Check free tier limits (if tier is free)
       let freeTierCheck: any = null;
-      if (costUsd > 0) {
+      if (costUsd > 0 && !skipCharge) {
         freeTierCheck = await checkFreeTierLimit(userId);
 
         if (freeTierCheck.tier === "free" && !freeTierCheck.can_proceed) {
