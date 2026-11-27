@@ -456,7 +456,7 @@ export default async function HomePage() {
             <Unavailable what="The feed sample" />
           )}
           <p className="mt-6">
-            <TrackedLink href="/security-master-feed" location="home-feed" className="rm-btn-ghost">
+            <TrackedLink href="/security-master-feed/access" location="home-feed" className="rm-btn-ghost">
               Request feed access
             </TrackedLink>
           </p>

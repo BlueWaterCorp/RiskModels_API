@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 // Every statement here should match what the code does; check the code before
 // changing a sentence, and update "Last updated".
 
-const LAST_UPDATED = 'November 13, 2026';
+const LAST_UPDATED = 'November 27, 2026';
 
-type Item = { label: string; text: string };
+type Item = { label: string; text: string; href?: string };
 type Section = { title: string; intro?: string; items?: Item[]; paragraphs?: string[] };
 
 const sections: Section[] = [
@@ -105,6 +105,11 @@ const sections: Section[] = [
       { label: 'Resend', text: 'email delivery, including the Event Ledger editions and feed list emails, as our email processor.' },
       { label: 'Plaid', text: 'brokerage connections, only if you link an account.' },
       { label: 'PostHog and Google', text: 'website analytics and ad measurement; Google and GitHub also for sign-in if you choose them.' },
+      {
+        label: 'Cloudflare Turnstile',
+        text: 'checks, without showing anything, that the sign-in form is used by a person and not a bot. Cloudflare processes signals from your browser for this purpose only, as described in its Turnstile Privacy Addendum: ',
+        href: 'https://www.cloudflare.com/turnstile-privacy-policy/',
+      },
       { label: 'Anthropic and Moonshot AI', text: 'the chat assistant only.' },
     ],
     paragraphs: [
@@ -199,6 +204,11 @@ export default function PrivacyPage() {
                   <li key={it.label} className="leading-7">
                     <span className="font-medium text-zinc-100">{it.label}: </span>
                     <span className="text-zinc-400">{it.text}</span>
+                    {it.href ? (
+                      <a href={it.href} target="_blank" rel="noopener noreferrer" className="break-all text-blue-300 hover:text-blue-200">
+                        {it.href}
+                      </a>
+                    ) : null}
                   </li>
                 ))}
               </ul>
