@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-45`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-46`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -223,3 +223,8 @@ Proposed: `GET /api/metrics/{ticker}` gains trailing-12-month dividend yield and
 - LEG-2: analytics and ad tags set cookies before interaction for US visitors. The policy discloses this; check the EEA banner from an EU address quarterly.
 - HYGIENE: `aria-current="page"` on the current nav link; one `<main>` per page on `/api-reference`, `/legal`, `/privacy`; h2 for "Parameters"; canonicals on `/legal` and `/privacy`; `Organization` and `WebSite` JSON-LD on home; solid top-bar ground and no violet gradient on `/legal`; banner `<header>` on `/get-key`.
 - Contrast beyond the audited pages: RMAPI-39 (zinc-600 copy outside the redesign) overlaps; the light-theme `zinc-600` step now computes to `#586579`, so re-audit those pages before closing it.
+
+## RMAPI-45 · Home: an interactive hedge example that writes its own request (2026-11-27)
+
+**Impact:** IMPROVEMENT · The home page shows a fixed NVDA hedge table. A visitor who wants to try it on their own position has to leave the page and read the docs. A desktop review (2026-11-27) found room beside the hero for a working example. **Needs:** engineering, next design round.
+Proposed: in the space beside the hero, a small playground: choose a stock (NVDA, MSFT, a search box) and a position size; show the ETF hedge in dollars per layer and the variance shares (which do not change with size); under the result, "Copy this request" with the exact API call and the data date, as in Mapbox's API playground. Served by the existing metrics endpoint with caching; guests see a capped number of lookups.
