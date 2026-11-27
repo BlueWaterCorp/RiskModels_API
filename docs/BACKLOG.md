@@ -181,10 +181,6 @@ Add the window (or a pointer to it) to `_metadata` in the shared metadata builde
 
 Enforce the full policy after sign-in with the bot check, the OAuth authorize page, the card-setup redirect, chat and analytics have each run with zero reports. Inline scripts are allowed by `'unsafe-inline'`; replacing that with nonces makes every page render per request, which reverses the caching change, so hash the fixed inline scripts instead.
 
-## RMAPI-38 · Published CLI installer rejects API keys that contain "-" (2026-11-24)
-
-**Impact:** MATERIAL · `npx -y riskmodels@latest install` validates the key with a pattern that excludes "-", so some valid keys are refused. Fixed in `cli/src/lib/mcp-install-plan.ts`; the fix reaches users only with the next npm release of the CLI. **Needs:** engineering
-
 ## RMAPI-39 · Low-contrast small text remains on pages outside the redesign (2026-11-24)
 
 **Impact:** HYGIENE · Pages not restyled in the site redesign (account, docs MDX bodies, API reference panels, chat panel) still use the `zinc-600` text step for small copy, which computes to about 3.5:1 on the light surface, under the 4.5:1 threshold. **Needs:** engineering
