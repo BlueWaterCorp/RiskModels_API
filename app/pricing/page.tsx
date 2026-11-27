@@ -98,7 +98,7 @@ const premiumRows = [
 const licenseRows: Array<[string, string, string, string]> = [
   ["Price per year", "$50,000", "$150,000", "$250,000"],
   ["Use", "One team, one strategy", "Unlimited internal use across the firm", "Systematic production dependency"],
-  ["Universe", "Standard universe: about 3,000 US stocks by market capitalization, with dated membership for any past trading day", "Full published universe", "Full published universe"],
+  ["Universe", "Standard universe: the 3,000 largest US stocks by market capitalization, with dated membership for any past trading day", "Full published universe", "Full published universe"],
   ["Support", "Named contact; onboarding for the desk workflow", "Named contact; onboarding for research systems", "Incident contact; onboarding for production pipelines and entitlement review"],
   ["Availability", "Higher request limits than pay-per-request", "SLA on availability of the public API", "Contracted SLA"],
   ["Model versions", "Notice of scheduled deprecations", "Deprecation policy with a stated notice window", "Version pinning of model vintages; minimum notice window"],

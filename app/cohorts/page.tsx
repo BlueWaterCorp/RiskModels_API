@@ -204,7 +204,7 @@ export default async function CohortDispersionPage({
             <h2 className="text-xl font-semibold text-slate-900">
               Where the opportunity is today
             </h2>
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-slate-600">
               sorted by residual dispersion
             </span>
           </div>
@@ -215,7 +215,7 @@ export default async function CohortDispersionPage({
           <div className="mt-5 overflow-x-auto rounded-lg bg-white shadow-sm">
             <table className="w-full min-w-[720px] text-sm">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-600">
                   <th className="px-4 py-3 font-medium">Cohort</th>
                   <th className="px-4 py-3 font-medium w-[38%]">Residual dispersion</th>
                   <th className="px-4 py-3 font-medium text-right">Mean pairwise corr</th>
@@ -237,7 +237,7 @@ export default async function CohortDispersionPage({
                     >
                       <td className="px-4 py-3">
                         <span className="font-semibold text-slate-900">{r.ticker}</span>
-                        <span className="ml-2 text-xs text-slate-500">
+                        <span className="ml-2 text-xs text-slate-600">
                           {r.level === 1 ? "market" : "sector"}
                         </span>
                         {thin && (
@@ -272,7 +272,7 @@ export default async function CohortDispersionPage({
                       <td className="px-4 py-3 text-right tabular-nums text-slate-700">
                         {fmtNum(r.nEff, 1)}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-slate-500">
+                      <td className="px-4 py-3 text-right tabular-nums text-slate-600">
                         {r.nNames ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-slate-700">
@@ -285,7 +285,7 @@ export default async function CohortDispersionPage({
             </table>
           </div>
 
-          <p className="mt-3 text-xs leading-relaxed text-slate-500 max-w-3xl">
+          <p className="mt-3 text-xs leading-relaxed text-slate-600 max-w-3xl">
             {snapshot.disclosures.thin_cohorts} Effective breadth is inverse-Herfindahl:
             {market && market.nEff != null && market.nNames != null ? (
               <>
@@ -350,7 +350,7 @@ export default async function CohortDispersionPage({
             <div className="mt-5 rounded-lg bg-white p-5 shadow-sm">
               <DriftChart history={history} />
             </div>
-            <p className="mt-3 text-xs leading-relaxed text-slate-500 max-w-3xl">
+            <p className="mt-3 text-xs leading-relaxed text-slate-600 max-w-3xl">
               To split your own book&apos;s realized residual return into selection and
               drift, post its positions to{" "}
               <code className="rounded bg-slate-100 px-1 py-0.5">
@@ -375,12 +375,12 @@ export default async function CohortDispersionPage({
             </li>
             <li>{snapshot.disclosures.er_sign}</li>
             {snapshot.disclosures.return_source_legend && (
-              <li className="text-xs text-slate-500">
+              <li className="text-xs text-slate-600">
                 {snapshot.disclosures.return_source_legend}
               </li>
             )}
           </ul>
-          <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
+          <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-600">
             Realized historical statistics only. Nothing here is a forecast, a rating, or a
             recommendation to buy or sell any security. Public cohort scope is the market
             factor plus the 11 GICS sector SPDRs.
@@ -453,7 +453,7 @@ function DispersionChart({ history }: { history: HistoryResult }) {
               stroke="#e2e8f0"
               strokeWidth={1}
             />
-            <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#64748b">
+            <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#475569">
               {(t * 100).toFixed(1)}%
             </text>
           </g>
@@ -466,7 +466,7 @@ function DispersionChart({ history }: { history: HistoryResult }) {
             y={H - 8}
             textAnchor={i === 0 ? "start" : i === dates.length - 1 ? "end" : "middle"}
             fontSize={11}
-            fill="#64748b"
+            fill="#475569"
           >
             {dates[i]?.slice(0, 7)}
           </text>
@@ -528,7 +528,7 @@ function DispersionChart({ history }: { history: HistoryResult }) {
             />
             {c.ticker}
             {c.proxied_fraction > 0.01 && (
-              <span className="text-slate-400">
+              <span className="text-slate-600">
                 ({(c.proxied_fraction * 100).toFixed(0)}% proxied)
               </span>
             )}
@@ -608,7 +608,7 @@ function DriftChart({ history }: { history: HistoryResult }) {
               stroke="#e2e8f0"
               strokeWidth={1}
             />
-            <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#64748b">
+            <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end" fontSize={11} fill="#475569">
               {(t * 100).toFixed(0)}%
             </text>
           </g>
@@ -633,7 +633,7 @@ function DriftChart({ history }: { history: HistoryResult }) {
             y={H - 8}
             textAnchor={i === 0 ? "start" : i === dates.length - 1 ? "end" : "middle"}
             fontSize={11}
-            fill="#64748b"
+            fill="#475569"
           >
             {dates[i]?.slice(0, 7)}
           </text>
@@ -670,7 +670,7 @@ function DriftChart({ history }: { history: HistoryResult }) {
               />
               {c.ticker}
               {end != null && (
-                <span className={end < 0 ? "text-slate-500" : "text-slate-500"}>
+                <span className={end < 0 ? "text-slate-600" : "text-slate-600"}>
                   ({end >= 0 ? "+" : ""}
                   {(end * 100).toFixed(1)}%)
                 </span>

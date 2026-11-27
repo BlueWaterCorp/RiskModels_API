@@ -53,7 +53,7 @@ export async function GET() {
       name: "RiskModels",
       version: "3.0.0-agent",
       description:
-        "Factor risk decomposition (L1/L2/L3 explained risk), ETF hedge ratios, and portfolio risk snapshots for ~3,000 US equities.",
+        "Factor risk decomposition (L1/L2/L3 explained risk), ETF hedge ratios, and portfolio risk snapshots for the 3,000-stock US universe.",
       base_url: base,
       openapi_url: `${base}/openapi.json`,
       mcp_sse_url: `${base}/api/mcp/sse`,

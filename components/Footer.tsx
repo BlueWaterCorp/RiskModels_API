@@ -58,14 +58,14 @@ export default function Footer() {
                       <a
                         href={l.href}
                         {...(l.href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
-                        className="text-ink-muted hover:text-ink"
+                        className="whitespace-nowrap text-ink-muted hover:text-ink"
                       >
                         {l.label}
                       </a>
                     </li>
                   ) : (
                     <li key={l.href}>
-                      <Link href={l.href} prefetch={l.prefetch} className="text-ink-muted hover:text-ink">
+                      <Link href={l.href} prefetch={l.prefetch} className="whitespace-nowrap text-ink-muted hover:text-ink">
                         {l.label}
                       </Link>
                     </li>

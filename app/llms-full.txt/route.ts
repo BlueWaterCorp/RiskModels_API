@@ -1,11 +1,13 @@
 import { buildLlmsFullTxt } from "@/lib/llms-txt";
+import { getCoverageFacts } from "@/lib/dal/coverage-facts";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://riskmodels.app";
-  const body = buildLlmsFullTxt(appUrl);
+  const facts = await getCoverageFacts().catch(() => null);
+  const body = buildLlmsFullTxt(appUrl, facts);
   return new Response(body, {
     status: 200,
     headers: {

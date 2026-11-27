@@ -247,7 +247,7 @@ When ChatGPT already has your Schwab book via **Finances**, you do not need Risk
 
 1. Ask ChatGPT to list your holdings (tickers + weights or dollar notionals from Finances).
 2. Paste: *"Use https://riskmodels.app/llms.txt to set up RiskModels REST for this chat, then analyze factor exposure and concentration for these holdings: …"*
-3. For a full ~3k-name book, get a personal key at [/get-key](/get-key) and paste it once (or use Developer Mode MCP above for persistent tools).
+3. For a full-universe book, get a personal key at [/get-key](/get-key) and paste it once (or use Developer Mode MCP above for persistent tools).
 
 Example tickers ChatGPT may already see: `VTI`, `GOOG`, `MS`, `AMZN`, `IEMG`, `NFLX`. RiskModels returns L1/L2/L3 explained risk and ETF hedge ratios per name; aggregate with `POST /api/portfolio/risk-snapshot` when you have weights.
 

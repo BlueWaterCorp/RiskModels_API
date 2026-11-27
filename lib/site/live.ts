@@ -132,6 +132,11 @@ export interface Health {
     latest_teo_coverage_pct: number;
     latest_session_returns_pending: boolean;
   };
+  coverage?: {
+    history_starts: { returns: string; hedge_ratio: string; explained_risk: string; residual_share: string; lstar: string };
+    universe: { label: string; as_of: string; member_count: number } | null;
+    stock_records: number | null;
+  };
   macro_factors?: { status: string; newest_teo?: string; stale?: boolean };
 }
 

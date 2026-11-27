@@ -59,7 +59,8 @@ export default function Navbar() {
     },
   ];
 
-  const linkBase = 'rm-mono rounded-[2px] px-2.5 py-1.5 text-xs transition-colors';
+  // Labels never wrap and tighten the word space, so a two-word label reads as one item.
+  const linkBase = 'rm-mono whitespace-nowrap rounded-[2px] px-2 py-1.5 text-xs [word-spacing:-0.15em] transition-colors';
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-50 border-b border-rule bg-background/95 backdrop-blur-md">
@@ -67,7 +68,7 @@ export default function Navbar() {
         <div className="flex h-16 min-w-0 items-center gap-3 sm:h-[4.5rem] lg:gap-5">
           <Logo subWord="API" />
 
-          <div className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 lg:flex">
+          <div className="hidden min-w-0 flex-1 items-center justify-center gap-2 lg:flex">
             {navLinks.map((link) => {
               const active = !link.external && navActive(pathname, link.href);
               const className = `${linkBase} ${
@@ -112,7 +113,7 @@ export default function Navbar() {
                 <button
                   type="button"
                   onClick={() => void handleSignOut()}
-                  className="rm-mono hidden items-center gap-1.5 px-1 text-xs text-ink-muted hover:text-ink lg:inline-flex"
+                  className="rm-mono hidden items-center gap-1.5 whitespace-nowrap px-1 text-xs text-ink-muted hover:text-ink lg:inline-flex"
                 >
                   <LogOut size={13} aria-hidden />
                   Sign out
@@ -121,7 +122,7 @@ export default function Navbar() {
             ) : (
               <Link
                 href="/get-key"
-                className="rm-mono hidden px-1 text-xs text-ink-muted underline-offset-4 hover:text-ink hover:underline lg:inline-flex"
+                className="rm-mono hidden whitespace-nowrap px-1 text-xs text-ink-muted underline-offset-4 hover:text-ink hover:underline lg:inline-flex"
               >
                 Sign in
               </Link>

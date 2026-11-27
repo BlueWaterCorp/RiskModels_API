@@ -279,16 +279,16 @@ export default async function TickerDashboard({
           <h2 className="text-lg font-semibold text-slate-700 mb-1">
             Hedge {upper} with ETFs — per $1 long, as of {teo}
           </h2>
-          <p className="text-sm text-slate-500 mb-4 max-w-3xl">
+          <p className="text-sm text-slate-600 mb-4 max-w-3xl">
             ERM3 L3 hedge: the dollar position in each ETF per $1 of {upper}. What remains after all
             three legs is the stock-specific risk shown above, which no ETF hedges.
           </p>
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 divide-y divide-slate-100 max-w-2xl">
             {hedgeRows.map((r) => (
               <div key={r.layer} className="flex items-baseline justify-between px-4 py-3">
-                <span className="text-sm text-slate-500">{r.layer}</span>
+                <span className="text-sm text-slate-600">{r.layer}</span>
                 <span className="font-mono text-lg font-semibold text-slate-800 tabular-nums">
-                  <span className="text-slate-500 font-normal">{hedgeSide(Number(r.hr))}</span>{" "}
+                  <span className="text-slate-600 font-normal">{hedgeSide(Number(r.hr))}</span>{" "}
                   ${Math.abs(Number(r.hr)).toFixed(2)} {r.etf}
                 </span>
               </div>
@@ -317,7 +317,7 @@ export default async function TickerDashboard({
           <h2 className="text-lg font-semibold text-slate-700 mb-1">
             Daily return attribution ({teo})
           </h2>
-          <p className="text-sm text-slate-500 mb-4 max-w-3xl">
+          <p className="text-sm text-slate-600 mb-4 max-w-3xl">
             Incremental factor returns (<code className="text-xs bg-slate-200 px-1 rounded">l1_fr</code>,{" "}
             <code className="text-xs bg-slate-200 px-1 rounded">l2_fr</code>,{" "}
             <code className="text-xs bg-slate-200 px-1 rounded">l3_fr</code>) and L3 residual return (
@@ -334,7 +334,7 @@ export default async function TickerDashboard({
             ))}
           </div>
           {metrics.returns_gross != null && !Number.isNaN(Number(metrics.returns_gross)) && (
-            <p className="text-xs text-slate-500 mb-2">
+            <p className="text-xs text-slate-600 mb-2">
               Gross return (same day):{" "}
               <span className="font-mono font-medium text-slate-700">{fmtSignedBps(metrics.returns_gross)}</span> — sum of
               components ≈ gross for simple daily returns.
@@ -403,7 +403,7 @@ export default async function TickerDashboard({
       </section>
 
       {/* ── Footer ──────────────────────────────────────────────── */}
-      <footer className="border-t border-slate-200 py-4 px-8 text-center text-xs text-slate-400">
+      <footer className="border-t border-slate-200 py-4 px-8 text-center text-xs text-slate-600">
         ERM3 V3 · riskmodels.app · BW Macro · Not Investment Advice
       </footer>
     </main>
@@ -425,7 +425,7 @@ function MetricCard({
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-      <p className="text-xs text-slate-500 uppercase tracking-wide">{label}</p>
+      <p className="text-xs text-slate-600 uppercase tracking-wide">{label}</p>
       <p
         className={`text-lg font-bold mt-1 ${accent ? "text-emerald-600" : "text-slate-800"}`}
       >
