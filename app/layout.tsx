@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     template: '%s | RiskModels API',
   },
   description:
-    'Map any US equity across market, sector, subsector, and residual risk — with model-derived ETF hedge ratios for the systematic layers in one API call. ~3,000 US equities, daily hedge-ratio history from 2010.',
+    'Map any US equity across market, sector, subsector, and residual risk — with model-derived ETF hedge ratios for the systematic layers in one API call. A 3,000-stock US universe with daily hedge-ratio history from 2010-12-08.',
   keywords: ['API', 'risk models', 'equity risk', 'hedge ratios', 'factor analysis', 'quantitative finance', 'AI agents', 'MCP', 'model context protocol', 'OpenAPI', 'ETF hedge', 'factor decomposition', 'quant finance API'],
   authors: [{ name: 'Blue Water Macro Corp' }],
   creator: 'Blue Water Macro Corp',
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     url: 'https://riskmodels.app',
     title: 'RiskModels API — US equity risk decomposition and ETF hedge ratios',
     description:
-      'Map any US equity across market, sector, subsector, and residual risk — with model-derived ETF hedge ratios for the systematic layers in one API call. ~3,000 US equities, daily hedge-ratio history from 2010.',
+      'Map any US equity across market, sector, subsector, and residual risk — with model-derived ETF hedge ratios for the systematic layers in one API call. A 3,000-stock US universe with daily hedge-ratio history from 2010-12-08.',
     siteName: 'RiskModels API',
     images: [{
       url: 'https://riskmodels.app/og-image.png',

@@ -28,7 +28,7 @@ const LIGHT_MIRROR: Record<Shade, Shade> = {
 
 const ZINC_LIGHT: Record<Shade, string> = {
   '50': '#0b1220', '100': '#1a1a2e', '200': '#1e293b', '300': '#334155', '400': '#475569', '500': '#586579',
-  '600': '#7c8aa0', '700': '#b8c2d0', '800': '#d5dce6', '900': '#ffffff', '950': '#f5f7fb',
+  '600': '#586579', '700': '#b8c2d0', '800': '#d5dce6', '900': '#ffffff', '950': '#f5f7fb',
 };
 const ZINC_DARK: Record<Shade, string> = {
   '50': '#f1f4f8', '100': '#e1e7ef', '200': '#d9e0ea', '300': '#c3ccd9', '400': '#9aa7bb', '500': '#7a889f',

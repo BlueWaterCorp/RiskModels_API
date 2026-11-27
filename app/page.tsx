@@ -13,7 +13,7 @@ import { getFeedSample, getHealth, getMetricsExhibit, type MetricsExhibit } from
 export const metadata: Metadata = {
   title: 'RiskModels API — US equity risk decomposition and ETF hedge ratios',
   description:
-    'Daily risk decomposition and ETF hedge ratios for about 3,000 US stocks, by REST API, Python SDK, command line and a hosted connector for AI assistants. End-of-day data.',
+    'Daily risk decomposition and ETF hedge ratios for a 3,000-stock US universe, by REST API, Python SDK, command line and a hosted connector for AI assistants. End-of-day data.',
   alternates: { canonical: '/' },
 };
 
@@ -116,6 +116,8 @@ export default async function HomePage() {
   ];
   const metricsPrice = getCapabilityById('metrics')?.pricing.cost_usd ?? null;
   const coverage = health?.teo_coverage;
+  const facts = health?.coverage;
+  const members = facts?.universe;
 
   return (
     <div className="rm-page">
@@ -124,7 +126,7 @@ export default async function HomePage() {
         <div className="lg:col-span-7">
           <p className="rm-label">Equity risk data · API</p>
           <h1 className="rm-h1 mt-4">
-            Daily risk decomposition and ETF hedge ratios for about 3,000 US stocks, by API
+            Daily risk decomposition and ETF hedge ratios for a 3,000-stock US universe, by API
           </h1>
           <p className="rm-lede mt-4 sm:mt-5">
             Each stock is split into market, sector, subsector and residual risk, with the ETF trade that offsets
@@ -248,8 +250,8 @@ export default async function HomePage() {
           <div>
             <dd className="rm-num">{coverage ? coverage.universe_stock_count.toLocaleString('en-US') : '—'}</dd>
             <dt className="rm-small mt-2">
-              US stocks with a record in the API: the 2,786 on the membership list for 2026-11-23, plus stocks
-              outside it.
+              US stocks with a record in the API, delisted names included
+              {members ? `; ${members.member_count.toLocaleString('en-US')} are members of the 3,000-stock list on ${members.as_of}` : ''}.
               <span className={ENDPOINT_LINE}>/api/health</span>
             </dt>
           </div>
@@ -347,7 +349,7 @@ export default async function HomePage() {
               month, with a daily check that the stock had a usable price. The list for any past trading day
               can be requested, and it includes companies that have since delisted. A program that takes its
               stocks from this list on each date researches and trades the same eligible set, and a backtest
-              holds only the stocks that were members on each date. The list for 2026-11-23 holds 2,786 stocks.
+              holds only the stocks that were members on each date. {members ? `The list for ${members.as_of} holds ${members.member_count.toLocaleString('en-US')} stocks, after the daily check that each had a usable price.` : 'The current count is in /api/health.'}
             </p>
             <p className="rm-small mt-3">
               Described in the{' '}

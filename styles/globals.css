@@ -30,6 +30,7 @@
 
     --rm-ink: #1a1a2e;
     --rm-muted: #475569;
+    /* Lightest text token on paper: 4.5:1 or better on --rm-field. #94a3b8 and #64748b are for rules and chart fills only. */
     --rm-faint: #586579;
     --rm-rule: #cbd5e1;
     --rm-grid: #e2e8f0;

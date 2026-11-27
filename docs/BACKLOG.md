@@ -1,6 +1,6 @@
 # RiskModels_API Backlog — OPEN items only
 
-**Id prefix:** `RMAPI` · **Next id:** `RMAPI-44`
+**Id prefix:** `RMAPI` · **Next id:** `RMAPI-45`
 
 **If it is in this file, it is open.** Closed work moves to `LEDGER.md` in the PR that closes it — the PR body says
 `Backlog: closes RMAPI-n` (or `Backlog: none`), and the same diff cuts the item and appends
@@ -208,3 +208,18 @@ Replace with `text-ink-muted` / `text-ink-faint` and re-run an automated accessi
 
 **Impact:** IMPROVEMENT · The API serves total returns but no dividend fields per stock, so a caller cannot separate income from price return or screen by yield, and the imputed-trades scorecard cannot tell a dividend taken as cash from a small sale (FDAG-134). Conrad, 2026-11-25: dividend yield is a valuable point to build for the API. **Needs:** engineering (yield from existing fields); ERM3 only for ex-dates.
 Proposed: `GET /api/metrics/{ticker}` gains trailing-12-month dividend yield and its as-of date; a priced history endpoint returns dated distributions with yield per period. Primary source, available now: the SEC fundamentals already carry quarterly `dividends_paid` (cash paid, 99.7% of a 1,200-company sample) and `dividends_declared` (98.1%), point in time by filing date (`ERM3/erm3/core/fundamentals_concepts.py`); trailing yield = TTM `dividends_paid` / point-in-time market cap, the basis `payout_ratio` already uses. Ex-dates and per-share amounts, if wanted later, come from the adjusted-close inference ERM3-76 already runs, as a second witness. Serve yields and per-share amounts under the derived-data terms; confirm the raw-field rule before any amount is exposed. Price on the existing per-stock scale.
+
+## RMAPI-44 · Website standards audit: remaining riskmodels.app findings (2026-11-27)
+
+**Impact:** IMPROVEMENT · The first audit of riskmodels.app against BWMACRO `docs/WEBSITE_STANDARDS.md` (findings in `docs/site-audit/2026-11-27/FINDINGS.md` in BWMACRO) found five MATERIAL failures, fixed in the audit branch, and the items below, each a visible but smaller miss. **Needs:** engineering
+
+- A11Y-9: no skip link; the first tab stop is the logo. Add a visually hidden "Skip to content" link to `<main id="main">` in the root layout.
+- A11Y-13: the chat button's ping dot animates under `prefers-reduced-motion: reduce`. Add `motion-reduce:animate-none`.
+- A11Y-11: on `/get-key` the "Email address" text is not bound to the input. Add `<label for>`.
+- AUTH-2: "Sign in" links to `/get-key` with no return path on every page except home. Pass `?next=<current path>` and honour it.
+- AGT-3: `/api/metrics` is named in `llms.txt` and `llms-full.txt` and absent from `openapi.json`. Add the path.
+- MOB-3, MOB-4: tap targets below 44 px (top bar, footer, menu, copy buttons) and 11 px paragraphs on docs, status and 404 at phone width.
+- PERF-4: 780 KB compressed JavaScript per page. Lazy-load the chat widget and chart libraries.
+- LEG-2: analytics and ad tags set cookies before interaction for US visitors. The policy discloses this; check the EEA banner from an EU address quarterly.
+- HYGIENE: `aria-current="page"` on the current nav link; one `<main>` per page on `/api-reference`, `/legal`, `/privacy`; h2 for "Parameters"; canonicals on `/legal` and `/privacy`; `Organization` and `WebSite` JSON-LD on home; solid top-bar ground and no violet gradient on `/legal`; banner `<header>` on `/get-key`.
+- Contrast beyond the audited pages: RMAPI-39 (zinc-600 copy outside the redesign) overlaps; the light-theme `zinc-600` step now computes to `#586579`, so re-audit those pages before closing it.

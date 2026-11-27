@@ -10,6 +10,7 @@ import {
   getTeoCoverageHealth,
   type TeoCoverageHealth,
 } from "@/lib/dal/teo-coverage-health";
+import { getCoverageFacts, type CoverageFacts } from "@/lib/dal/coverage-facts";
 import { applyTelemetryFilters } from "@/lib/billing-event-filters";
 
 export interface TelemetryEvent {
@@ -75,6 +76,8 @@ export interface HealthStatus {
   >;
   /** Gross-return coverage at latest `teo` (session completeness signal). */
   teo_coverage: TeoCoverageHealth;
+  /** Coverage facts quoted by the site and llms.txt: history starts, universe size. */
+  coverage?: CoverageFacts;
   /** Macro factors data freshness for correlation surface. */
   macro_factors?: MacroFactorsHealth;
 }
@@ -266,6 +269,7 @@ export async function getHealthStatus(): Promise<HealthStatus> {
     },
     capabilities,
     teo_coverage,
+    coverage: await getCoverageFacts(),
     macro_factors,
   };
 }

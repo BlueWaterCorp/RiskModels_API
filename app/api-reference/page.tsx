@@ -541,10 +541,10 @@ ${example}`)}
                   <TableHeader>
                     <TableRow>
                       <TableHead>Param</TableHead>
-                      <TableHead className="text-slate-400 normal-case tracking-normal">Type</TableHead>
+                      <TableHead className="text-slate-600 normal-case tracking-normal">Type</TableHead>
                       <TableHead>Description</TableHead>
                       <TableHead>Required</TableHead>
-                      <TableHead className="text-slate-400 normal-case tracking-normal">Default</TableHead>
+                      <TableHead className="text-slate-600 normal-case tracking-normal">Default</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -553,10 +553,10 @@ ${example}`)}
                         <TableCell>
                           <code className="font-mono text-sm tabular-nums text-zinc-200">{p.name}</code>
                         </TableCell>
-                        <TableCell className="text-slate-400">{p.type}</TableCell>
+                        <TableCell className="text-slate-600">{p.type}</TableCell>
                         <TableCell className="text-zinc-400">{p.description}</TableCell>
                         <TableCell className="text-zinc-400">{p.required ? 'Yes' : 'No'}</TableCell>
-                        <TableCell className="text-slate-400 font-mono text-xs tabular-nums">
+                        <TableCell className="text-slate-600 font-mono text-xs tabular-nums">
                           {p.default ?? '—'}
                         </TableCell>
                       </TableRow>
@@ -705,6 +705,7 @@ df = client.ticker_returns("NVDA", years=3)`}</pre>
           <div className="flex items-center gap-3">
             <Link
               href="/openapi.json"
+              prefetch={false}
               target="_blank"
               className="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
             >
@@ -712,6 +713,7 @@ df = client.ticker_returns("NVDA", years=3)`}</pre>
             </Link>
             <Link
               href="/api-docs.html"
+              prefetch={false}
               target="_blank"
               className="text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors"
             >

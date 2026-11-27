@@ -4,17 +4,33 @@
  * Optional `LLMS_TXT_PUBLIC_AGENT_KEY` appends a shared sample Bearer token for LLM crawlers.
  */
 
+import type { CoverageFacts } from "@/lib/dal/coverage-facts";
 import { WALKTHROUGH_MAG7_TICKERS } from "@/lib/landing/walkthrough-chart-data";
+
+const fmt = (n: number) => n.toLocaleString("en-US");
+
+/** One coverage sentence, from GET /api/health `coverage`; names the endpoint when a figure is unavailable. */
+export function coverageSentence(f: CoverageFacts | null): string {
+  const h = f?.history_starts;
+  const hist = h
+    ? `History is served from ${h.returns} for returns, ${h.hedge_ratio} for hedge ratios and ${h.explained_risk} for explained-risk and residual shares.`
+    : "First served dates per field are in GET /api/health under coverage.";
+  const uni = f?.universe
+    ? `The standard universe is a dated membership list of the 3,000 largest US stocks by market capitalization (${fmt(f.universe.member_count)} members on ${f.universe.as_of} after the daily validity check)`
+    : "The standard universe is a dated membership list of the 3,000 largest US stocks by market capitalization";
+  const rec = f?.stock_records ? `; the API holds records for ${fmt(f.stock_records)} US stocks, delisted names included.` : ".";
+  return `${uni}${rec} ${hist} Current figures: https://riskmodels.app/api/health.`;
+}
 
 function mag7BulletList(): string {
   return WALKTHROUGH_MAG7_TICKERS.map((t) => `- ${t}`).join("\n");
 }
 
-function buildLlmsFullBase(): string {
+function buildLlmsFullBase(facts: CoverageFacts | null): string {
   const mag7Csv = WALKTHROUGH_MAG7_TICKERS.join(", ");
   return `# RiskModels (riskmodels.app)
 
-RiskModels is a US equity risk API from Blue Water Macro Corp. Its ERM3 model splits each stock's risk into market, sector, subsector and stock-specific (residual) layers and gives an ETF hedge ratio for each market layer. It covers about 3,000 US stocks plus ETFs, end of day, with history from 2010–2011. The same data is available over REST, a Python SDK (riskmodels-py) and a hosted MCP server.
+RiskModels is a US equity risk API from Blue Water Macro Corp. Its ERM3 model splits each stock's risk into market, sector, subsector and stock-specific (residual) layers and gives an ETF hedge ratio for each market layer. It is end of day and historical, for US stocks and ETFs. ${coverageSentence(facts)} The same data is available over REST, a Python SDK (riskmodels-py) and a hosted MCP server.
 
 This file is the full reference: endpoints, access, pricing, terms and field notes. The short index is https://riskmodels.app/llms.txt.
 
@@ -135,10 +151,10 @@ Canonical site: https://riskmodels.app  |  Terms: https://riskmodels.net/terms/a
 `;
 }
 
-function buildLlmsIndexBase(): string {
+function buildLlmsIndexBase(facts: CoverageFacts | null): string {
   return `# RiskModels
 
-> US equity risk API from Blue Water Macro Corp. Each stock's risk is split into market, sector, subsector and stock-specific (residual) layers, with an ETF hedge ratio for each market layer. About 3,000 US stocks plus ETFs, end of day, history from 2010–2011. Delivered by REST, a Python SDK (riskmodels-py), a command line and a hosted MCP server.
+> US equity risk API from Blue Water Macro Corp. Each stock's risk is split into market, sector, subsector and stock-specific (residual) layers, with an ETF hedge ratio for each market layer. End of day, for US stocks and ETFs. ${coverageSentence(facts)} Delivered by REST, a Python SDK (riskmodels-py), a command line and a hosted MCP server.
 
 Data is end-of-day and historical. Discovery documents need no key. The full reference, with every endpoint note and price, is [llms-full.txt](https://riskmodels.app/llms-full.txt).
 
@@ -242,11 +258,11 @@ function withSampleKey(body: string, appUrl: string): string {
  * Short index served at /llms.txt.
  * @param appUrl - e.g. https://riskmodels.app (no trailing slash)
  */
-export function buildLlmsTxt(appUrl: string): string {
-  return withSampleKey(buildLlmsIndexBase(), appUrl);
+export function buildLlmsTxt(appUrl: string, facts: CoverageFacts | null = null): string {
+  return withSampleKey(buildLlmsIndexBase(facts), appUrl);
 }
 
 /** Full reference served at /llms-full.txt. */
-export function buildLlmsFullTxt(appUrl: string): string {
-  return withSampleKey(buildLlmsFullBase(), appUrl);
+export function buildLlmsFullTxt(appUrl: string, facts: CoverageFacts | null = null): string {
+  return withSampleKey(buildLlmsFullBase(facts), appUrl);
 }

@@ -195,6 +195,31 @@ export const HealthStatusSchema = {
         query_error: { type: 'string' },
       },
     },
+    coverage: {
+      type: 'object',
+      description: 'Coverage facts: first served date per product and the named universe on its latest date.',
+      properties: {
+        history_starts: {
+          type: 'object',
+          properties: {
+            returns: { type: 'string', format: 'date' },
+            hedge_ratio: { type: 'string', format: 'date' },
+            explained_risk: { type: 'string', format: 'date' },
+            residual_share: { type: 'string', format: 'date' },
+            lstar: { type: 'string', format: 'date' },
+          },
+        },
+        universe: {
+          type: ['object', 'null'],
+          properties: {
+            label: { type: 'string' },
+            as_of: { type: 'string', format: 'date' },
+            member_count: { type: 'integer', minimum: 0 },
+          },
+        },
+        stock_records: { type: ['integer', 'null'], minimum: 0 },
+      },
+    },
   },
 };
 

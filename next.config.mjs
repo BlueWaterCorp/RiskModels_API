@@ -9,7 +9,7 @@ const CSP_REPORT_ONLY = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.posthog.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.doubleclick.net https://www.google.com https://www.googleadservices.com https://pagead2.googlesyndication.com https://challenges.cloudflare.com",
+  "connect-src 'self' data: https://*.supabase.co wss://*.supabase.co https://*.posthog.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com https://*.doubleclick.net https://www.google.com https://www.googleadservices.com https://pagead2.googlesyndication.com https://challenges.cloudflare.com",
   "frame-src 'self' https://challenges.cloudflare.com https://www.googletagmanager.com https://td.doubleclick.net https://js.stripe.com https://checkout.stripe.com",
   "worker-src 'self' blob:",
   "object-src 'none'",
