@@ -16121,6 +16121,58 @@
                         }
                       }
                     },
+                    "coverage": {
+                      "type": "object",
+                      "description": "Coverage facts quoted by the site and llms.txt. First served date per product, and the named universe on its latest date.",
+                      "properties": {
+                        "history_starts": {
+                          "type": "object",
+                          "properties": {
+                            "returns": {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            "hedge_ratio": {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            "explained_risk": {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            "residual_share": {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            "lstar": {
+                              "type": "string",
+                              "format": "date"
+                            }
+                          }
+                        },
+                        "universe": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "label": {
+                              "type": "string"
+                            },
+                            "as_of": {
+                              "type": "string",
+                              "format": "date"
+                            },
+                            "member_count": {
+                              "type": "integer"
+                            }
+                          }
+                        },
+                        "stock_records": {
+                          "type": "integer",
+                          "nullable": true,
+                          "description": "US stocks with a record in the API, delisted names included."
+                        }
+                      }
+                    },
                     "macro_factors": {
                       "type": "object",
                       "nullable": true,
